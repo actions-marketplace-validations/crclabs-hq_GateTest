@@ -41,11 +41,50 @@ interface DashboardData {
   note?: string;
 }
 
+interface ScanHistoryRow {
+  id: number;
+  tier: string;
+  total_issues: number;
+  total_modules: number;
+  duration_ms: number | null;
+  scanned_at: string;
+  module_summary: Array<{ name: string; status: string; issues: number }> | null;
+}
+
+/** Format a duration in ms as a human-readable string, e.g. "34s" or "1m 12s". */
+function formatDuration(ms: number | null): string {
+  if (!ms) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+/** Format a timestamp as a relative "X ago" string, falling back to locale date. */
+function timeAgo(isoString: string): string {
+  const now = Date.now();
+  const then = new Date(isoString).getTime();
+  const diffMs = now - then;
+  if (diffMs < 0) return new Date(isoString).toLocaleDateString();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  const diffWk = Math.floor(diffDay / 7);
+  if (diffWk < 5) return `${diffWk}w ago`;
+  return new Date(isoString).toLocaleDateString();
+}
+
 export default function Dashboard() {
   const [customer, setCustomer] = useState<CustomerInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
   const [expandedScan, setExpandedScan] = useState<string | null>(null);
+  const [scanHistory, setScanHistory] = useState<ScanHistoryRow[]>([]);
+  const [historyRepo, setHistoryRepo] = useState<string>("");
 
   // Check auth status on mount
   useEffect(() => {
@@ -81,6 +120,22 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (customer) loadScans();
   }, [customer, loadScans]);
+
+  // Load scan history when a specific repo is in the page URL params.
+  // Activated by navigating to /dashboard?repo=<url> or ?repo_url=<url>.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const repo = params.get("repo") || params.get("repo_url") || "";
+    if (!repo) return;
+    setHistoryRepo(repo);
+    fetch(`/api/scan/history?repo=${encodeURIComponent(repo)}&limit=20`)
+      .then((r) => (r.ok ? r.json() : { history: [] }))
+      .then((d: { history?: ScanHistoryRow[] }) =>
+        setScanHistory(d.history || [])
+      )
+      .catch(() => setScanHistory([]));
+  }, []);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -335,7 +390,7 @@ export default function Dashboard() {
                           href={`/scan/status?session_id=${scan.session_id}&repo_url=${encodeURIComponent(scan.repo_url)}&tier=${scan.tier}`}
                           className="text-sm text-accent hover:underline"
                         >
-                          View full scan results →
+                          View full scan results &rarr;
                         </a>
                       </div>
                     </div>
@@ -343,6 +398,125 @@ export default function Dashboard() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* ── Scan History section ──────────────────────────────────────────
+            Shows when a repo URL is provided as a query param:
+            /dashboard?repo=<url> or /dashboard?repo_url=<url>
+            Lets customers track improvement over time:
+            "last week: 54 errors, today: 12 errors."
+        ─────────────────────────────────────────────────────────────────── */}
+        {historyRepo && (
+          <div className="mt-10">
+            <h2 className="text-lg font-bold mb-4">
+              Scan History
+              <span className="ml-2 text-sm font-mono text-muted font-normal truncate">
+                {historyRepo.replace(/^https?:\/\//, "")}
+              </span>
+            </h2>
+
+            {scanHistory.length === 0 ? (
+              <div className="card p-8 text-center">
+                <p className="text-muted text-sm">
+                  No scan history yet — run your first scan above.
+                </p>
+              </div>
+            ) : (
+              <div className="card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-xs text-muted">
+                      <th className="text-left px-5 py-3 font-medium">Date</th>
+                      <th className="text-left px-5 py-3 font-medium">Tier</th>
+                      <th className="text-right px-5 py-3 font-medium">Issues</th>
+                      <th className="text-right px-5 py-3 font-medium">Modules</th>
+                      <th className="text-right px-5 py-3 font-medium">Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scanHistory.map((row, idx) => {
+                      // Trend arrow: compare this row against the next older row.
+                      // Down arrow (green) = fewer issues = improving.
+                      const olderRow = scanHistory[idx + 1];
+                      let trendEl: React.ReactNode = null;
+                      if (olderRow) {
+                        if (row.total_issues < olderRow.total_issues) {
+                          trendEl = (
+                            <span
+                              className="ml-1.5 text-success text-xs font-bold"
+                              title="Improving"
+                            >
+                              &darr;
+                            </span>
+                          );
+                        } else if (row.total_issues > olderRow.total_issues) {
+                          trendEl = (
+                            <span
+                              className="ml-1.5 text-danger text-xs font-bold"
+                              title="Regressing"
+                            >
+                              &uarr;
+                            </span>
+                          );
+                        } else {
+                          trendEl = (
+                            <span
+                              className="ml-1.5 text-muted text-xs"
+                              title="No change"
+                            >
+                              &rarr;
+                            </span>
+                          );
+                        }
+                      }
+
+                      const passedCount = (row.module_summary || []).filter(
+                        (m) => m.status === "passed"
+                      ).length;
+
+                      return (
+                        <tr
+                          key={row.id}
+                          className="border-b border-border last:border-0 hover:bg-gray-50/50 transition-colors"
+                        >
+                          <td className="px-5 py-3 text-muted">
+                            {timeAgo(row.scanned_at)}
+                          </td>
+                          <td className="px-5 py-3">
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-accent/10 text-accent">
+                              {row.tier}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-right font-mono font-semibold">
+                            <span
+                              className={
+                                row.total_issues === 0
+                                  ? "text-success"
+                                  : row.total_issues > 50
+                                    ? "text-danger"
+                                    : "text-foreground"
+                              }
+                            >
+                              {row.total_issues}
+                            </span>
+                            {trendEl}
+                          </td>
+                          <td className="px-5 py-3 text-right text-muted font-mono">
+                            {row.total_modules > 0
+                              ? `${passedCount}/${row.total_modules}`
+                              : `${row.total_modules}`}
+                          </td>
+                          <td className="px-5 py-3 text-right text-muted">
+                            {formatDuration(row.duration_ms)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>

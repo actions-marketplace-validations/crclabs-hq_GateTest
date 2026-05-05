@@ -27,7 +27,7 @@ import {
   createBranch,
   fetchBlob,
   fetchFileSha,
-
+  fetchTree,
   openPullRequest,
   postPrComment,
   resolveBaseBranchSha,
@@ -183,6 +183,15 @@ const { attemptFixWithRetries, summariseAttempts } = require("@/app/lib/fix-atte
   summariseAttempts: (attempts: Array<{ outcome: string; durationMs: number }>) => string;
 };
  
+const { enrichFixContext } = require("@/app/lib/fix-context-enricher") as {
+  enrichFixContext: (opts: {
+    filePath: string;
+    fileContents: string;
+    allFiles: string[];
+    fetchFile: (path: string) => Promise<string | null>;
+  }) => Promise<{ consumers: string[]; dependencies: string[]; stackHints: string[]; summary: string }>;
+};
+
 const { mapWithAdaptiveConcurrency } = require("@/app/lib/adaptive-concurrency") as {
   mapWithAdaptiveConcurrency: <T, R>(
     items: T[],
@@ -311,7 +320,7 @@ async function anthropicCallWithRetry(body: string, maxAttempts = 6): Promise<{ 
     : new Error(`Anthropic API unreachable after ${maxAttempts} attempts`);
 }
 
-async function askClaude(fileContent: string, filePath: string, issues: string[]): Promise<string> {
+async function askClaude(fileContent: string, filePath: string, issues: string[], contextSummary?: string): Promise<string> {
   // Enrich broken-link issues with context about what actually exists
   const enrichedIssues = await Promise.all(issues.map(async (issue) => {
     const brokenMatch = issue.match(/BROKEN LINK \(404\):\s*(https:\/\/github\.com\/([^/]+)\/([^/]+)\/([^\s]+))/i);
@@ -338,6 +347,7 @@ async function askClaude(fileContent: string, filePath: string, issues: string[]
     return issue;
   }));
 
+  const contextBlock = contextSummary ? `\nCODEBASE CONTEXT:\n${contextSummary}\n` : "";
   const prompt = `You are an expert code fixer for GateTest, an AI-powered QA platform with 90 scanning modules.
 
 Fix ALL of the following issues in this file. Every fix must pass GateTest's re-scan.
@@ -345,7 +355,7 @@ Fix ALL of the following issues in this file. Every fix must pass GateTest's re-
 FILE: ${filePath}
 ISSUES TO FIX:
 ${enrichedIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}
-
+${contextBlock}
 CURRENT CODE:
 \`\`\`
 ${fileContent}
@@ -691,6 +701,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No fixable issues (issues must have file paths)" }, { status: 400 });
   }
 
+  // Contextual fix intelligence — fetch the repo's full file tree once so the
+  // per-file enricher can find consumers and dependencies without re-listing.
+  // Best-effort: tree fetch failure falls through with an empty list and the
+  // enricher degrades gracefully to no context.
+  let repoAllFiles: string[] = [];
+  try {
+    repoAllFiles = await fetchTree(owner, repo, "HEAD", token);
+  } catch {
+    // best-effort: context enrichment will degrade gracefully
+  }
+
   type Fix = { file: string; original: string; fixed: string; issues: string[] };
   const fixes: Fix[] = [];
   const errors: string[] = [];
@@ -758,12 +779,28 @@ export async function POST(req: NextRequest) {
         return;
       }
 
+      // Contextual fix intelligence — gather surrounding codebase context so
+      // Claude sees architecture before generating the fix. Best-effort: any
+      // failure produces empty context and the fix proceeds normally.
+      let fixContextSummary: string | undefined;
+      try {
+        const ctx = await enrichFixContext({
+          filePath,
+          fileContents: originalContent,
+          allFiles: repoAllFiles,
+          fetchFile: async (p: string) => fetchBlob(owner, repo, p, "", token),
+        });
+        if (ctx.summary) fixContextSummary = ctx.summary;
+      } catch {
+        // best-effort: proceed without context
+      }
+
       // Phase 1: iterative fix loop with up to N attempts. Each attempt's
       // outcome is logged; on quality-fail the next attempt sees explicit
       // feedback about what was introduced. On total failure, all attempts
       // are surfaced in the response so the UI can show the full trail.
       const loopResult = await attemptFixWithRetries({
-        askClaude: (currentIssues: string[]) => askClaude(originalContent, filePath, currentIssues),
+        askClaude: (currentIssues: string[]) => askClaude(originalContent, filePath, currentIssues, fixContextSummary),
         validateFix,
         verifyFixQuality,
         originalContent,

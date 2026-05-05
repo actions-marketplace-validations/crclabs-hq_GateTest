@@ -50,6 +50,13 @@ interface FixResult {
   failedFiles?: Array<{ file: string; issues: string[]; reason: string }>;
   // Phase 6.1.3 — DiffViewer source data
   fixes?: Array<{ file: string; issues: string[]; before?: string; after?: string }>;
+  // Phase 1.2b — cross-scanner re-validation gate results
+  scannerGate?: {
+    rolledBack?: Array<{ file: string; reason: string; newFindings: string[] }>;
+    summary?: string;
+    skipped?: boolean;
+    reason?: string;
+  };
 }
 
 const MODULE_LABELS: Record<string, string> = {
@@ -454,6 +461,83 @@ export default function ScanStatus() {
                   </details>
                 )}
               </div>
+
+              {/* ── Fix Verification card ── */}
+              {fixResult.scannerGate && (
+                <div className="mt-5 rounded-xl px-5 py-4"
+                  style={{ background: "rgba(45,212,191,0.06)", border: "1px solid rgba(45,212,191,0.2)" }}>
+                  {fixResult.scannerGate.skipped ? (
+                    /* Gate skipped — syntax-checked only */
+                    <div className="flex items-center gap-2">
+                      <span className="text-teal-400 text-sm">✓</span>
+                      <span className="text-teal-400 text-xs font-semibold">Syntax-checked</span>
+                      <span className="text-white/30 text-xs ml-1">
+                        {fixResult.scannerGate.reason || "Each fix was validated for syntax before inclusion in the PR."}
+                      </span>
+                    </div>
+                  ) : (
+                    /* Full gate ran — show before/after */
+                    <>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-teal-400 text-sm">✓</span>
+                        <span className="text-teal-400 text-xs font-semibold tracking-wide uppercase">GateTest verified every fix</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-3 text-center">
+                        <div className="rounded-lg py-2.5 px-2"
+                          style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)" }}>
+                          <div className="text-xl font-bold text-red-400">{scanResult.totalIssues}</div>
+                          <div className="text-white/30 text-[10px] mt-0.5">Before</div>
+                        </div>
+                        <div className="flex items-center justify-center">
+                          <span className="text-white/20 text-lg font-light">→</span>
+                        </div>
+                        <div className="rounded-lg py-2.5 px-2"
+                          style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+                          <div className="text-xl font-bold text-emerald-400">
+                            {Math.max(0, scanResult.totalIssues - (fixResult.issuesFixed || 0))}
+                          </div>
+                          <div className="text-white/30 text-[10px] mt-0.5">After fixes</div>
+                        </div>
+                        <div className="rounded-lg py-2.5 px-2"
+                          style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                          <div className="text-xl font-bold text-white/60">
+                            {fixResult.scannerGate.rolledBack?.length || 0}
+                          </div>
+                          <div className="text-white/30 text-[10px] mt-0.5">Rolled back</div>
+                        </div>
+                      </div>
+                      <div className="mt-2.5 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
+                        <span className="text-white/35 text-[11px]">
+                          {fixResult.scannerGate.summary || "Re-scanned ✓ — every fix re-validated by the full scanner before inclusion"}
+                        </span>
+                      </div>
+                      {fixResult.scannerGate.rolledBack && fixResult.scannerGate.rolledBack.length > 0 && (
+                        <details className="mt-3">
+                          <summary className="text-white/30 text-xs cursor-pointer hover:text-white/50">
+                            {fixResult.scannerGate.rolledBack.length} fix{fixResult.scannerGate.rolledBack.length > 1 ? "es" : ""} rolled back — new issues introduced →
+                          </summary>
+                          <ul className="mt-2 space-y-2 pl-3">
+                            {fixResult.scannerGate.rolledBack.map((rb, i) => (
+                              <li key={i} className="text-xs">
+                                <code className="text-teal-400/70 font-mono">{rb.file}</code>
+                                <span className="text-white/30 ml-2">{rb.reason}</span>
+                                {rb.newFindings.length > 0 && (
+                                  <ul className="mt-1 pl-3 space-y-0.5">
+                                    {rb.newFindings.map((f, j) => (
+                                      <li key={j} className="text-white/25 font-mono text-[10px]">{f}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

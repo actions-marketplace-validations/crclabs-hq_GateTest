@@ -168,7 +168,7 @@ class EnvVarsModule extends BaseModule {
   async run(result, config) {
     const projectRoot = config.projectRoot;
 
-    const declared = this._harvestDeclared(projectRoot);
+    const { all: declared, root: rootDeclared } = this._harvestDeclared(projectRoot);
     const referenced = this._harvestReferenced(projectRoot);
 
     if (declared.size === 0 && referenced.size === 0) {
@@ -218,9 +218,20 @@ class EnvVarsModule extends BaseModule {
     // cross-reference .env.example keys against the ACTUAL process.env.
     // Any key that is declared in .env.example, is read in code, and is
     // NOT set in the current environment will crash the app on boot.
+    //
+    // Only check root-level env files — subdirectory env files (e.g.
+    // website/.env.example) represent a different deployment context
+    // (Vercel, a sub-package, etc.) and should not be checked against
+    // the parent repo's CI environment.
+    //
+    // This check can be disabled via .gatetest.json:
+    //   { "modules": { "envVars": { "skipRuntimeCheck": true } } }
+    const moduleConfig = typeof config.getModuleConfig === 'function'
+      ? config.getModuleConfig('envVars')
+      : {};
     const { inCI, platform, addEnvUrl } = detectPlatform();
-    if (inCI && declared.size > 0) {
-      for (const key of declared) {
+    if (!moduleConfig.skipRuntimeCheck && inCI && rootDeclared.size > 0) {
+      for (const key of rootDeclared) {
         if (RUNTIME_ENV_ALLOWLIST.has(key)) continue;
         if (!(key in process.env) || process.env[key] === '') {
           const isReferenced = referenced.has(key);
@@ -260,7 +271,8 @@ class EnvVarsModule extends BaseModule {
   }
 
   _harvestDeclared(projectRoot) {
-    const declared = new Set();
+    const declared = new Set(); // all keys from any depth
+    const root = new Set();    // keys from root-level env files only
     const walk = (dir, depth = 0) => {
       if (depth > 12) return;
       let entries;
@@ -272,7 +284,11 @@ class EnvVarsModule extends BaseModule {
         if (!entry.isFile()) continue;
 
         if (ENV_BASENAME_RE.test(entry.name)) {
-          this._harvestEnvFile(full, declared);
+          // Root-level .env.example files represent THIS deployment context;
+          // subdirectory ones represent separate contexts (Vercel sub-app, etc.)
+          const target = depth === 0 ? root : declared;
+          this._harvestEnvFile(full, target);
+          if (depth === 0) this._harvestEnvFile(full, declared);
         } else if (
           entry.name === 'vercel.json' ||
           entry.name === 'netlify.toml' ||
@@ -288,7 +304,7 @@ class EnvVarsModule extends BaseModule {
       }
     };
     walk(projectRoot);
-    return declared;
+    return { all: declared, root };
   }
 
   _harvestEnvFile(file, out) {

@@ -4,6 +4,15 @@
       "skipRuntimeCheck": true,
       "reason": "This repo self-scans in GitHub Actions. The website/.env.example keys are for Vercel deployment, not the CI environment — the runtime completeness check flags Stripe/Anthropic/Database keys as missing since they are not CI secrets."
     },
+    "prSize": {
+      "maxFilesChangedWarning": 80,
+      "maxFilesChangedError": 200,
+      "maxLinesChangedWarning": 3000,
+      "maxLinesChangedError": 10000,
+      "maxLinesPerFileWarning": 500,
+      "maxLinesPerFileError": 1000,
+      "reason": "GateTest is in active development — large feature PRs adding new modules, tests, and docs are expected and intentional. prSize still catches runaway diffs but at a scale appropriate for this codebase."
+    },
     "codeQuality": {
       "excludePaths": [
         "bin/",

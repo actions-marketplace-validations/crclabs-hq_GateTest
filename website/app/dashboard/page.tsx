@@ -128,6 +128,7 @@ export default function Dashboard() {
     const params = new URLSearchParams(window.location.search);
     const repo = params.get("repo") || params.get("repo_url") || "";
     if (!repo) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHistoryRepo(repo);
     fetch(`/api/scan/history?repo=${encodeURIComponent(repo)}&limit=20`)
       .then((r) => (r.ok ? r.json() : { history: [] }))

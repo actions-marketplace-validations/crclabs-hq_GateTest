@@ -605,16 +605,16 @@ export default function ScanStatus() {
                 style={{ background: "rgba(16,185,129,0.15)", border: "2px solid rgba(16,185,129,0.4)" }}>
                 <span className="text-4xl font-bold text-emerald-400">✓</span>
               </div>
-              <h1 className="text-4xl sm:text-5xl font-bold text-white mb-3">GATE: PASSED</h1>
+              <h2 className="text-4xl sm:text-5xl font-bold text-white mb-3">GATE: PASSED</h2>
               <p className="text-white/40 text-lg">
                 {scanResult.completedModules} modules · {scanResult.totalModules > 0 ? `${scanResult.totalModules * 8}+` : "800+"} checks · all clean
               </p>
             </div>
           ) : (
             <div className="mb-8">
-              <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-1">
                 {scanResult.totalIssues} issue{scanResult.totalIssues > 1 ? "s" : ""} found
-              </h1>
+              </h2>
               <p className="text-white/30 text-sm font-mono">{repoShort}</p>
             </div>
           )}
@@ -773,7 +773,7 @@ export default function ScanStatus() {
             style={{ background: "rgba(100,116,139,0.15)", border: "1px solid rgba(100,116,139,0.3)" }}>
             <span className="text-slate-400 text-2xl">⏱</span>
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Session Expired</h1>
+          <h2 className="text-2xl font-bold text-white mb-2">Session Expired</h2>
           <p className="text-white/40 text-sm mb-6">{scanResult?.error || "This checkout session expired before the scan ran. No charge was made."}</p>
           <Link href="/#pricing" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm"
             style={{ background: "#2dd4bf", color: "#080b14" }}>
@@ -793,7 +793,7 @@ export default function ScanStatus() {
             style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)" }}>
             <span className="text-red-400 text-2xl">✗</span>
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Scan Failed</h1>
+          <h2 className="text-2xl font-bold text-white mb-2">Scan Failed</h2>
           <p className="text-white/40 text-sm mb-1">{scanResult?.error || "Something went wrong."}</p>
           <p className="text-white/25 text-xs mb-6">No charge was made. Card hold released.</p>
           <Link href="/#pricing" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm"

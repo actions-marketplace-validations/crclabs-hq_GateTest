@@ -1352,6 +1352,32 @@ export async function POST(req: NextRequest) {
     const prNumber = prRes.data.number as number;
     const prUrl = (prRes.data.html_url as string) || "";
 
+    // Phase 6.1.10 — log to public "Fixed by GateTest" registry. Non-blocking;
+    // failure never prevents the PR response from returning to the customer.
+    void (async () => {
+      try {
+        const base = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+        const token = process.env.GATETEST_INTERNAL_TOKEN || process.env.GATETEST_ADMIN_PASSWORD || "";
+        const errCount = fixes.reduce((n, f) => n + (f.issues?.filter((i: string) => /error|critical/i.test(i)).length || 0), 0);
+        const warnCount = fixes.reduce((n, f) => n + (f.issues?.filter((i: string) => !/error|critical/i.test(i)).length || 0), 0);
+        const modulesSet = new Set<string>();
+        input.issues?.forEach((i: { module?: string }) => { if (i.module) modulesSet.add(i.module); });
+        await fetch(`${base}/api/fixes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({
+            repoName: `${owner}/${repo}`,
+            prUrl,
+            tier: input.tier || "full",
+            errorsFixed: errCount,
+            warningsFixed: warnCount,
+            modulesFired: [...modulesSet],
+            message: `Fixed ${fixes.length} file${fixes.length !== 1 ? "s" : ""}, ${totalIssuesFixed} issue${totalIssuesFixed !== 1 ? "s" : ""}`,
+          }),
+        });
+      } catch { /* registry failure is non-critical */ }
+    })();
+
     // Post verification comment on the PR
     try {
       const remainingIssues: string[] = [];

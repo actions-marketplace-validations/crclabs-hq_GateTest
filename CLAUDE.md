@@ -375,7 +375,7 @@ Phase 5 was the move from on-spec ($29-$399 honest delivery) to 110% (cross-repo
 
 ### Tier 2 — Compounding moats (11-25): uncatchable in 6 months
 
-- [ ] **6.2.1** Phase 5.4 multi-file architectural refactor pipeline (polling→webhook, in-memory→Redis, untyped→typed-client). 1-2 weeks. Single highest-leverage move for the $999 tier.
+- [x] **6.2.1** Phase 5.4 multi-file architectural refactor pipeline — **DONE** commit `(this commit)`. Three-module system: `refactor-detector.js` (pure static analysis, detects polling-to-webhook, in-memory-to-store, untyped-fetch-to-client candidates across 100-file cap), `refactor-planner.js` (Claude-driven structured plan with 90s timeout — filesToModify / newFilesToCreate / testFilesToCreate / warnings blocks), `refactor-executor.js` (plan-then-apply with per-file syntax gate + batch scanner gate, rollback on regression, creates new files + test stubs, 240s timeout). 107 tests across 3 test files. `renderRefactorPrBody` produces PR markdown with ✅/⏪ applied/rolled-back table, source vs test file distinction, and GateTest footer. Single highest-leverage move for the $999 Refactor tier.
 - [ ] **6.2.2** Cross-repo intelligence cohort population — 30-min Craig action: scan 10 popular Next/Stripe + Express/pg + FastAPI/React repos to seed the brain.
 - [ ] **6.2.3** Phase 5.3.2 + 5.3.3 + 5.3.4 — Datadog + Vercel Analytics + static↔runtime correlator. Killer feature for $799 Production tier.
 - [ ] **6.2.4** Phase 5.5 cross-language contract graph — JS↔Python↔Rust as ONE program. Polyglot drift detection no competitor has.
@@ -498,14 +498,14 @@ Phase 5 was the move from on-spec ($29-$399 honest delivery) to 110% (cross-repo
 | Tier | Status |
 | --- | --- |
 | 1 — Launch-essential (10 items) | **5/10 SHIPPED** (6.1.1 ✓ Nuclear coupling, 6.1.2 ✓ per-finding selection, 6.1.3 ✓ inline diff, 6.1.4 ✓ universal copy, 6.1.5 ✓ reliability test). Remaining: 6.1.6 (hero — Boss Rule), 6.1.7 (Marketplace), 6.1.8 (Apple/Google Pay activation — Craig action), 6.1.9 (sales), 6.1.10 (public registry). |
-| 2 — Compounding moats (15 items) | **10/15 SHIPPED** (6.2.5 ✓ FP-rate trending, 6.2.7 ✓ property-based test generation, 6.2.8 ✓ mutation-driven test strengthening, 6.2.9 ✓ chaos-test resilience, 6.2.10 ✓ perf benchmark before/after, 6.2.11 ✓ dependency-upgrade patcher, 6.2.12 ✓ test coverage backfill, 6.2.13 ✓ security policy applier, 6.2.14 ✓ CISO-ready report, 6.2.15 ✓ PII flow tracer). Remaining: 6.2.1 (multi-file refactor), 6.2.2 (cohort population — Craig action), 6.2.3 (Datadog/Vercel/correlator), 6.2.4 (cross-language graph), 6.2.6 (Layer-3 Operator — Boss Rule). |
+| 2 — Compounding moats (15 items) | **11/15 SHIPPED** (6.2.1 ✓ multi-file refactor pipeline, 6.2.5 ✓ FP-rate trending, 6.2.7 ✓ property-based test generation, 6.2.8 ✓ mutation-driven test strengthening, 6.2.9 ✓ chaos-test resilience, 6.2.10 ✓ perf benchmark before/after, 6.2.11 ✓ dependency-upgrade patcher, 6.2.12 ✓ test coverage backfill, 6.2.13 ✓ security policy applier, 6.2.14 ✓ CISO-ready report, 6.2.15 ✓ PII flow tracer). Remaining: 6.2.2 (cohort population — Craig action), 6.2.3 (Datadog/Vercel/correlator), 6.2.4 (cross-language graph), 6.2.6 (Layer-3 Operator — Boss Rule). |
 | 3 — Distribution channels (20 items) | **4/20 SHIPPED** (6.3.1 ✓ Cursor MCP, 6.3.2 ✓ Claude Code MCP, 6.3.3 ✓ Cline/Aider MCP — all from commit `854244c`; 6.3.4 ✓ AI generator scan endpoint — v0/Lovable/Bolt/Replit/Cursor). |
 | 4 — Compliance unlocks (15 items) | 0/15 — not started. |
 | 5 — Language depth (15 items) | 0/15 — not started. |
 | 6 — AI-app safety (10 items) | 0/10 — promptSafety module is a foundation but not in the Phase 6 expansion yet. |
 | 7 — Supply chain trust (10 items) | 0/10 — maliciousDeps + dependencyFreshness are foundations. |
 | 8 — Brutal moats (5 items) | 0/5 — multi-month builds. |
-| **Phase 6 total** | **14/100 shipped** (this commit + previous Tier-1 + Tier-2 work). |
+| **Phase 6 total** | **15/100 shipped** (this commit + previous Tier-1 + Tier-2 work). |
 
 ---
 

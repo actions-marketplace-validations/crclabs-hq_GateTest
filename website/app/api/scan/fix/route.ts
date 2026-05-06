@@ -250,10 +250,9 @@ function isRetryableNetworkError(err: unknown): boolean {
 
 async function anthropicCall(body: string): Promise<{ status: number; data: Record<string, unknown> }> {
   const controller = new AbortController();
-  // Anthropic max_tokens=8192 at sonnet speeds rarely exceeds 30s. 45s is a
-  // safe per-request ceiling that leaves room for retries inside the 300s
-  // function budget and won't let a single stuck request monopolise.
-  const timer = setTimeout(() => controller.abort(), 45_000);
+  // Opus 4.7 + adaptive thinking + effort:xhigh regularly takes 60-90s for
+  // complex files. 120s ceiling leaves room for retries inside the 300s budget.
+  const timer = setTimeout(() => controller.abort(), 120_000);
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -348,18 +347,12 @@ async function askClaude(fileContent: string, filePath: string, issues: string[]
   }));
 
   const contextBlock = contextSummary ? `\nCODEBASE CONTEXT:\n${contextSummary}\n` : "";
-  const prompt = `You are an expert code fixer for GateTest, an AI-powered QA platform with 90 scanning modules.
 
-Fix ALL of the following issues in this file. Every fix must pass GateTest's re-scan.
+  // Stable system instructions are cached — saves ~80% on input tokens across
+  // the multi-file fix loop. User message carries the per-file variable content.
+  const systemPrompt = `You are an expert code fixer for GateTest, an AI-powered QA platform with 90 scanning modules.
 
-FILE: ${filePath}
-ISSUES TO FIX:
-${enrichedIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}
-${contextBlock}
-CURRENT CODE:
-\`\`\`
-${fileContent}
-\`\`\`
+Fix ALL issues given to you in each file. Every fix must pass GateTest's re-scan.
 
 CRITICAL RULES — violations will cause re-scan failure:
 - Return ONLY the complete fixed file content. No explanations. No markdown code fences.
@@ -378,16 +371,31 @@ CRITICAL RULES — violations will cause re-scan failure:
 - If a fix would require context you don't have, output the UNCHANGED original file verbatim.
 - The fixed code will be automatically re-scanned. If it fails, the fix is rejected.`;
 
+  const userPrompt = `FILE: ${filePath}
+ISSUES TO FIX:
+${enrichedIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}
+${contextBlock}
+CURRENT CODE:
+\`\`\`
+${fileContent}
+\`\`\``;
+
   const body = JSON.stringify({
-    model: "claude-sonnet-4-6",
-    max_tokens: 8192,
-    messages: [{ role: "user", content: prompt }],
+    model: "claude-opus-4-7",
+    max_tokens: 16000,
+    system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort: "xhigh" },
+    messages: [{ role: "user", content: userPrompt }],
   });
 
   const res = await anthropicCallWithRetry(body);
   if (res.status === 200) {
-    const content = res.data.content as Array<{ type: string; text: string }>;
-    let fixedCode = content?.[0]?.text || "";
+    const content = res.data.content as Array<{ type: string; text?: string; thinking?: string }>;
+    // When thinking is enabled the content array is [thinking-block, text-block].
+    // Always find by type — never assume index 0 is the text.
+    const textBlock = content?.find(b => b.type === "text");
+    let fixedCode = textBlock?.text || "";
     // Strip markdown code fences if Claude added them despite instructions
     fixedCode = fixedCode.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "");
     return fixedCode;
@@ -493,8 +501,10 @@ const MAX_FILE_BYTES = 400 * 1024;
  */
 async function askClaudeForTest(prompt: string): Promise<string> {
   const body = JSON.stringify({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    model: "claude-opus-4-7",
+    max_tokens: 8192,
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort: "high" },
     messages: [{ role: "user", content: prompt }],
   });
   const res = await anthropicCallWithRetry(body);
@@ -502,8 +512,9 @@ async function askClaudeForTest(prompt: string): Promise<string> {
     const errSnippet = JSON.stringify(res.data).slice(0, 200);
     throw new Error(formatAnthropicError(classifyAnthropicError(res.status, errSnippet)));
   }
-  const content = res.data.content as Array<{ type: string; text: string }>;
-  return content?.[0]?.text || "";
+  const content = res.data.content as Array<{ type: string; text?: string; thinking?: string }>;
+  const textBlock = content?.find(b => b.type === "text");
+  return textBlock?.text || "";
 }
 
 async function askClaudeCreate(filePath: string, context: string[]): Promise<string> {
@@ -523,8 +534,10 @@ Rules:
 - Follow whatever format the file extension implies.`;
 
   const body = JSON.stringify({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    model: "claude-opus-4-7",
+    max_tokens: 8192,
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort: "high" },
     messages: [{ role: "user", content: prompt }],
   });
 
@@ -535,8 +548,9 @@ Rules:
     throw new Error(formatAnthropicError(classifyAnthropicError(res.status, errSnippet)));
   }
 
-  const content = res.data.content as Array<{ type: string; text: string }>;
-  let newFile = content?.[0]?.text || "";
+  const content = res.data.content as Array<{ type: string; text?: string; thinking?: string }>;
+  const textBlock = content?.find(b => b.type === "text");
+  let newFile = textBlock?.text || "";
   newFile = newFile.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "");
   return newFile;
 }

@@ -13,7 +13,8 @@ export const metadata: Metadata = {
   description: 'Every bug, vulnerability, and code issue fixed by GateTest — public proof from real repos.',
 };
 
-// Re-fetched every 60 seconds on Vercel edge
+// Always dynamically rendered — live data, no static prerender
+export const dynamic = 'force-dynamic';
 export const revalidate = 60;
 
 interface Fix {

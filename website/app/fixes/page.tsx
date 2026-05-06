@@ -211,12 +211,12 @@ export default async function FixesPage() {
           <p className="text-slate-400 text-sm mb-6">
             GateTest scans your code, fixes the issues, and opens a PR. You merge. Done.
           </p>
-          <a
+          <Link
             href="/"
             className="inline-flex items-center gap-2 px-6 py-3 bg-teal-500 hover:bg-teal-400 text-black font-semibold rounded-lg transition-colors"
           >
             Scan your repo →
-          </a>
+          </Link>
         </div>
       </div>
     </div>

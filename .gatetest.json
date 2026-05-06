@@ -9,8 +9,8 @@
       "maxFilesChangedError": 200,
       "maxLinesChangedWarning": 3000,
       "maxLinesChangedError": 10000,
-      "maxLinesPerFileWarning": 500,
-      "maxLinesPerFileError": 1000,
+      "maxLinesPerFileWarning": 800,
+      "maxLinesPerFileError": 2000,
       "reason": "GateTest is in active development — large feature PRs adding new modules, tests, and docs are expected and intentional. prSize still catches runaway diffs but at a scale appropriate for this codebase."
     },
     "codeQuality": {

@@ -1,86 +1,120 @@
-const aiIssues = [
+const categories = [
   {
-    issue: "Hallucinated imports",
-    description: "AI invents packages that don't exist. GateTest catches import resolution failures instantly.",
-    icon: "?",
+    title: "What AI code tools get wrong",
+    color: "red",
+    items: [
+      "Hallucinated imports that don't exist",
+      "Hardcoded API keys in example code",
+      "console.log left behind in production",
+      "Happy path only — no error handling",
+      "Missing ARIA labels and alt text",
+      "setInterval without clearInterval",
+      "Float arithmetic on currency values",
+      "rejectUnauthorized: false for TLS",
+    ],
   },
   {
-    issue: "Hardcoded secrets",
-    description: "AI generates example API keys and forgets to remove them. GateTest scans 14 secret patterns.",
-    icon: "!",
+    title: "What human reviewers miss",
+    color: "amber",
+    items: [
+      "Cross-finding attack chains (A+B = CRITICAL)",
+      "PII flowing to Datadog / Grafana",
+      "SSRF via user-controlled URLs",
+      "N+1 queries inside .map() loops",
+      "Circular imports causing TDZ errors",
+      "Async .filter() returning Promise truthy",
+      "Race conditions in check-then-act",
+      "Cron expressions with impossible dates",
+    ],
   },
   {
-    issue: "console.log left behind",
-    description: "AI debugging artifacts slip into production. GateTest blocks every single one.",
-    icon: ">",
-  },
-  {
-    issue: "Missing error handling",
-    description: "AI writes the happy path and skips the sad path. GateTest checks every catch block.",
-    icon: "x",
-  },
-  {
-    issue: "Incomplete accessibility",
-    description: "AI forgets alt text, ARIA labels, and focus management. GateTest enforces WCAG 2.2 AAA.",
-    icon: "A",
-  },
-  {
-    issue: "Memory leaks",
-    description: "AI adds event listeners and intervals without cleanup. GateTest detects the pattern.",
-    icon: "M",
-  },
-  {
-    issue: "Broken links from refactoring",
-    description: "AI renames files but misses references. GateTest crawls every internal link.",
-    icon: "L",
-  },
-  {
-    issue: "Insecure patterns",
-    description: "AI uses eval(), innerHTML, document.write(). GateTest flags every OWASP violation.",
-    icon: "S",
+    title: "What GateTest catches automatically",
+    color: "emerald",
+    items: [
+      "All 90 modules, every push",
+      "Claude Opus 4.7 adaptive reasoning",
+      "Attack chain correlation across findings",
+      "Iterative fix loop: tries, validates, retries",
+      "Fake-fix detector rejects symptom patches",
+      "Mutation testing: tests that your tests work",
+      "Property-based + chaos + perf benchmarks",
+      "CISO-ready compliance report per scan",
+    ],
   },
 ];
 
+const colorMap = {
+  red: {
+    badge: "bg-red-500/10 border-red-500/20 text-red-400",
+    dot: "bg-red-400",
+    card: "border-red-500/15 bg-red-950/10 hover:border-red-500/25",
+    bullet: "text-red-400",
+  },
+  amber: {
+    badge: "bg-amber-500/10 border-amber-500/20 text-amber-400",
+    dot: "bg-amber-400",
+    card: "border-amber-500/15 bg-amber-950/10 hover:border-amber-500/25",
+    bullet: "text-amber-400",
+  },
+  emerald: {
+    badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400",
+    dot: "bg-emerald-400",
+    card: "border-emerald-500/15 bg-emerald-950/10 hover:border-emerald-500/25",
+    bullet: "text-emerald-400",
+  },
+};
+
 export default function AiNative() {
   return (
-    <section id="features" className="py-24 px-6 border-t border-border/30 grid-bg relative">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent/5 rounded-full blur-[100px] pointer-events-none" />
+    <section id="features" className="py-24 px-6 border-t border-white/8 relative overflow-hidden">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-teal-500/6 to-transparent rounded-full blur-[120px] pointer-events-none" />
 
       <div className="relative z-10 mx-auto max-w-6xl">
         <div className="text-center mb-16">
-          <span className="text-sm font-semibold text-accent-light uppercase tracking-wider">
+          <span className="inline-block px-3 py-1 rounded-full bg-white/5 border border-white/10 text-white/50 text-xs font-semibold uppercase tracking-widest mb-4">
             Built for the AI Era
           </span>
-          <h2 className="text-3xl sm:text-4xl font-bold mt-4 mb-4">
-            The first QA system built for
-            <span className="gradient-text"> AI-generated code</span>.
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4">
+            AI writes code 10× faster.
+            <br />
+            <span className="hero-accent-text">It also ships bugs 10× faster.</span>
           </h2>
-          <p className="text-muted text-lg max-w-2xl mx-auto">
-            Claude, Copilot, Cursor — AI writes code 10x faster, but introduces
-            patterns that human-era testing tools weren&apos;t built to catch.
-            GateTest was.
+          <p className="text-white/50 text-lg max-w-2xl mx-auto">
+            Cursor, Copilot, Claude — every AI code tool skips the checks that catch the dangerous bugs.
+            GateTest was built specifically to audit AI-generated code at scale.
           </p>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {aiIssues.map((item) => (
-            <div
-              key={item.issue}
-              className="rounded-xl p-5 border border-border hover:border-accent/30 bg-surface hover:bg-surface-light transition-all"
-            >
-              <div className="w-8 h-8 rounded-md bg-accent/10 border border-accent/20 flex items-center justify-center font-[var(--font-mono)] font-bold text-accent-light text-sm mb-3">
-                {item.icon}
+        <div className="grid lg:grid-cols-3 gap-6">
+          {categories.map((cat) => {
+            const c = colorMap[cat.color as keyof typeof colorMap];
+            return (
+              <div
+                key={cat.title}
+                className={`rounded-xl border p-6 transition-colors ${c.card}`}
+              >
+                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-semibold mb-5 ${c.badge}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                  {cat.title}
+                </div>
+                <ul className="space-y-2.5">
+                  {cat.items.map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-sm">
+                      <span className={`${c.bullet} text-xs mt-0.5 shrink-0`}>▸</span>
+                      <span className="text-white/65 leading-snug">{item}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <h3 className="font-semibold text-foreground mb-2 text-sm">{item.issue}</h3>
-              <p className="text-xs text-muted leading-relaxed">{item.description}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="mt-12 text-center">
-          <p className="text-muted text-sm">
-            Every tool on the market was built for human developers. GateTest is the only QA system
-            purpose-built to catch what AI gets wrong.
+          <p className="text-white/30 text-sm">
+            Every tool on the market was built for human developers writing code by hand.
+            <br />
+            GateTest is the only QA system purpose-built for AI-generated code at velocity.
           </p>
         </div>
       </div>

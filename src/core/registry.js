@@ -105,6 +105,7 @@ const BUILT_IN_MODULES = {
   rollbackHonesty: '../modules/rollback-honesty.js',
   // Supply chain trust
   sbom: '../modules/sbom.js',
+  cveFeed: '../modules/cve-feed.js',
 };
 
 class ModuleRegistry {

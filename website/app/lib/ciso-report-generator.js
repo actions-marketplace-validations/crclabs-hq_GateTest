@@ -194,9 +194,6 @@ function classifySeverity(finding) {
   return 'Low';
 }
 
-function riskScore(severity) {
-  return { Critical: 4, High: 3, Medium: 2, Low: 1 }[severity] || 0;
-}
 
 function severityEmoji(severity) {
   return { Critical: '🔴', High: '🟠', Medium: '🟡', Low: '🟢' }[severity] || '⚪';
@@ -214,8 +211,8 @@ function buildComplianceGaps(findings) {
   const cisHits = {};
 
   for (const f of findings) {
-    const module = f.module || f.ruleId || '';
-    const baseMod = module.split(':')[0];
+    const modName = f.module || f.ruleId || '';
+    const baseMod = modName.split(':')[0];
 
     for (const cat of (OWASP_MAPPING[baseMod] || [])) {
       owaspHits[cat] = (owaspHits[cat] || 0) + 1;

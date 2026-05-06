@@ -77,14 +77,12 @@ function isLiveMatch(finding, runtimeEvent) {
  *                                       Each: { file, line, severity, detail, ... }
  * @param {Array}  [opts.datadogErrors]  From fetchTopErrors / fetchErrorTraces
  * @param {Array}  [opts.vercelRoutes]   From fetchRoutePerformance
- * @param {number} [opts.lineTolerance]  Line-match tolerance (default: 10)
  */
 function correlateFindingsWithRuntime(opts = {}) {
   const {
     findings = [],
     datadogErrors = [],
     vercelRoutes = [],
-    lineTolerance = LIVE_LINE_TOLERANCE,
   } = opts;
 
   // Combine all runtime events with source locations

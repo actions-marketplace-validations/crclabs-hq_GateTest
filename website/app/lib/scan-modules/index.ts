@@ -40,6 +40,7 @@ import { migrations } from "./migrations";
 import { authFlaws } from "./auth-flaws";
 import { flakyTests } from "./flaky-tests";
 import { mutationAnalysis } from "./mutation-analysis";
+import { errorSwallow } from "./infra";
 
 export type { ModuleRunner, ModuleContext, RepoFile, ModuleOutput } from "./types";
 export { TIERS } from "./types";
@@ -72,6 +73,7 @@ export const MODULES: Record<string, ModuleRunner> = {
   authFlaws,
   flakyTests,
   mutationAnalysis,
+  errorSwallow,
 };
 
 export interface ModuleResultEnvelope {

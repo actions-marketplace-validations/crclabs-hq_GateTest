@@ -39,6 +39,7 @@ import { iacSecurity, ciHardening } from "./iac";
 import { migrations } from "./migrations";
 import { authFlaws } from "./auth-flaws";
 import { flakyTests } from "./flaky-tests";
+import { mutationAnalysis } from "./mutation-analysis";
 
 export type { ModuleRunner, ModuleContext, RepoFile, ModuleOutput } from "./types";
 export { TIERS } from "./types";
@@ -70,6 +71,7 @@ export const MODULES: Record<string, ModuleRunner> = {
   migrations,
   authFlaws,
   flakyTests,
+  mutationAnalysis,
 };
 
 export interface ModuleResultEnvelope {

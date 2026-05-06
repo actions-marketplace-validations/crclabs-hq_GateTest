@@ -8,7 +8,7 @@ export default function Cta() {
           Stop shipping <span className="text-danger">broken code</span>.
         </h2>
         <p className="text-lg text-muted mb-4 max-w-xl mx-auto">
-          Point us at your repo. We scan 67 modules, find every issue, and fix what we can.
+          Point us at your repo. We scan 90 modules, find every issue, and fix what we can.
           You only pay when the scan delivers.
         </p>
         <p className="text-sm text-success mb-10">
@@ -28,7 +28,7 @@ export default function Cta() {
             <div className="p-5 text-left">
               <p className="text-sm font-bold text-foreground mb-2">Full Scan &mdash; $99</p>
               <p className="text-xs text-muted mb-3">
-                67 modules. Full report. Auto-fix PR lands in your repo.
+                90 modules. Full report. Auto-fix PR lands in your repo.
               </p>
               <a
                 href="#pricing"
@@ -55,7 +55,7 @@ export default function Cta() {
                 <span className="text-accent-light">$</span> gatetest --suite full --fix
               </p>
               <p className="text-success mt-3 font-bold">GATE: PASSED</p>
-              <p className="text-xs text-muted mt-2">Free forever. All 67 modules.</p>
+              <p className="text-xs text-muted mt-2">Free forever. All 90 modules.</p>
             </div>
           </div>
         </div>

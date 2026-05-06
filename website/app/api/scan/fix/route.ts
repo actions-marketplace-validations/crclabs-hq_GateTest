@@ -27,7 +27,7 @@ import {
   createBranch,
   fetchBlob,
   fetchFileSha,
-
+  fetchTree,
   openPullRequest,
   postPrComment,
   resolveBaseBranchSha,
@@ -183,6 +183,15 @@ const { attemptFixWithRetries, summariseAttempts } = require("@/app/lib/fix-atte
   summariseAttempts: (attempts: Array<{ outcome: string; durationMs: number }>) => string;
 };
  
+const { enrichFixContext } = require("@/app/lib/fix-context-enricher") as {
+  enrichFixContext: (opts: {
+    filePath: string;
+    fileContents: string;
+    allFiles: string[];
+    fetchFile: (path: string) => Promise<string | null>;
+  }) => Promise<{ consumers: string[]; dependencies: string[]; stackHints: string[]; summary: string }>;
+};
+
 const { mapWithAdaptiveConcurrency } = require("@/app/lib/adaptive-concurrency") as {
   mapWithAdaptiveConcurrency: <T, R>(
     items: T[],
@@ -805,6 +814,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No fixable issues (issues must have file paths)" }, { status: 400 });
   }
 
+  // Contextual fix intelligence — fetch the repo's full file tree once so the
+  // per-file enricher can find consumers and dependencies without re-listing.
+  // Best-effort: tree fetch failure falls through with an empty list and the
+  // enricher degrades gracefully to no context.
+  let repoAllFiles: string[] = [];
+  try {
+    repoAllFiles = await fetchTree(owner, repo, "HEAD", token);
+  } catch {
+    // best-effort: context enrichment will degrade gracefully
+  }
+
   type Fix = { file: string; original: string; fixed: string; issues: string[] };
   const fixes: Fix[] = [];
   const errors: string[] = [];
@@ -870,6 +890,22 @@ export async function POST(req: NextRequest) {
       if (originalContent.length > MAX_FILE_BYTES) {
         errors.push(`Skipped ${filePath}: file too large (${originalContent.length} bytes, limit ${MAX_FILE_BYTES})`);
         return;
+      }
+
+      // Contextual fix intelligence — gather surrounding codebase context so
+      // Claude sees architecture before generating the fix. Best-effort: any
+      // failure produces empty context and the fix proceeds normally.
+      let fixContextSummary: string | undefined;
+      try {
+        const ctx = await enrichFixContext({
+          filePath,
+          fileContents: originalContent,
+          allFiles: repoAllFiles,
+          fetchFile: async (p: string) => fetchBlob(owner, repo, p, "", token),
+        });
+        if (ctx.summary) fixContextSummary = ctx.summary;
+      } catch {
+        // best-effort: proceed without context
       }
 
       // Phase 1: iterative fix loop with up to N attempts. Each attempt's
@@ -987,22 +1023,34 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Phase 1.2b — cross-file scanner re-validation. Only runs when the
-  // caller supplied the original workspace + findings. Without that
-  // baseline we can't tell which findings are NEW vs pre-existing, so
-  // skip silently — per-file iterative loop + syntax gate still ran.
+  // Phase 1.2b — cross-file scanner re-validation. Now self-populates
+  // originalFileContents from the fix loop's captured pre-fix content when
+  // the caller didn't pass it explicitly. The fix loop already fetched each
+  // file's original content (stored in fix.original), so we reuse that
+  // rather than making a second round-trip. This activates the gate for
+  // ALL tiers that have successful fixes, not just callers that pre-fetch
+  // the whole workspace. Coverage is limited to fixed files only (cross-file
+  // regressions involving unfixed files won't be caught), but that's
+  // far better than the prior state of always skipping the gate.
+  const effectiveOriginalFileContents =
+    Array.isArray(input.originalFileContents) && input.originalFileContents.length > 0
+      ? input.originalFileContents
+      : fixes
+          .filter((f) => typeof f.original === "string" && f.original.length > 0)
+          .map((f) => ({ path: f.file, content: f.original }));
+
   let scannerGateSummary: string | undefined;
   let scannerGateRolledBack: Array<{ file: string; reason: string; newFindings: string[] }> = [];
   let postFixFindingsByModule: Record<string, string[]> | undefined;
   if (
-    Array.isArray(input.originalFileContents) &&
-    input.originalFileContents.length > 0 &&
+    effectiveOriginalFileContents.length > 0 &&
     input.originalFindingsByModule &&
-    typeof input.originalFindingsByModule === "object"
+    typeof input.originalFindingsByModule === "object" &&
+    Object.keys(input.originalFindingsByModule).length > 0
   ) {
     const scannerGate = await validateFixesAgainstScanner({
       fixes,
-      originalFileContents: input.originalFileContents,
+      originalFileContents: effectiveOriginalFileContents,
       originalFindingsByModule: input.originalFindingsByModule,
       runTier,
       owner,
@@ -1507,7 +1555,7 @@ export async function POST(req: NextRequest) {
       syntaxGate: { accepted: syntaxGate.accepted.length, rejected: syntaxGate.rejected.length, summary: syntaxGateSummary },
       scannerGate: scannerGateSummary
         ? { rolledBack: scannerGateRolledBack, summary: scannerGateSummary }
-        : { skipped: true, reason: "caller did not pass originalFileContents + originalFindingsByModule" },
+        : { skipped: true, reason: "no successful fixes with original content, or originalFindingsByModule not provided" },
       testGeneration: { testsWritten: testGen.tests.length, skipped: testGen.skipped, summary: testGenSummary },
       propertyTestGeneration: propTestSummary
         ? { testsWritten: propTestsWritten, summary: propTestSummary }

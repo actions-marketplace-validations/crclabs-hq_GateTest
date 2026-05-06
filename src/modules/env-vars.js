@@ -1,7 +1,7 @@
 /**
  * Env-Vars Module — cross-check code references against declared env.
  *
- * Two silent footguns every team has:
+ * Three silent footguns every team has:
  *
  *   1. `process.env.STRIPE_SECRET_KEY` appears in code but isn't in
  *      `.env.example`. The developer has it locally; nobody else
@@ -12,6 +12,12 @@
  *      reads anymore. Dead config accumulates. New engineers copy
  *      it into their `.env`, wonder what it does, ship pull requests
  *      toggling a flag that no longer exists.
+ *
+ *   3. (NEW) The team declares `DATABASE_URL` in `.env.example`, sets
+ *      it in their local `.env`, but forgets to add it to Vercel /
+ *      GitHub Actions / Railway. GateTest runs in that CI environment,
+ *      sees `DATABASE_URL` is NOT in `process.env`, and flags it as
+ *      an error before the deploy goes live.
  *
  * Competitors:
  *   - `dotenv-linter` (Rust) checks `.env` file syntax only — not
@@ -101,6 +107,24 @@ function isInString(line, idx) {
   return inS || inD || inT;
 }
 
+// Detect which deployment platform we're running inside.
+// Returns { inCI: boolean, platform: string, addEnvUrl: string }
+function detectPlatform() {
+  const e = process.env;
+  if (e.VERCEL)                      return { inCI: true, platform: 'Vercel',          addEnvUrl: 'https://vercel.com/docs/projects/environment-variables' };
+  if (e.NETLIFY)                     return { inCI: true, platform: 'Netlify',         addEnvUrl: 'https://docs.netlify.com/environment-variables/overview/' };
+  if (e.GITHUB_ACTIONS)              return { inCI: true, platform: 'GitHub Actions',  addEnvUrl: 'https://docs.github.com/en/actions/security-guides/encrypted-secrets' };
+  if (e.GITLAB_CI)                   return { inCI: true, platform: 'GitLab CI',       addEnvUrl: 'https://docs.gitlab.com/ee/ci/variables/' };
+  if (e.CIRCLECI)                    return { inCI: true, platform: 'CircleCI',        addEnvUrl: 'https://circleci.com/docs/env-vars/' };
+  if (e.RENDER)                      return { inCI: true, platform: 'Render',          addEnvUrl: 'https://render.com/docs/environment-variables' };
+  if (e.FLY_APP_NAME)                return { inCI: true, platform: 'Fly.io',          addEnvUrl: 'https://fly.io/docs/reference/secrets/' };
+  if (e.RAILWAY_ENVIRONMENT)         return { inCI: true, platform: 'Railway',         addEnvUrl: 'https://docs.railway.app/develop/variables' };
+  if (e.HEROKU_APP_NAME || e.DYNO)   return { inCI: true, platform: 'Heroku',          addEnvUrl: 'https://devcenter.heroku.com/articles/config-vars' };
+  if (e.AWS_LAMBDA_FUNCTION_NAME)    return { inCI: true, platform: 'AWS Lambda',      addEnvUrl: 'https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html' };
+  if (e.CI)                          return { inCI: true, platform: 'CI',              addEnvUrl: null };
+  return { inCI: false, platform: 'local', addEnvUrl: null };
+}
+
 // Keys that are _always_ considered declared — they come from the
 // runtime/platform, not from the app.
 const RUNTIME_ENV_ALLOWLIST = new Set([
@@ -144,7 +168,7 @@ class EnvVarsModule extends BaseModule {
   async run(result, config) {
     const projectRoot = config.projectRoot;
 
-    const declared = this._harvestDeclared(projectRoot);
+    const { all: declared, root: rootDeclared } = this._harvestDeclared(projectRoot);
     const referenced = this._harvestReferenced(projectRoot);
 
     if (declared.size === 0 && referenced.size === 0) {
@@ -190,6 +214,42 @@ class EnvVarsModule extends BaseModule {
       });
     }
 
+    // Runtime completeness: when running inside CI/a deployment platform,
+    // cross-reference .env.example keys against the ACTUAL process.env.
+    // Any key that is declared in .env.example, is read in code, and is
+    // NOT set in the current environment will crash the app on boot.
+    //
+    // Only check root-level env files — subdirectory env files (e.g.
+    // website/.env.example) represent a different deployment context
+    // (Vercel, a sub-package, etc.) and should not be checked against
+    // the parent repo's CI environment.
+    //
+    // This check can be disabled via .gatetest.json:
+    //   { "modules": { "envVars": { "skipRuntimeCheck": true } } }
+    const moduleConfig = typeof config.getModuleConfig === 'function'
+      ? config.getModuleConfig('envVars')
+      : {};
+    const { inCI, platform, addEnvUrl } = detectPlatform();
+    if (!moduleConfig.skipRuntimeCheck && inCI && rootDeclared.size > 0) {
+      for (const key of rootDeclared) {
+        if (RUNTIME_ENV_ALLOWLIST.has(key)) continue;
+        if (!(key in process.env) || process.env[key] === '') {
+          const isReferenced = referenced.has(key);
+          const severity = isReferenced ? 'error' : 'warning';
+          const tip = addEnvUrl ? ` See: ${addEnvUrl}` : '';
+          issues += this._flag(result, `env-vars:missing-from-runtime:${key}`, {
+            severity,
+            key,
+            platform,
+            message: isReferenced
+              ? `\`${key}\` is declared in \`.env.example\` and read in code but is NOT set in this ${platform} environment — app will crash on boot`
+              : `\`${key}\` is declared in \`.env.example\` but is NOT set in this ${platform} environment`,
+            suggestion: `Add \`${key}\` to your ${platform} environment variables.${tip}`,
+          });
+        }
+      }
+    }
+
     // NEXT_PUBLIC_* info pass.
     for (const [key, refs] of referenced) {
       if (!key.startsWith('NEXT_PUBLIC_') && !key.startsWith('VITE_') && !key.startsWith('REACT_APP_')) continue;
@@ -211,7 +271,8 @@ class EnvVarsModule extends BaseModule {
   }
 
   _harvestDeclared(projectRoot) {
-    const declared = new Set();
+    const declared = new Set(); // all keys from any depth
+    const root = new Set();    // keys from root-level env files only
     const walk = (dir, depth = 0) => {
       if (depth > 12) return;
       let entries;
@@ -223,7 +284,11 @@ class EnvVarsModule extends BaseModule {
         if (!entry.isFile()) continue;
 
         if (ENV_BASENAME_RE.test(entry.name)) {
-          this._harvestEnvFile(full, declared);
+          // Root-level .env.example files represent THIS deployment context;
+          // subdirectory ones represent separate contexts (Vercel sub-app, etc.)
+          const target = depth === 0 ? root : declared;
+          this._harvestEnvFile(full, target);
+          if (depth === 0) this._harvestEnvFile(full, declared);
         } else if (
           entry.name === 'vercel.json' ||
           entry.name === 'netlify.toml' ||
@@ -239,7 +304,7 @@ class EnvVarsModule extends BaseModule {
       }
     };
     walk(projectRoot);
-    return declared;
+    return { all: declared, root };
   }
 
   _harvestEnvFile(file, out) {

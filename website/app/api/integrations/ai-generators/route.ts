@@ -46,6 +46,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { runTier } from '@/app/lib/scan-modules';
+import type { ModuleContext, RepoFile } from '@/app/lib/scan-modules';
 
 const ALLOWED_GENERATORS = ['v0', 'lovable', 'bolt', 'replit', 'cursor', 'copilot', 'other'];
 const ALLOWED_SUITES = ['quick', 'security', 'full'];
@@ -171,16 +172,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'No valid files provided (check size limits)' }, { status: 400 });
   }
 
-  // Build a synthetic file map for runTier
-  const fileMap: Record<string, string> = {};
-  for (const f of files) {
-    fileMap[f.path] = f.content;
-  }
+  // Build a synthetic ModuleContext for runTier
+  const repoFiles: RepoFile[] = files.map((f) => ({ path: f.path, content: f.content }));
+  const ctx: ModuleContext = {
+    owner: 'ai-generator',
+    repo: generator,
+    files: files.map((f) => f.path),
+    fileContents: repoFiles,
+  };
 
   // Run scan
   let scanResult: unknown;
   try {
-    scanResult = await runTier(suite as 'quick' | 'full', fileMap);
+    scanResult = await runTier(suite as 'quick' | 'full', ctx);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Scan failed';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

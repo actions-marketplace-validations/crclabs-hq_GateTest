@@ -432,7 +432,6 @@ function detectDrift(contracts, consumerMap) {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
-const SPEC_EXTENSIONS = new Set(['.yaml', '.yml', '.json', '.graphql', '.gql', '.proto']);
 const SOURCE_EXTENSIONS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
 
 function isSpecFile(filePath) {

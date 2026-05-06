@@ -370,10 +370,10 @@ export async function fetchBlob(
 }
 
 /**
- * Resolve the tip SHA of a branch. Tries Gluecron's tree endpoint first
- * (which carries the branch-tip sha on the response per its wire contract),
- * then falls back to GitHub's git-ref endpoint. Returns null if neither
- * host can resolve it — caller should surface the error.
+ * Resolve the tip commit SHA of a branch. Uses the branches endpoint
+ * (not git/refs/heads which can return an array when multiple refs share
+ * the same prefix). Falls back through Gluecron then unauthenticated GitHub.
+ * Returns null only when all three attempts fail — caller surfaces the error.
  */
 export async function resolveBaseBranchSha(
   owner: string,
@@ -390,21 +390,24 @@ export async function resolveBaseBranchSha(
       if (ghRepo.ok) {
         const repoData = await ghRepo.json() as { default_branch?: string };
         const defaultBranch = branch || repoData.default_branch || "main";
-        const ghRef = await fetch(
-          `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(defaultBranch)}`,
+        // Use /branches/{branch} — always returns a single object with commit.sha,
+        // unlike /git/refs/heads/{branch} which can return an array on prefix matches.
+        const ghBranch = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/branches/${encodeURIComponent(defaultBranch)}`,
           { headers: { Authorization: `Bearer ${token}`, "User-Agent": "GateTest", Accept: "application/vnd.github.v3+json" } }
         );
-        if (ghRef.ok) {
-          const refData = await ghRef.json() as { object?: { sha?: string } };
-          if (refData.object?.sha) {
-            return { sha: refData.object.sha, defaultBranch, source: "github" };
+        if (ghBranch.ok) {
+          const branchData = await ghBranch.json() as { commit?: { sha?: string } };
+          if (branchData.commit?.sha) {
+            return { sha: branchData.commit.sha, defaultBranch, source: "github" };
           }
         }
       }
     } catch { /* fall through to gluecron */ }
   }
 
-  // Try Gluecron
+  // Try Gluecron — use the refs endpoint to get the branch tip commit SHA.
+  // The tree endpoint returns a git tree SHA which cannot be used to create branches.
   try {
     const repoRes = await gluecronApi(
       "GET",
@@ -416,21 +419,37 @@ export async function resolveBaseBranchSha(
         (repoRes.data.default_branch as string) ||
         "main");
 
-    const treeMeta = await gluecronApi(
-      "GET",
-      `/api/v2/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tree/${encodeURIComponent(defaultBranch)}?recursive=1`
-    );
-    const sha =
-      (treeMeta.data.sha as string | undefined) ||
-      ((treeMeta.data as { tree?: Array<{ sha?: string }> }).tree?.[0]?.sha) ||
-      null;
+    // Try Gluecron's branch ref endpoint first
+    let sha: string | null = null;
+    try {
+      const refRes = await gluecronApi(
+        "GET",
+        `/api/v2/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/refs/heads/${encodeURIComponent(defaultBranch)}`
+      );
+      const refData = refRes.data as { sha?: string; commit?: { sha?: string } };
+      sha = refData.sha || refData.commit?.sha || null;
+    } catch { /* ref endpoint not available — fall through to GitHub for this repo */ }
 
     if (sha) return { sha, defaultBranch, source: "gluecron" };
+
+    // Gluecron ref unavailable — fall through to last-ditch GitHub attempt below
+    // but preserve the defaultBranch we resolved from Gluecron's repo metadata
+    const headers: Record<string, string> = { "User-Agent": "GateTest", Accept: "application/vnd.github.v3+json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const ghBranch = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/branches/${encodeURIComponent(defaultBranch)}`,
+      { headers }
+    );
+    if (ghBranch.ok) {
+      const branchData = await ghBranch.json() as { commit?: { sha?: string } };
+      if (branchData.commit?.sha) {
+        return { sha: branchData.commit.sha, defaultBranch, source: "github" };
+      }
+    }
   } catch { /* fall through */ }
 
   // Last-ditch GitHub attempt even without a recognised token shape — many
-  // public repos can be read unauthenticated, and in that case we still
-  // want to be able to compute a base SHA rather than failing the whole PR.
+  // public repos can be read unauthenticated.
   try {
     const headers: Record<string, string> = { "User-Agent": "GateTest", Accept: "application/vnd.github.v3+json" };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -438,14 +457,14 @@ export async function resolveBaseBranchSha(
     if (ghRepo.ok) {
       const repoData = await ghRepo.json() as { default_branch?: string };
       const defaultBranch = branch || repoData.default_branch || "main";
-      const ghRef = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(defaultBranch)}`,
+      const ghBranch = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/branches/${encodeURIComponent(defaultBranch)}`,
         { headers }
       );
-      if (ghRef.ok) {
-        const refData = await ghRef.json() as { object?: { sha?: string } };
-        if (refData.object?.sha) {
-          return { sha: refData.object.sha, defaultBranch, source: "github" };
+      if (ghBranch.ok) {
+        const branchData = await ghBranch.json() as { commit?: { sha?: string } };
+        if (branchData.commit?.sha) {
+          return { sha: branchData.commit.sha, defaultBranch, source: "github" };
         }
       }
     }

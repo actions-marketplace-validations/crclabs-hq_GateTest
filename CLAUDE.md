@@ -371,7 +371,7 @@ Phase 5 was the move from on-spec ($29-$399 honest delivery) to 110% (cross-repo
 - [ ] **6.1.7** GitHub Marketplace listing live — distribution is the bottleneck. 2-3 hr listing-prep + 2-3 week GitHub approval. Boss Rule (#8 public-facing comms). I draft copy + screenshots; Craig submits.
 - [ ] **6.1.8** Apple Pay / Google Pay activated in Stripe Dashboard — wallet-first checkout. ~2 min Craig action. Code already supports it (commit `854244c`).
 - [ ] **6.1.9** First 10 paying customers — sales not engineering. HN / Twitter DMs / OSS-maintainer outreach / Crontech & Gluecron customer offers / Product Hunt launch.
-- [ ] **6.1.10** Public "fixed by GateTest" registry — every shipped PR publicly logged at `gatetest.ai/fixes` as proof. Marketing flywheel.
+- [x] **6.1.10** Public "fixed by GateTest" registry — **DONE** commit `(this commit)`. `fix-registry-store.js` (Neon `fix_registry` table — BIGSERIAL PK, repo_name, pr_url UNIQUE, tier, errors_fixed, warnings_fixed, modules_fired TEXT[], message 280-char cap, is_public boolean; `recordFix` with ON CONFLICT DO UPDATE, `listPublicFixes` paginated, `countPublicFixes`, `getFixStats` aggregate banner, `optOutRepo` privacy hook). `/api/fixes` route (GET paginated list + stats, POST record with admin-auth OR `GATETEST_SCAN_TOKEN` bearer, DELETE opt-out admin-only). `/fixes` page (server component, 60s revalidation, stats banner, fix cards with tier badge + module pills + PR link, pagination, CTA). 22 tests in `fix-registry-store.test.js`. Marketing flywheel — every delivered PR appears in the public feed.
 
 ### Tier 2 — Compounding moats (11-25): uncatchable in 6 months
 
@@ -497,7 +497,7 @@ Phase 5 was the move from on-spec ($29-$399 honest delivery) to 110% (cross-repo
 
 | Tier | Status |
 | --- | --- |
-| 1 — Launch-essential (10 items) | **5/10 SHIPPED** (6.1.1 ✓ Nuclear coupling, 6.1.2 ✓ per-finding selection, 6.1.3 ✓ inline diff, 6.1.4 ✓ universal copy, 6.1.5 ✓ reliability test). Remaining: 6.1.6 (hero — Boss Rule), 6.1.7 (Marketplace), 6.1.8 (Apple/Google Pay activation — Craig action), 6.1.9 (sales), 6.1.10 (public registry). |
+| 1 — Launch-essential (10 items) | **6/10 SHIPPED** (6.1.1 ✓ Nuclear coupling, 6.1.2 ✓ per-finding selection, 6.1.3 ✓ inline diff, 6.1.4 ✓ universal copy, 6.1.5 ✓ reliability test, 6.1.10 ✓ public fixes registry). Remaining: 6.1.6 (hero — Boss Rule), 6.1.7 (Marketplace — Boss Rule), 6.1.8 (Apple/Google Pay activation — Craig action), 6.1.9 (sales). |
 | 2 — Compounding moats (15 items) | **13/15 SHIPPED** (6.2.1 ✓ multi-file refactor pipeline, 6.2.3 ✓ Datadog/Vercel Analytics/runtime correlator, 6.2.4 ✓ cross-language contract graph, 6.2.5 ✓ FP-rate trending, 6.2.7 ✓ property-based test generation, 6.2.8 ✓ mutation-driven test strengthening, 6.2.9 ✓ chaos-test resilience, 6.2.10 ✓ perf benchmark before/after, 6.2.11 ✓ dependency-upgrade patcher, 6.2.12 ✓ test coverage backfill, 6.2.13 ✓ security policy applier, 6.2.14 ✓ CISO-ready report, 6.2.15 ✓ PII flow tracer). Remaining: 6.2.2 (cohort population — Craig action), 6.2.6 (Layer-3 Operator — Boss Rule). |
 | 3 — Distribution channels (20 items) | **4/20 SHIPPED** (6.3.1 ✓ Cursor MCP, 6.3.2 ✓ Claude Code MCP, 6.3.3 ✓ Cline/Aider MCP — all from commit `854244c`; 6.3.4 ✓ AI generator scan endpoint — v0/Lovable/Bolt/Replit/Cursor). |
 | 4 — Compliance unlocks (15 items) | 0/15 — not started. |
@@ -505,7 +505,7 @@ Phase 5 was the move from on-spec ($29-$399 honest delivery) to 110% (cross-repo
 | 6 — AI-app safety (10 items) | 0/10 — promptSafety module is a foundation but not in the Phase 6 expansion yet. |
 | 7 — Supply chain trust (10 items) | 0/10 — maliciousDeps + dependencyFreshness are foundations. |
 | 8 — Brutal moats (5 items) | 0/5 — multi-month builds. |
-| **Phase 6 total** | **17/100 shipped** (this commit + previous Tier-1 + Tier-2 work). |
+| **Phase 6 total** | **18/100 shipped** (this commit + previous Tier-1 + Tier-2 work). |
 
 ---
 

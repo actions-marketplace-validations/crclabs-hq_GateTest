@@ -197,7 +197,43 @@ const { mapWithAdaptiveConcurrency } = require("@/app/lib/adaptive-concurrency")
     items: T[],
     initialLimit: number,
     fn: (item: T, state: AdaptiveState) => Promise<R>,
+    opts?: { rampAfterSuccesses?: number; maxConcurrency?: number },
   ) => Promise<R[]>;
+};
+
+// Phase 5.1.3 brain wire-up — every fix prompt enriched with cross-repo
+// prior-art ("X% of similar-stack repos had this finding; pattern Y worked
+// Z%"). Was Nuclear-tier-only at landing; now flows into the regular fix
+// loop so $99/$199 customers also benefit.
+const fingerprintLib = require("@/app/lib/scan-fingerprint") as {
+  extractFingerprint: (opts: {
+    modules?: unknown[];
+    dependencies?: Record<string, unknown>;
+    files?: string[];
+    fixes?: unknown[];
+    fixErrors?: string[];
+    tier?: string;
+    durationMs?: number | null;
+  }) => { fingerprintSignature: string; frameworkVersions: Record<string, string> };
+};
+const fingerprintStore = require("@/app/lib/scan-fingerprint-store") as {
+  hashRepoUrl: (repoUrl: string) => string;
+  findSimilarFingerprints: (opts: {
+    sql: unknown;
+    fingerprintSignature: string;
+    frameworkVersions?: Record<string, string>;
+    excludeRepoUrlHash?: string | null;
+    limit?: number;
+  }) => Promise<unknown[]>;
+};
+const crossRepoLookup = require("@/app/lib/cross-repo-lookup") as {
+  fetchPriorArt: (opts: {
+    fingerprint: { fingerprintSignature: string; frameworkVersions?: Record<string, string> };
+    repoUrlHash: string;
+    findSimilarFingerprints: unknown;
+    sql: unknown;
+    limit?: number;
+  }) => Promise<{ context: string; sampleSize: number } | null>;
 };
 
 // Default attempt ceiling — set higher than the old hardcoded "1+1 retry"
@@ -320,7 +356,7 @@ async function anthropicCallWithRetry(body: string, maxAttempts = 6): Promise<{ 
     : new Error(`Anthropic API unreachable after ${maxAttempts} attempts`);
 }
 
-async function askClaude(fileContent: string, filePath: string, issues: string[], contextSummary?: string): Promise<string> {
+async function askClaude(fileContent: string, filePath: string, issues: string[], priorArtContext: string | null = null): Promise<string> {
   // Enrich broken-link issues with context about what actually exists
   const enrichedIssues = await Promise.all(issues.map(async (issue) => {
     const brokenMatch = issue.match(/BROKEN LINK \(404\):\s*(https:\/\/github\.com\/([^/]+)\/([^/]+)\/([^\s]+))/i);
@@ -347,7 +383,21 @@ async function askClaude(fileContent: string, filePath: string, issues: string[]
     return issue;
   }));
 
-  const contextBlock = contextSummary ? `\nCODEBASE CONTEXT:\n${contextSummary}\n` : "";
+  // Brain context — injected before the rules section so Claude can use
+  // it as background but not as a copy-paste source. The cross-repo
+  // intelligence module formats this as "X repos with similar stack
+  // showed pattern Y" so Claude knows what's COMMON for this stack and
+  // avoids the inferior fixes that other repos tried first.
+  const priorArtBlock = priorArtContext
+    ? `\nCROSS-REPO CONTEXT (informational only — do not copy patterns; use to prioritise + sanity-check your fix):\n${priorArtContext}\n`
+    : "";
+
+  const batchHint = enrichedIssues.length > 1
+    ? `
+
+BATCH CONTEXT: ${enrichedIssues.length} issues in this single file. Read them ALL before you start writing. Some fixes interact — e.g. an unused-import fix may collide with a missing-import fix on the same line, or two fixes may both need to touch the same function signature. Plan the combined fix once, then write the file once. Do NOT fix issue 1, then issue 2, then issue 3 in isolation — that produces inconsistent state.`
+    : "";
+
   const prompt = `You are an expert code fixer for GateTest, an AI-powered QA platform with 90 scanning modules.
 
 Fix ALL of the following issues in this file. Every fix must pass GateTest's re-scan.
@@ -355,7 +405,8 @@ Fix ALL of the following issues in this file. Every fix must pass GateTest's re-
 FILE: ${filePath}
 ISSUES TO FIX:
 ${enrichedIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}
-${contextBlock}
+${batchHint}
+${priorArtBlock}
 CURRENT CODE:
 \`\`\`
 ${fileContent}
@@ -380,7 +431,14 @@ CRITICAL RULES — violations will cause re-scan failure:
 
   const body = JSON.stringify({
     model: "claude-sonnet-4-6",
-    max_tokens: 8192,
+    // 32K output budget. Claude Sonnet 4.6 supports up to 64K. The
+    // previous 8192 cap silently truncated fixes on files >150KB
+    // (the model would return well-formed code right up to the limit
+    // then get cut). 32K + the validateClaudeOutput truncation
+    // detector (rejects fixes <40% of original length) handles big
+    // React components, generated SQL migrations, and verbose Vue
+    // single-file components without surprise.
+    max_tokens: 32768,
     messages: [{ role: "user", content: prompt }],
   });
 
@@ -474,12 +532,22 @@ function verifyFixQuality(fixed: string, filePath: string): { clean: boolean; ne
 }
 
 // Concurrency cap for parallel file fixing — balances Vercel time budget vs API rate.
-// Dropped from 4 → 2 after prod hit cascading EPROTO / TLS alert 80 failures under
-// heavy undici keep-alive pressure. Two parallel requests + keepalive:false on each
-// keeps fresh sockets without pool-poisoning a whole batch when one goes bad.
-const FIX_CONCURRENCY = 2;
-// Max file size we'll send to Claude (bigger risks output truncation at 8192 tokens).
-const MAX_FILE_BYTES = 400 * 1024;
+// History: 4 → 2 (2026-04, EPROTO/TLS-alert cascading failures), then back up to
+// 4 (2026-05, after the adaptive ramp-up safety net landed in fa2f7ed). The
+// adaptive helper ramps 4 → 8 on sustained success and drops to 1 on network
+// errors, so we get the throughput when prod is healthy + safety when it's not.
+const FIX_CONCURRENCY = 4;
+const FIX_CONCURRENCY_MAX = 8;
+const FIX_RAMP_AFTER_SUCCESSES = 3;
+// Max file size we'll send to Claude. Sized against the 32K-token output
+// budget: at ~0.4 tokens/char of source, 32K tokens ≈ 80KB of output.
+// 600KB input gives the model headroom for files where the fixed version
+// shrinks (removed lines, refactored extracts). Larger inputs WILL get
+// truncated; the validateFix() truncation detector + retry loop catch
+// those, so this cap is "we'll TRY up to 600KB" not "we GUARANTEE 600KB".
+// Files reliably bigger than this need the Phase 5.4 multi-file refactor
+// pipeline (chunks the file, fixes per-chunk, stitches back).
+const MAX_FILE_BYTES = 600 * 1024;
 
 /**
  * Ask Claude to generate a NEW file (when it doesn't exist yet).
@@ -639,6 +707,51 @@ export async function POST(req: NextRequest) {
   }
   const token = auth.token;
   const authSource = auth.source;
+
+  // ── Brain wire-up ──────────────────────────────────────────────
+  // Best-effort cross-repo intelligence. Fetch package.json so we can
+  // build a fingerprint, look up prior-art from the brain, and pass the
+  // resulting context string through to every askClaude call. Failures
+  // here NEVER block the fix loop — empty priorArt = behaviour identical
+  // to before this commit.
+  let priorArtContext: string | null = null;
+  let brainSampleSize = 0;
+  try {
+    // Read package.json (best-effort, single file) for framework versions.
+    let dependencies: Record<string, unknown> = {};
+    try {
+      const pkgRaw = await fetchBlob(owner, repo, "package.json", "", token);
+      if (pkgRaw) {
+        const pkg = JSON.parse(pkgRaw);
+        dependencies = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+      }
+    } catch {
+      // No package.json — non-JS project. Brain will fingerprint on
+      // language-mix only (still useful).
+    }
+    const fingerprint = fingerprintLib.extractFingerprint({
+      dependencies,
+      files: issues.map((i) => i.file).filter((f): f is string => Boolean(f)),
+      tier: input.tier || "full",
+    });
+    const repoUrlHash = fingerprintStore.hashRepoUrl(repoUrl);
+    // SQL connection comes from the same db helper the brain already uses.
+    const { getDb } = require("@/app/lib/db") as { getDb: () => unknown };
+    const sql = getDb();
+    const priorArt = await crossRepoLookup.fetchPriorArt({
+      fingerprint,
+      repoUrlHash,
+      findSimilarFingerprints: fingerprintStore.findSimilarFingerprints,
+      sql,
+      limit: 10,
+    });
+    if (priorArt && priorArt.context) {
+      priorArtContext = priorArt.context;
+      brainSampleSize = priorArt.sampleSize;
+    }
+  } catch {
+    // Brain unavailable — fall through with priorArtContext = null.
+  }
 
   // Phase Nuclear-coupling — when tier=nuclear, diagnose every issue
   // FIRST and enrich the issue text with the diagnoser's rootCause +
@@ -800,7 +913,7 @@ export async function POST(req: NextRequest) {
       // feedback about what was introduced. On total failure, all attempts
       // are surfaced in the response so the UI can show the full trail.
       const loopResult = await attemptFixWithRetries({
-        askClaude: (currentIssues: string[]) => askClaude(originalContent, filePath, currentIssues, fixContextSummary),
+        askClaude: (currentIssues: string[]) => askClaude(originalContent, filePath, currentIssues, priorArtContext),
         validateFix,
         verifyFixQuality,
         originalContent,
@@ -859,7 +972,7 @@ export async function POST(req: NextRequest) {
         errors.push(`Failed to fix ${filePath}: ${raw}`);
       }
     }
-  });
+  }, { rampAfterSuccesses: FIX_RAMP_AFTER_SUCCESSES, maxConcurrency: FIX_CONCURRENCY_MAX });
 
   if (skippedForBudget > 0) {
     errors.push(`Skipped ${skippedForBudget} file${skippedForBudget > 1 ? "s" : ""} — function time budget exhausted. Re-run fix to process the remainder.`);
@@ -1465,6 +1578,9 @@ export async function POST(req: NextRequest) {
       nuclearEnrichment: nuclearEnrichmentSummary
         ? { summary: nuclearEnrichmentSummary }
         : { skipped: true, reason: "tier is not nuclear — enrichment is a $399-tier value-add" },
+      brain: priorArtContext
+        ? { used: true, sampleSize: brainSampleSize, summary: `Fix prompts enriched with cross-repo intelligence from ${brainSampleSize} similar-stack scans.` }
+        : { used: false, reason: "no similar-stack scans available yet (brain populates as more customers run scans)" },
       attemptHistory: attemptHistoryByFile,
     });
   } catch (err) {

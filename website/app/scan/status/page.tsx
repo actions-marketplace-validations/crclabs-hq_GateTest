@@ -32,9 +32,11 @@ interface ScanResult {
   error?: string;
   canRetry?: boolean;
   fixableIssues?: FixableIssue[];
-  // Phase 1.2b: per-module findings map returned by /api/scan/run so
-  // the fix API can run the cross-scanner re-validation gate.
-  findingsByModule?: Record<string, string[]>;
+  // Tier-aware coverage: customers see how many files were inspected
+  // out of the total source-file count in the repo.
+  totalSourceFiles?: number;
+  scannedFiles?: number;
+  filesSkippedForBudget?: number;
 }
 
 interface FixResult {
@@ -200,6 +202,8 @@ export default function ScanStatus() {
   const [animIndex, setAnimIndex] = useState(0);
   const [fixing, setFixing] = useState(false);
   const [fixResult, setFixResult] = useState<FixResult | null>(null);
+  // Live progress from /api/scan/fix/stream — null when not streaming.
+  const [fixProgress, setFixProgress] = useState<{ elapsedMs: number; elapsedHuman: string } | null>(null);
   const [fixError, setFixError] = useState("");
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
   const startTimeRef = useRef(Date.now());
@@ -329,8 +333,14 @@ export default function ScanStatus() {
     setFixing(true);
     setFixResult(null);
     setFixError("");
+    setFixProgress({ elapsedMs: 0, elapsedHuman: "0s" });
+
     try {
-      const res = await fetch("/api/scan/fix", {
+      // Streaming endpoint — emits started/heartbeat/done/error events
+      // so the UI can show live elapsed time instead of staring at a
+      // blank spinner. Falls back to the plain JSON endpoint if the
+      // stream errors before producing a `done` event.
+      const res = await fetch("/api/scan/fix/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -343,12 +353,62 @@ export default function ScanStatus() {
           originalFindingsByModule: scanResult?.findingsByModule || {},
         }),
       });
-      const data = await res.json() as FixResult;
-      setFixResult(data);
+      if (!res.ok || !res.body) {
+        throw new Error(`Fix stream failed: ${res.status} ${res.statusText}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finalEvent: FixResult | null = null;
+      let streamError: string | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sep = buffer.indexOf("\n\n");
+        while (sep >= 0) {
+          const block = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          let eventName = "message";
+          const dataLines: string[] = [];
+          for (const line of block.split("\n")) {
+            if (line.startsWith("event:")) eventName = line.slice(6).trim();
+            else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+          }
+          if (dataLines.length > 0) {
+            let parsed: unknown;
+            try { parsed = JSON.parse(dataLines.join("\n")); } catch { parsed = dataLines.join("\n"); }
+            if (eventName === "heartbeat" && parsed && typeof parsed === "object") {
+              const h = parsed as { elapsedMs?: number; elapsedHuman?: string };
+              setFixProgress({
+                elapsedMs: h.elapsedMs ?? 0,
+                elapsedHuman: h.elapsedHuman ?? "",
+              });
+            } else if (eventName === "done") {
+              finalEvent = parsed as FixResult;
+            } else if (eventName === "error" && parsed && typeof parsed === "object") {
+              streamError = (parsed as { message?: string }).message ?? "Fix stream errored";
+            }
+          }
+          sep = buffer.indexOf("\n\n");
+        }
+      }
+
+      if (streamError && !finalEvent) {
+        setFixError(streamError);
+      } else if (finalEvent) {
+        setFixResult(finalEvent);
+      } else {
+        setFixError("Fix stream closed without a final result.");
+      }
     } catch (err) {
       setFixError(err instanceof Error ? err.message : "Fix failed");
     } finally {
       setFixing(false);
+      setFixProgress(null);
     }
   }
 
@@ -598,16 +658,44 @@ export default function ScanStatus() {
             </div>
           )}
 
-          {/* ── Result headline ── */}
-          {!hasIssues ? (
-            <div className="text-center mb-10">
-              <div className="w-20 h-20 rounded-full mx-auto mb-5 flex items-center justify-center"
-                style={{ background: "rgba(16,185,129,0.15)", border: "2px solid rgba(16,185,129,0.4)" }}>
-                <span className="text-4xl font-bold text-emerald-400">✓</span>
-              </div>
-              <h2 className="text-4xl sm:text-5xl font-bold text-white mb-3">GATE: PASSED</h2>
-              <p className="text-white/40 text-lg">
-                {scanResult.completedModules} modules · {scanResult.totalModules > 0 ? `${scanResult.totalModules * 8}+` : "800+"} checks · all clean
+        {/* Honest coverage line — show how much of the customer's repo we
+            actually inspected. Surfaced inline so "did you scan everything?"
+            is answered without scrolling. */}
+        {isComplete && scanResult?.totalSourceFiles !== undefined && (
+          <div className="mb-4 px-4 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
+            <span>
+              <span className="font-mono tabular-nums">{scanResult.scannedFiles ?? 0}</span>
+              {" / "}
+              <span className="font-mono tabular-nums">{scanResult.totalSourceFiles}</span>
+              {" source files inspected"}
+              {(scanResult.filesSkippedForBudget ?? 0) > 0 && (
+                <span className="text-amber-600">
+                  {" — "}{scanResult.filesSkippedForBudget} skipped (tier file budget)
+                </span>
+              )}
+            </span>
+            {(scanResult.filesSkippedForBudget ?? 0) > 0 && (
+              <span className="text-slate-500 italic">Upgrade tier for full coverage</span>
+            )}
+          </div>
+        )}
+
+        {/* Completion section */}
+        {isComplete && (
+          <div className="space-y-4">
+            {/* Result summary */}
+            <div className={`p-5 rounded-xl border ${
+              (scanResult?.totalIssues || 0) === 0
+                ? "bg-green-50 border-green-200"
+                : "bg-amber-50 border-amber-200"
+            }`}>
+              <p className="font-bold text-foreground">
+                {(scanResult?.totalIssues || 0) === 0
+                  ? "Your code passed all checks."
+                  : `${scanResult?.totalIssues} issue${(scanResult?.totalIssues || 0) > 1 ? "s" : ""} need attention.`}
+              </p>
+              <p className="text-sm text-muted mt-1">
+                {scanResult?.completedModules} modules scanned in {scanResult?.duration}ms
               </p>
             </div>
           ) : (
@@ -637,74 +725,25 @@ export default function ScanStatus() {
             </div>
           )}
 
-          {/* ── Stats row ── */}
-          <div className="grid grid-cols-3 gap-3 mb-8">
-            {[
-              { value: scanResult.completedModules, label: "Modules scanned" },
-              { value: `${scanResult.duration ? Math.round(scanResult.duration / 1000) : elapsed}s`, label: "Scan time" },
-              { value: fixResult?.filesFixed || scanResult.totalFixed || 0, label: "Files fixed" },
-            ].map((s) => (
-              <div key={s.label} className="text-center rounded-xl py-4"
-                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="text-xl font-bold text-white">{s.value}</div>
-                <div className="text-white/25 text-xs mt-0.5">{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* ── Module findings list ── */}
-          {hasIssues && failedModules.length > 0 && (
-            <div className="mb-8">
-              <h3 className="text-white/50 text-xs font-semibold tracking-wider uppercase mb-3">Findings by module</h3>
-              <div className="space-y-2">
-                {failedModules.map((mod) => {
-                  const label = MODULE_LABELS[mod.name] || mod.name;
-                  const isOpen = expandedModules.has(mod.name);
-                  return (
-                    <div key={mod.name} className="rounded-xl overflow-hidden"
-                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                      <button
-                        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white/[0.03] transition-colors"
-                        onClick={() => setExpandedModules((s) => { const n = new Set(s); if (n.has(mod.name)) { n.delete(mod.name); } else { n.add(mod.name); } return n; })}>
-                        <div className="flex items-center gap-3">
-                          <span className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold shrink-0"
-                            style={{ background: "rgba(239,68,68,0.15)", color: "#f87171" }}>!</span>
-                          <span className="font-medium text-white/80 text-sm">{label}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                            style={{ background: "rgba(239,68,68,0.15)", color: "#f87171" }}>
-                            {mod.issues || (mod.details?.length || 1)} issue{(mod.issues || (mod.details?.length || 1)) > 1 ? "s" : ""}
-                          </span>
-                          <span className={`text-white/30 text-xs transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}>▾</span>
-                        </div>
-                      </button>
-
-                      {isOpen && mod.details && mod.details.length > 0 && (
-                        <div className="border-t border-white/[0.05] divide-y divide-white/[0.04]">
-                          {mod.details.map((d, i) => {
-                            const sev = severityOf(d);
-                            const fileMatch = d.match(/^([\w./\-@+]+?\.[\w]{1,8})(?::(\d+))?(?::\d+)?(?:\s*[-—:]\s*|\s+)(.+)$/);
-                            return (
-                              <div key={i} className="px-4 py-2.5 flex items-start gap-3">
-                                <div className="pt-0.5"><SeverityBadge sev={sev} /></div>
-                                <div className="flex-1 min-w-0">
-                                  {fileMatch ? (
-                                    <>
-                                      <code className="text-teal-400/70 text-xs font-mono block truncate">
-                                        {fileMatch[1]}{fileMatch[2] ? `:${fileMatch[2]}` : ""}
-                                      </code>
-                                      <p className="text-white/55 text-xs mt-0.5">{fileMatch[3]}</p>
-                                    </>
-                                  ) : (
-                                    <p className="text-white/55 text-xs font-mono">{d}</p>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                {fixing && (
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200">
+                    <span className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-amber-800">
+                        Claude is reading your code and generating fixes
+                        {fixProgress && fixProgress.elapsedHuman ? (
+                          <>
+                            <span className="text-amber-700"> · </span>
+                            <span className="font-mono tabular-nums text-amber-900">{fixProgress.elapsedHuman}</span>
+                            <span className="text-amber-700 text-xs"> elapsed</span>
+                          </>
+                        ) : (
+                          <>…</>
+                        )}
+                      </p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        Typically 30&ndash;90 seconds. Each fix is re-scanned before commit. Heartbeat every 5 seconds confirms the connection is live.
+                      </p>
                     </div>
                   );
                 })}

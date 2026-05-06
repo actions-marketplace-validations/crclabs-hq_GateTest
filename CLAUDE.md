@@ -396,7 +396,7 @@ Phase 5 was the move from on-spec ($29-$399 honest delivery) to 110% (cross-repo
 - [x] **6.3.1** Cursor MCP tool — works today via existing MCP server (commit `854244c`).
 - [x] **6.3.2** Claude Code MCP tool — works today.
 - [x] **6.3.3** Cline / Aider MCP integration — works today.
-- [ ] **6.3.4** v0 / Lovable / Bolt.new / Replit Agent integrations — they generate code; we fix what they generate.
+- [x] **6.3.4** v0 / Lovable / Bolt.new / Replit Agent integrations — **DONE** commit `(this commit)`. `POST /api/integrations/ai-generators` accepts raw code files from AI generators inline (no repo clone), runs `runTier(suite, fileMap)`, returns `{ findings, summary: { errors, warnings, passed }, badge }`. Supports all 7 generator tags (`v0`/`lovable`/`bolt`/`replit`/`cursor`/`copilot`/`other`), 3 suites (`quick`/`security`/`full`), Bearer token + body `apiKey` auth. Limits: 50 files, 200KB/file, 2MB total. GET returns health-check / discovery JSON. Integration guide at `docs/integrations/ai-generators.md` with platform-specific setup (TypeScript, bash, pre-commit hook). 26 tests in `tests/ai-generators-integration.test.js`.
 - [ ] **6.3.5** VS Code extension — inline-as-you-type findings + fix-on-save.
 - [ ] **6.3.6** JetBrains plugin — IntelliJ / WebStorm / PyCharm / GoLand / RubyMine.
 - [ ] **6.3.7** Slack app — `/gatetest scan github.com/...` in any channel.
@@ -499,13 +499,13 @@ Phase 5 was the move from on-spec ($29-$399 honest delivery) to 110% (cross-repo
 | --- | --- |
 | 1 — Launch-essential (10 items) | **5/10 SHIPPED** (6.1.1 ✓ Nuclear coupling, 6.1.2 ✓ per-finding selection, 6.1.3 ✓ inline diff, 6.1.4 ✓ universal copy, 6.1.5 ✓ reliability test). Remaining: 6.1.6 (hero — Boss Rule), 6.1.7 (Marketplace), 6.1.8 (Apple/Google Pay activation — Craig action), 6.1.9 (sales), 6.1.10 (public registry). |
 | 2 — Compounding moats (15 items) | **10/15 SHIPPED** (6.2.5 ✓ FP-rate trending, 6.2.7 ✓ property-based test generation, 6.2.8 ✓ mutation-driven test strengthening, 6.2.9 ✓ chaos-test resilience, 6.2.10 ✓ perf benchmark before/after, 6.2.11 ✓ dependency-upgrade patcher, 6.2.12 ✓ test coverage backfill, 6.2.13 ✓ security policy applier, 6.2.14 ✓ CISO-ready report, 6.2.15 ✓ PII flow tracer). Remaining: 6.2.1 (multi-file refactor), 6.2.2 (cohort population — Craig action), 6.2.3 (Datadog/Vercel/correlator), 6.2.4 (cross-language graph), 6.2.6 (Layer-3 Operator — Boss Rule). |
-| 3 — Distribution channels (20 items) | **3/20 SHIPPED** (6.3.1 ✓ Cursor MCP, 6.3.2 ✓ Claude Code MCP, 6.3.3 ✓ Cline/Aider MCP — all from commit `854244c`). |
+| 3 — Distribution channels (20 items) | **4/20 SHIPPED** (6.3.1 ✓ Cursor MCP, 6.3.2 ✓ Claude Code MCP, 6.3.3 ✓ Cline/Aider MCP — all from commit `854244c`; 6.3.4 ✓ AI generator scan endpoint — v0/Lovable/Bolt/Replit/Cursor). |
 | 4 — Compliance unlocks (15 items) | 0/15 — not started. |
 | 5 — Language depth (15 items) | 0/15 — not started. |
 | 6 — AI-app safety (10 items) | 0/10 — promptSafety module is a foundation but not in the Phase 6 expansion yet. |
 | 7 — Supply chain trust (10 items) | 0/10 — maliciousDeps + dependencyFreshness are foundations. |
 | 8 — Brutal moats (5 items) | 0/5 — multi-month builds. |
-| **Phase 6 total** | **13/100 shipped** (this commit + previous Tier-1 + Tier-2 work). |
+| **Phase 6 total** | **14/100 shipped** (this commit + previous Tier-1 + Tier-2 work). |
 
 ---
 

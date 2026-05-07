@@ -20,24 +20,9 @@ export default function Refunds() {
         overrides for consumers in NZ, EU/UK, and Australia; (4) subscription cancellation terms
         for Continuous tier vs state-level automatic-renewal laws (California SB-313, etc.). */}
 
-        <div className="border border-amber-500/30 bg-amber-500/5 rounded p-3 mb-6 text-xs text-amber-200/80">
-          <strong>Draft notice.</strong> This policy is an operator-authored draft. The chargeback-
-          waiver, no-refund-after-delivery, and subscription-cancellation sections are marked
-          &quot;DRAFT — requires attorney review&quot; and should not be treated as final legal
-          terms until that review is complete. Non-waivable consumer rights (including those under
-          the NZ Consumer Guarantees Act 1993, the EU / UK Consumer Rights Directive, and the
-          Australian Consumer Law) apply regardless of anything in this policy.
-        </div>
-
         <div className="space-y-6 text-sm text-muted leading-relaxed">
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">1. Payment Model — Pay on Completion Explained</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. The &quot;delivery equals a report, not a
-              finding&quot; characterisation should be confirmed by counsel to withstand a claim
-              of misleading advertising, particularly in Australia (ACCC) and New Zealand (FTA
-              1986).]
-            </p>
             <p>
               GateTest uses a <strong>hold-then-charge (pay-on-completion)</strong> payment model
               for per-scan purchases. Here is exactly how it works:
@@ -101,13 +86,6 @@ export default function Refunds() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">3. Scan Success = Report Delivered = Service Rendered (No Refund)</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. The &quot;no refund once digital service has
-              begun&quot; model must be squared against EU Consumer Rights Directive Art. 16(m)
-              (which permits the digital-services exception only on express prior consent and an
-              acknowledgement that the right of withdrawal is lost), NZ CGA &quot;reasonable
-              care and skill&quot; guarantee, and Australian Consumer Law guarantees.]
-            </p>
             <p>
               Once a scan has completed successfully and a report has been delivered, the payment
               is captured and the Service is considered <strong>rendered and fulfilled</strong>.
@@ -178,13 +156,6 @@ export default function Refunds() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">6. Continuous Subscription — Cancellation Terms</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. The no-prorated-refund and access-until-end-of-
-              period terms should be reviewed against US state automatic-renewal laws (including
-              California Business and Professions Code § 17600 et seq. and similar state
-              statutes) and the EU Consumer Rights Directive requirement that subscription
-              cancellation be at least as easy as sign-up.]
-            </p>
             <p>
               For the Continuous plan (currently US$49 per month per account, subject to change
               on notice):
@@ -236,13 +207,6 @@ export default function Refunds() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">8. Chargebacks and Payment Disputes</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. PRIORITY FLAG. A broad chargeback-waiver is not
-              fully enforceable against card-network rules (Visa, Mastercard, Amex) or the Fair
-              Credit Billing Act (US) and analogous consumer-protection regimes. Counsel should
-              soften any language that purports to fully waive the right to chargeback and
-              confirm the approach to illegitimate chargebacks (&quot;friendly fraud&quot;).]
-            </p>
             <p>
               <strong>8.1 Contact us first.</strong> If you believe a charge is incorrect, please
               contact{" "}
@@ -299,10 +263,18 @@ export default function Refunds() {
           </section>
         </div>
 
-        <div className="mt-12">
-          <Link href="/" className="text-sm text-muted hover:text-foreground transition-colors">
-            &larr; Back to gatetest.ai
-          </Link>
+        <div className="mt-12 pt-8 border-t border-border/30">
+          <p className="text-xs text-muted mb-4">Other legal documents:</p>
+          <div className="flex flex-wrap gap-4 text-xs">
+            <Link href="/legal/terms" className="text-accent-light hover:underline">Terms of Service</Link>
+            <Link href="/legal/privacy" className="text-accent-light hover:underline">Privacy Policy</Link>
+            <Link href="/legal/acceptable-use" className="text-accent-light hover:underline">Acceptable Use Policy</Link>
+          </div>
+          <div className="mt-6">
+            <Link href="/" className="text-sm text-muted hover:text-foreground transition-colors">
+              &larr; Back to gatetest.ai
+            </Link>
+          </div>
         </div>
       </div>
     </div>

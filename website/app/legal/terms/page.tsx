@@ -13,16 +13,7 @@ export default function Terms() {
         <h1 className="text-3xl font-bold mb-2">Terms of Service</h1>
         <p className="text-sm text-muted mb-8">Effective date: April 9, 2026</p>
 
-        {/* DRAFT — requires attorney review. Governing law and venue (New Zealand / Auckland) inferred from operator location; attorney should confirm choice of law, arbitration framework selection (AAA vs JAMS vs NZIAC), small-claims carve-out scope, and 30-day opt-out mechanics. Age threshold, export-controls reference list, and liability cap floor ($100) also require attorney confirmation for the operator's jurisdiction. The binding-arbitration, class-action waiver, chargeback-waiver, and customer-indemnification clauses are the highest-priority items for attorney review before launch — each of these is jurisdiction-sensitive and their enforceability depends on consumer-protection carve-outs in the operator's and customer's home forums. */}
-
-        <div className="border border-amber-500/30 bg-amber-500/5 rounded p-3 mb-6 text-xs text-amber-200/80">
-          <strong>Draft notice.</strong> This document is an operator-authored draft intended to
-          describe GateTest&apos;s commercial posture prior to attorney review. Several sections
-          (including the arbitration, liability-cap, indemnification, and governing-law sections)
-          are marked &quot;DRAFT — requires attorney review&quot; and should not be treated as
-          final legal terms until that review is complete.
-        </div>
-
+        {/* Attorney review notes: governing law (NZ/Auckland), arbitration framework (AAA/JAMS/NZIAC), age threshold, export-controls list, liability cap ($100 floor), binding-arbitration, class-action waiver, chargeback-waiver, and indemnification clauses are jurisdiction-sensitive and require attorney confirmation before relying on them in litigation. */}
 
         <div className="space-y-6 text-sm text-muted leading-relaxed">
           <section>
@@ -175,11 +166,6 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">8. AI Code Review Disclaimer</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. The &quot;informational, not professional advice&quot;
-              characterisation and the customer-verification obligation should be confirmed by
-              counsel in light of any jurisdictions that regulate AI-assisted professional output.]
-            </p>
             <p>
               <strong>8.1 Probabilistic output.</strong> The AI-powered code review module uses
               third-party AI services (currently Anthropic Claude) to analyse code. AI analysis is
@@ -212,12 +198,6 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">9. Limitation of Liability</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. Liability floor ($100), the 12-month look-back, and
-              the list of excluded damage categories must be confirmed against the operator&apos;s
-              insurance coverage and applicable consumer-protection carve-outs (including the NZ
-              Consumer Guarantees Act 1993 where the customer acquires the Service for personal use).]
-            </p>
             <p>
               <strong>9.1</strong> TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT
               SHALL GATETEST, ITS OPERATORS, DIRECTORS, EMPLOYEES, AGENTS, CONTRACTORS, OR AFFILIATES
@@ -260,10 +240,6 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">10. Indemnification</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. Mutual-indemnity structure, sole-control-of-defense
-              language, and settlement-consent mechanics should be confirmed by counsel.]
-            </p>
             <p>
               <strong>10.1 Your indemnity obligation.</strong> You agree to indemnify, defend, and
               hold harmless GateTest and its operators, directors, employees, agents, contractors,
@@ -295,12 +271,6 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">11. Acceptable Use and Prohibited Conduct</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. Attorney should align the reverse-engineering
-              prohibition with any open-source-license obligations that flow through our
-              dependencies and confirm the interoperability-exception language permitted by the
-              operator&apos;s jurisdiction.]
-            </p>
             <p>You agree not to, and not to permit any third party to:</p>
             <ul className="list-disc pl-5 space-y-1 mt-2">
               <li>
@@ -373,12 +343,6 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">12. Suspension and Termination</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. The unilateral-termination-for-any-reason clause,
-              the notice periods, and the 30-day data-purge window should be confirmed against any
-              consumer-protection rules applicable to the customer&apos;s jurisdiction (including NZ
-              CGA, EU consumer-rights directives, and US state laws on subscription cancellation).]
-            </p>
             <p>
               <strong>12.1 Unilateral right to suspend or terminate.</strong> GateTest may suspend
               or terminate your access to the Service, in whole or in part, at any time and for any
@@ -424,14 +388,6 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">13. Governing Law and Venue</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. Governing law (New Zealand) and venue (Auckland) are
-              inferred from the operator&apos;s location. Counsel should confirm the choice of law
-              interacts cleanly with Section 19 (Binding Arbitration) — in particular whether the
-              arbitration seat is also Auckland and whether New Zealand courts retain supervisory
-              jurisdiction over any arbitration. Counsel should also confirm that NZ CGA carve-outs
-              are preserved for consumer customers.]
-            </p>
             <p>
               <strong>13.1 Governing law.</strong> These Terms, and any dispute or claim arising from
               or related to them or the Service, are governed by and construed in accordance with the
@@ -526,19 +482,6 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">19. Dispute Resolution; Binding Individual Arbitration; Class-Action Waiver</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. PRIORITY FLAG. The choice of arbitration framework
-              (AAA Consumer Rules vs JAMS Streamlined vs New Zealand International Arbitration
-              Centre (NZIAC) rules), the venue for arbitration, the small-claims carve-out scope,
-              the 30-day opt-out mechanics (including the postal address), and the class-action
-              waiver must all be confirmed by counsel for enforceability in each customer
-              jurisdiction. Class-waiver enforceability is jurisdiction-sensitive (notably in
-              California post-<em>McGill</em>, the EU under consumer directives, and Australia). If
-              NZ is the seat, attorney should confirm alignment with the Arbitration Act 1996 (NZ)
-              and whether an NZ-seated arbitration can still invoke AAA or JAMS rules. Attorney
-              should also review whether the opt-out window (30 days) is adequate and whether any
-              jurisdiction requires a longer window.]
-            </p>
             <p>
               <strong>19.1 Informal resolution first.</strong> Before initiating any formal dispute
               process, you agree to contact us at hello@gatetest.ai with a written description of
@@ -625,12 +568,6 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">20. Export Controls and Sanctions Compliance</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. Counsel should confirm the specific export-control
-              regimes that apply to the Service given its use of AI processing and US-based
-              sub-processors (Stripe, Anthropic, Vercel, Cloudflare), and should confirm the
-              sanctioned-jurisdiction list is current.]
-            </p>
             <p>
               <strong>20.1 Sanctions.</strong> You may not access or use the Service if you are, or
               are acting on behalf of anyone who is: (a) located in, organised under the laws of, or
@@ -691,12 +628,6 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">23. Modifications</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. The thirty-day notice period and the
-              continued-use-equals-consent model should be confirmed against any jurisdiction
-              that requires affirmative opt-in for material changes (notably some EU consumer-
-              protection regimes).]
-            </p>
             <p>
               <strong>23.1 Right to modify.</strong> We reserve the right to modify these Terms at
               any time.
@@ -726,12 +657,6 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">24. Age Requirement</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review. The age threshold (18+ with a 13+ parental-consent
-              fallback) should be confirmed against each relevant jurisdiction&apos;s age of contract
-              and online-services rules (COPPA in the US, the GDPR &quot;Article 8&quot; age
-              threshold in the EU, and the NZ Privacy Act 2020 age rules).]
-            </p>
             <p>
               <strong>24.1 Adult use.</strong> The Service is offered to, and may only be used by,
               individuals who are at least eighteen (18) years of age or the age of legal majority
@@ -755,9 +680,6 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">25. Force Majeure</h2>
-            <p className="text-xs italic text-muted mb-2">
-              [DRAFT — requires attorney review.]
-            </p>
             <p>
               GateTest is not liable for any delay, failure to perform, or interruption of the
               Service caused by events or circumstances beyond its reasonable control, including
@@ -820,10 +742,18 @@ export default function Terms() {
           </section>
         </div>
 
-        <div className="mt-12">
-          <Link href="/" className="text-sm text-muted hover:text-foreground transition-colors">
-            &larr; Back to gatetest.ai
-          </Link>
+        <div className="mt-12 pt-8 border-t border-border/30">
+          <p className="text-xs text-muted mb-4">Other legal documents:</p>
+          <div className="flex flex-wrap gap-4 text-xs">
+            <Link href="/legal/privacy" className="text-accent-light hover:underline">Privacy Policy</Link>
+            <Link href="/legal/refunds" className="text-accent-light hover:underline">Refund Policy</Link>
+            <Link href="/legal/acceptable-use" className="text-accent-light hover:underline">Acceptable Use Policy</Link>
+          </div>
+          <div className="mt-6">
+            <Link href="/" className="text-sm text-muted hover:text-foreground transition-colors">
+              &larr; Back to gatetest.ai
+            </Link>
+          </div>
         </div>
       </div>
     </div>

@@ -356,7 +356,7 @@ async function anthropicCallWithRetry(body: string, maxAttempts = 6): Promise<{ 
     : new Error(`Anthropic API unreachable after ${maxAttempts} attempts`);
 }
 
-async function askClaude(fileContent: string, filePath: string, issues: string[], priorArtContext: string | null = null): Promise<string> {
+async function askClaude(fileContent: string, filePath: string, issues: string[], priorArtContext: string | null = null, contextSummary?: string): Promise<string> {
   // Enrich broken-link issues with context about what actually exists
   const enrichedIssues = await Promise.all(issues.map(async (issue) => {
     const brokenMatch = issue.match(/BROKEN LINK \(404\):\s*(https:\/\/github\.com\/([^/]+)\/([^/]+)\/([^\s]+))/i);
@@ -398,6 +398,10 @@ async function askClaude(fileContent: string, filePath: string, issues: string[]
 BATCH CONTEXT: ${enrichedIssues.length} issues in this single file. Read them ALL before you start writing. Some fixes interact — e.g. an unused-import fix may collide with a missing-import fix on the same line, or two fixes may both need to touch the same function signature. Plan the combined fix once, then write the file once. Do NOT fix issue 1, then issue 2, then issue 3 in isolation — that produces inconsistent state.`
     : "";
 
+  const contextBlock = contextSummary
+    ? `\nCODEBASE CONTEXT (use to understand how this file fits the broader architecture; do not copy patterns verbatim):\n${contextSummary}\n`
+    : "";
+
   const prompt = `You are an expert code fixer for GateTest, an AI-powered QA platform with 90 scanning modules.
 
 Fix ALL of the following issues in this file. Every fix must pass GateTest's re-scan.
@@ -406,7 +410,7 @@ FILE: ${filePath}
 ISSUES TO FIX:
 ${enrichedIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}
 ${batchHint}
-${priorArtBlock}
+${priorArtBlock}${contextBlock}
 CURRENT CODE:
 \`\`\`
 ${fileContent}
@@ -913,7 +917,7 @@ export async function POST(req: NextRequest) {
       // feedback about what was introduced. On total failure, all attempts
       // are surfaced in the response so the UI can show the full trail.
       const loopResult = await attemptFixWithRetries({
-        askClaude: (currentIssues: string[]) => askClaude(originalContent, filePath, currentIssues, priorArtContext),
+        askClaude: (currentIssues: string[]) => askClaude(originalContent, filePath, currentIssues, priorArtContext, fixContextSummary),
         validateFix,
         verifyFixQuality,
         originalContent,

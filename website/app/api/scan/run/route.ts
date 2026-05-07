@@ -419,9 +419,26 @@ export async function POST(req: NextRequest) {
     // Brain unavailable — surface unmodified results.
   }
 
+  // For scan-only tiers ($29 quick / $99 full), redact file paths and line
+  // numbers from finding detail strings. Customers see WHAT is wrong but
+  // not WHERE, preventing copy-paste-into-Claude to bypass the fix tier.
+  // Fix tiers ($199 scan_fix / $399 nuclear) get full detail — the fix PR
+  // is the deliverable and requires the exact location.
+  const isFixTier = tier === "scan_fix" || tier === "nuclear";
+  const redactedModules = isFixTier
+    ? finalModules
+    : finalModules.map((m) => ({
+        ...m,
+        details: (m.details || []).map((d: string) => {
+          // Strip "path/to/file.ts:42 — " and "path/to/file.ts — " prefixes.
+          const stripped = d.replace(/^(?:error|warn(?:ing)?|info)\s*:\s*/i, "").trim();
+          return stripped.replace(/^[A-Za-z0-9_./@\-+]+?\.[A-Za-z0-9]{1,8}(?::\d+(?::\d+)?)?\s*[-—:]\s*/, "");
+        }),
+      }));
+
   return NextResponse.json({
     status: result.error ? "failed" : "complete",
-    modules: finalModules,
+    modules: redactedModules,
     totalModules: finalModules.length,
     completedModules: finalModules.length,
     totalIssues: finalTotalIssues,

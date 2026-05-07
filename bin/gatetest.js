@@ -49,6 +49,9 @@ const HELP = `
     --report           Display the latest test report
     --list             List all available test modules
     --init             Initialize GateTest in the current project
+    --setup [ides]     Auto-configure MCP server for AI editors (cursor,windsurf,claude,cline,zed,vscode)
+    --all              With --setup: configure all known IDEs, not just detected ones
+    --dry              With --setup: preview what would be configured without writing
     --parallel         Run modules in parallel
     --stop-first       Stop on first module failure
     --fix              Auto-fix safe issues (formatting, imports, etc.)
@@ -135,6 +138,41 @@ async function main() {
 
   if (args.init) {
     initProject(projectRoot);
+    return;
+  }
+
+  // IDE auto-setup — configures MCP server for all detected AI editors
+  if (args.setup) {
+    const { setupIdes, detectInstalledIDEs } = require('../src/core/ide-setup');
+    const specificIdes = typeof args.setup === 'string' ? args.setup.split(',').map(s => s.trim()) : null;
+    const dryRun = !!args.dry;
+
+    console.log('\n[GateTest] IDE MCP Server Setup\n');
+    if (dryRun) console.log('  (dry run — no files will be written)\n');
+
+    const detected = detectInstalledIDEs();
+    console.log(`  Detected IDEs: ${detected.length > 0 ? detected.join(', ') : 'none found'}`);
+    console.log('');
+
+    const { results, mcpBin } = setupIdes({ ides: specificIdes, all: !!args.all, dry: dryRun });
+    for (const r of results) {
+      if (dryRun) {
+        console.log(`  ${r.installed ? '●' : '○'} ${r.ide.padEnd(12)} ${r.installed ? '(installed, would configure)' : '(not detected, skipping)'}`);
+      } else if (r.ok) {
+        console.log(`  ✓ ${r.ide.padEnd(12)} → ${r.path}`);
+      } else {
+        console.log(`  ✗ ${r.ide.padEnd(12)} ${r.error || 'not detected'}`);
+      }
+    }
+
+    const configured = results.filter(r => r.ok).length;
+    console.log(`\n  MCP binary:    ${mcpBin}`);
+    if (!dryRun) {
+      console.log(`  Configured:    ${configured}/${results.length} IDE(s)`);
+      if (configured > 0) {
+        console.log('\n  Restart your AI editor(s) to activate GateTest MCP tools.\n');
+      }
+    }
     return;
   }
 
@@ -471,6 +509,9 @@ function parseArgs(argv) {
     else if (arg === '--list') args.list = true;
     else if (arg === '--report') args.report = true;
     else if (arg === '--init') args.init = true;
+    else if (arg === '--setup') args.setup = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : true;
+    else if (arg === '--all') args.all = true;
+    else if (arg === '--dry') args.dry = true;
     else if (arg === '--init-claude-md') args.initClaudeMd = true;
     else if (arg === '--health') args.health = true;
     else if (arg === '--parallel') args.parallel = true;

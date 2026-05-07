@@ -286,10 +286,9 @@ function isRetryableNetworkError(err: unknown): boolean {
 
 async function anthropicCall(body: string): Promise<{ status: number; data: Record<string, unknown> }> {
   const controller = new AbortController();
-  // Anthropic max_tokens=8192 at sonnet speeds rarely exceeds 30s. 45s is a
-  // safe per-request ceiling that leaves room for retries inside the 300s
-  // function budget and won't let a single stuck request monopolise.
-  const timer = setTimeout(() => controller.abort(), 45_000);
+  // Opus 4.7 + adaptive thinking + effort:xhigh regularly takes 60-90s for
+  // complex files. 120s ceiling leaves room for retries inside the 300s budget.
+  const timer = setTimeout(() => controller.abort(), 120_000);
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -383,38 +382,13 @@ async function askClaude(fileContent: string, filePath: string, issues: string[]
     return issue;
   }));
 
-  // Brain context — injected before the rules section so Claude can use
-  // it as background but not as a copy-paste source. The cross-repo
-  // intelligence module formats this as "X repos with similar stack
-  // showed pattern Y" so Claude knows what's COMMON for this stack and
-  // avoids the inferior fixes that other repos tried first.
-  const priorArtBlock = priorArtContext
-    ? `\nCROSS-REPO CONTEXT (informational only — do not copy patterns; use to prioritise + sanity-check your fix):\n${priorArtContext}\n`
-    : "";
+  const contextBlock = contextSummary ? `\nCODEBASE CONTEXT:\n${contextSummary}\n` : "";
 
-  const batchHint = enrichedIssues.length > 1
-    ? `
+  // Stable system instructions are cached — saves ~80% on input tokens across
+  // the multi-file fix loop. User message carries the per-file variable content.
+  const systemPrompt = `You are an expert code fixer for GateTest, an AI-powered QA platform with 90 scanning modules.
 
-BATCH CONTEXT: ${enrichedIssues.length} issues in this single file. Read them ALL before you start writing. Some fixes interact — e.g. an unused-import fix may collide with a missing-import fix on the same line, or two fixes may both need to touch the same function signature. Plan the combined fix once, then write the file once. Do NOT fix issue 1, then issue 2, then issue 3 in isolation — that produces inconsistent state.`
-    : "";
-
-  const contextBlock = contextSummary
-    ? `\nCODEBASE CONTEXT (use to understand how this file fits the broader architecture; do not copy patterns verbatim):\n${contextSummary}\n`
-    : "";
-
-  const prompt = `You are an expert code fixer for GateTest, an AI-powered QA platform with 90 scanning modules.
-
-Fix ALL of the following issues in this file. Every fix must pass GateTest's re-scan.
-
-FILE: ${filePath}
-ISSUES TO FIX:
-${enrichedIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}
-${batchHint}
-${priorArtBlock}${contextBlock}
-CURRENT CODE:
-\`\`\`
-${fileContent}
-\`\`\`
+Fix ALL issues given to you in each file. Every fix must pass GateTest's re-scan.
 
 CRITICAL RULES — violations will cause re-scan failure:
 - Return ONLY the complete fixed file content. No explanations. No markdown code fences.
@@ -433,23 +407,31 @@ CRITICAL RULES — violations will cause re-scan failure:
 - If a fix would require context you don't have, output the UNCHANGED original file verbatim.
 - The fixed code will be automatically re-scanned. If it fails, the fix is rejected.`;
 
+  const userPrompt = `FILE: ${filePath}
+ISSUES TO FIX:
+${enrichedIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}
+${contextBlock}
+CURRENT CODE:
+\`\`\`
+${fileContent}
+\`\`\``;
+
   const body = JSON.stringify({
-    model: "claude-sonnet-4-6",
-    // 32K output budget. Claude Sonnet 4.6 supports up to 64K. The
-    // previous 8192 cap silently truncated fixes on files >150KB
-    // (the model would return well-formed code right up to the limit
-    // then get cut). 32K + the validateClaudeOutput truncation
-    // detector (rejects fixes <40% of original length) handles big
-    // React components, generated SQL migrations, and verbose Vue
-    // single-file components without surprise.
-    max_tokens: 32768,
-    messages: [{ role: "user", content: prompt }],
+    model: "claude-opus-4-7",
+    max_tokens: 16000,
+    system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort: "xhigh" },
+    messages: [{ role: "user", content: userPrompt }],
   });
 
   const res = await anthropicCallWithRetry(body);
   if (res.status === 200) {
-    const content = res.data.content as Array<{ type: string; text: string }>;
-    let fixedCode = content?.[0]?.text || "";
+    const content = res.data.content as Array<{ type: string; text?: string; thinking?: string }>;
+    // When thinking is enabled the content array is [thinking-block, text-block].
+    // Always find by type — never assume index 0 is the text.
+    const textBlock = content?.find(b => b.type === "text");
+    let fixedCode = textBlock?.text || "";
     // Strip markdown code fences if Claude added them despite instructions
     fixedCode = fixedCode.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "");
     return fixedCode;
@@ -565,8 +547,10 @@ const MAX_FILE_BYTES = 600 * 1024;
  */
 async function askClaudeForTest(prompt: string): Promise<string> {
   const body = JSON.stringify({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    model: "claude-opus-4-7",
+    max_tokens: 8192,
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort: "high" },
     messages: [{ role: "user", content: prompt }],
   });
   const res = await anthropicCallWithRetry(body);
@@ -574,8 +558,9 @@ async function askClaudeForTest(prompt: string): Promise<string> {
     const errSnippet = JSON.stringify(res.data).slice(0, 200);
     throw new Error(formatAnthropicError(classifyAnthropicError(res.status, errSnippet)));
   }
-  const content = res.data.content as Array<{ type: string; text: string }>;
-  return content?.[0]?.text || "";
+  const content = res.data.content as Array<{ type: string; text?: string; thinking?: string }>;
+  const textBlock = content?.find(b => b.type === "text");
+  return textBlock?.text || "";
 }
 
 async function askClaudeCreate(filePath: string, context: string[]): Promise<string> {
@@ -595,8 +580,10 @@ Rules:
 - Follow whatever format the file extension implies.`;
 
   const body = JSON.stringify({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    model: "claude-opus-4-7",
+    max_tokens: 8192,
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort: "high" },
     messages: [{ role: "user", content: prompt }],
   });
 
@@ -607,8 +594,9 @@ Rules:
     throw new Error(formatAnthropicError(classifyAnthropicError(res.status, errSnippet)));
   }
 
-  const content = res.data.content as Array<{ type: string; text: string }>;
-  let newFile = content?.[0]?.text || "";
+  const content = res.data.content as Array<{ type: string; text?: string; thinking?: string }>;
+  const textBlock = content?.find(b => b.type === "text");
+  let newFile = textBlock?.text || "";
   newFile = newFile.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "");
   return newFile;
 }
@@ -1454,6 +1442,32 @@ export async function POST(req: NextRequest) {
 
     const prNumber = prRes.data.number as number;
     const prUrl = (prRes.data.html_url as string) || "";
+
+    // Phase 6.1.10 — log to public "Fixed by GateTest" registry. Non-blocking;
+    // failure never prevents the PR response from returning to the customer.
+    void (async () => {
+      try {
+        const base = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+        const token = process.env.GATETEST_INTERNAL_TOKEN || process.env.GATETEST_ADMIN_PASSWORD || "";
+        const errCount = fixes.reduce((n, f) => n + (f.issues?.filter((i: string) => /error|critical/i.test(i)).length || 0), 0);
+        const warnCount = fixes.reduce((n, f) => n + (f.issues?.filter((i: string) => !/error|critical/i.test(i)).length || 0), 0);
+        const modulesSet = new Set<string>();
+        input.issues?.forEach((i: { module?: string }) => { if (i.module) modulesSet.add(i.module); });
+        await fetch(`${base}/api/fixes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({
+            repoName: `${owner}/${repo}`,
+            prUrl,
+            tier: input.tier || "full",
+            errorsFixed: errCount,
+            warningsFixed: warnCount,
+            modulesFired: [...modulesSet],
+            message: `Fixed ${fixes.length} file${fixes.length !== 1 ? "s" : ""}, ${totalIssuesFixed} issue${totalIssuesFixed !== 1 ? "s" : ""}`,
+          }),
+        });
+      } catch { /* registry failure is non-critical */ }
+    })();
 
     // Post verification comment on the PR
     try {

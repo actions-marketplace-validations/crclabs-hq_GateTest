@@ -1,401 +1,296 @@
+/**
+ * Phase 6.2.15 — Live PII flow tracer.
+ *
+ * Tracks how personally-identifiable data fields flow through the codebase
+ * and flags when they reach high-risk sinks: logs, analytics calls, external
+ * HTTP endpoints, database writes without encryption markers, response bodies.
+ *
+ * Example: "req.body.email → logger.info(req.body) → Slack webhook"
+ *          "user.ssn → console.log at line 42 → hits prod logs"
+ *
+ * Design:
+ *   - Single-pass per file: parse imports, identify PII source assignments,
+ *     track variable aliases, flag sink calls.
+ *   - No AST dependency — regex-based with a variable-binding tracker.
+ *   - Pure function: (files: {path, content}[]) → findings[]
+ *   - Composable: output can be fed into the nuclear diagnoser for richer
+ *     fix recommendations.
+ *
+ * PII source patterns (fields known to carry personal data):
+ *   email, password, passwd, ssn, dob, dateOfBirth, phone, phoneNumber,
+ *   firstName, lastName, fullName, address, zipCode, postCode, creditCard,
+ *   cardNumber, cvv, cvc, pin, bankAccount, routingNumber, passport,
+ *   nationalId, taxId, ipAddress, userAgent, location, latitude, longitude
+ *
+ * High-risk sinks:
+ *   - Logging: console.log/debug/info/warn/error, logger.*, log.*, pino,
+ *     winston, bunyan, structlog (Python)
+ *   - Analytics: mixpanel.track, analytics.track, segment.track, amplitude,
+ *     posthog.capture, heap.track, gtag, ga(), datadog.track, newrelic
+ *   - External HTTP: fetch(), axios.*, got.*, http.request, requests.post/get
+ *   - Unencrypted DB write: INSERT/UPDATE without encryption comment markers
+ */
+
 'use strict';
 
-/**
- * Phase 6.2.15 — PII flow tracer.
- *
- * "This email field flows from /api/signup to logs/loki/grafana"
- *
- * Static taint analysis focused on Personally Identifiable Information.
- * Traces PII field names from entry points (request bodies, form inputs,
- * env vars) through the codebase to sinks (logs, external APIs, files,
- * databases). Produces a board-readable data-flow map suitable for
- * GDPR Article 30 Records of Processing Activities (RoPA) documentation.
- *
- * DESIGN:
- *   1. Identify PII field names in source files (email, phone, ssn, etc.)
- *   2. Classify each field by sensitivity tier (CRITICAL / HIGH / MEDIUM)
- *   3. For each file containing a PII field, detect which sinks it reaches
- *      in that file: logs, HTTP calls, file writes, DB writes, responses
- *   4. Build flow chains: { field, tier, sourceFile, sinks[] }
- *   5. Ask Claude (optional) to narrate the most risky chains
- *   6. Return structured report + rendered Markdown
- *
- * MAX_FILES_PER_RUN caps processing so Nuclear scans stay fast.
- */
+// ---------------------------------------------------------------------------
+// PII field names — conservative set to avoid FP but covering the high-risk
+// fields every compliance framework asks about.
+// ---------------------------------------------------------------------------
+const PII_FIELDS = new Set([
+  'email', 'password', 'passwd', 'pwd', 'ssn', 'sin',
+  'dob', 'dateofbirth', 'birthdate', 'dateOfBirth',
+  'phone', 'phonenumber', 'phoneNumber', 'mobile', 'cellphone',
+  'firstname', 'lastname', 'fullname', 'firstName', 'lastName', 'fullName',
+  'address', 'streetaddress', 'postalcode', 'zipcode', 'postcode',
+  'creditcard', 'cardnumber', 'cvv', 'cvc', 'pin', 'expiry',
+  'bankaccount', 'accountnumber', 'routingnumber', 'iban', 'swift',
+  'passport', 'nationalid', 'taxid', 'ein', 'tin',
+  'ipaddress', 'ip_address', 'useragent', 'user_agent',
+  'location', 'latitude', 'longitude', 'geolocation',
+  'gender', 'race', 'ethnicity', 'religion', 'healthdata',
+  'medicalrecord', 'diagnosis', 'prescription',
+]);
 
-const MAX_FILES_PER_RUN = 50;
-const MAX_FILE_BYTES = 100 * 1024; // 100 KB
-const MAX_FINDINGS_FOR_NARRATIVE = 10;
+// ---------------------------------------------------------------------------
+// Sink patterns — calls that ship data to logs, analytics, or external systems
+// ---------------------------------------------------------------------------
+const LOG_SINK_RE = /\b(?:console\.(log|debug|info|warn|error)|logger\.\w+|log\.\w+|winston\.\w+|pino\.\w+|bunyan\.\w+|structlog\.\w+|logging\.\w+|print)\s*\(/i;
 
-// ─── PII field registry ───────────────────────────────────────────────────────
+const ANALYTICS_SINK_RE = /\b(?:mixpanel\.track|analytics\.track|segment\.track|amplitude\.track|posthog\.capture|heap\.track|gtag\s*\(|ga\s*\(|datadog\.track|newrelic\.\w+|intercom\.\w+|hotjar\.\w+)\s*\(/i;
 
-const PII_FIELDS = {
-  CRITICAL: [
-    'ssn', 'socialSecurityNumber', 'social_security_number',
-    'creditCard', 'credit_card', 'cardNumber', 'card_number',
-    'cvv', 'cvc', 'pan', 'bankAccount', 'bank_account',
-    'passport', 'passportNumber', 'passport_number',
-    'driversLicense', 'drivers_license', 'licenseNumber',
-    'biometric', 'fingerprint', 'faceData', 'face_data',
-    'healthData', 'medical', 'diagnosis', 'prescription',
-    'taxId', 'tax_id', 'ein', 'nationalId', 'national_id',
-  ],
-  HIGH: [
-    'email', 'emailAddress', 'email_address',
-    'phone', 'phoneNumber', 'phone_number', 'mobile', 'cell',
-    'password', 'passwd', 'pwd', 'secret', 'token',
-    'dateOfBirth', 'date_of_birth', 'dob', 'birthDate', 'birth_date',
-    'address', 'streetAddress', 'street_address', 'postalCode', 'postal_code',
-    'zipCode', 'zip_code', 'city', 'state', 'country',
-    'ipAddress', 'ip_address', 'ipAddr',
-    'deviceId', 'device_id', 'userId', 'user_id', 'accountId', 'account_id',
-    'firstName', 'first_name', 'lastName', 'last_name', 'fullName', 'full_name',
-    'username', 'handle',
-  ],
-  MEDIUM: [
-    'name', 'displayName', 'display_name',
-    'age', 'gender', 'nationality',
-    'occupation', 'employer', 'company',
-    'salary', 'income', 'wage',
-    'location', 'geoLocation', 'geo_location', 'lat', 'lng', 'latitude', 'longitude',
-    'browserFingerprint', 'browser_fingerprint', 'userAgent', 'user_agent',
-    'sessionId', 'session_id', 'cookieId', 'cookie_id',
-    'referrer', 'searchQuery', 'search_query',
-  ],
-};
+const HTTP_SINK_RE = /\b(?:fetch\s*\(|axios\.\w+\s*\(|got\.\w+\s*\(|http\.request\s*\(|https\.request\s*\(|requests?\.(post|get|put|patch|delete)\s*\(|ky\.\w+\s*\()\s*/i;
 
-// Flat lookup: field name → tier
-const FIELD_TIER_MAP = {};
-for (const [tier, fields] of Object.entries(PII_FIELDS)) {
-  for (const f of fields) {
-    FIELD_TIER_MAP[f.toLowerCase()] = tier;
-  }
-}
+const DB_SINK_RE = /\b(?:INSERT\s+INTO|UPDATE\s+\w+\s+SET|\.create\s*\(|\.save\s*\(|\.upsert\s*\(|\.insert\s*\()\s*/i;
+const DB_ENCRYPTED_MARKER_RE = /encrypt|encrypted|hashed|bcrypt|argon|scrypt|pbkdf2|vault|kms/i;
 
-// ─── Sink detectors ───────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Variable alias tracker — when we see `const userEmail = req.body.email`
+// we add `userEmail` to the PII alias set for that file.
+// ---------------------------------------------------------------------------
+function buildAliasMap(lines) {
+  const aliases = new Set();
 
-const SINK_PATTERNS = {
-  log: [
-    /console\s*\.\s*(?:log|debug|info|warn|error)\s*\(/,
-    /logger\s*\.\s*(?:log|debug|info|warn|error|trace)\s*\(/,
-    /log\s*\.\s*(?:log|debug|info|warn|error|trace)\s*\(/,
-    /winston\s*\.\s*(?:log|debug|info|warn|error)\s*\(/,
-    /pino\s*\.\s*(?:log|debug|info|warn|error)\s*\(/,
-    /bunyan\s*\.\s*(?:log|debug|info|warn|error)\s*\(/,
-  ],
-  externalApi: [
-    /fetch\s*\(/,
-    /axios\s*\.\s*(?:get|post|put|patch|delete|request)\s*\(/,
-    /https?\s*\.\s*request\s*\(/,
-    /got\s*\s*\(/,
-    /superagent\s*\./,
-    /request\s*\(/,
-  ],
-  database: [
-    /prisma\s*\.\s*\w+\s*\.\s*(?:create|update|upsert|insert)\s*\(/,
-    /db\s*\.\s*(?:query|execute|run|insert|update)\s*\(/,
-    /pool\s*\.\s*(?:query|execute)\s*\(/,
-    /client\s*\.\s*(?:query|execute)\s*\(/,
-    /\.save\s*\(/,
-    /\.insert\s*\(/,
-    /\.create\s*\(/,
-    /Model\s*\.\s*create\s*\(/,
-    /sequelize\s*\.\s*query\s*\(/,
-  ],
-  fileWrite: [
-    /fs\s*\.\s*(?:writeFile|appendFile|writeFileSync|appendFileSync)\s*\(/,
-    /fs\s*\.promises\s*\.\s*(?:writeFile|appendFile)\s*\(/,
-    /createWriteStream\s*\(/,
-  ],
-  response: [
-    /res\s*\.\s*(?:json|send|end)\s*\(/,
-    /response\s*\.\s*(?:json|send|end)\s*\(/,
-    /NextResponse\s*\.\s*json\s*\(/,
-    /return\s+(?:json|Response)\s*\(/,
-  ],
-  thirdParty: [
-    /sendgrid|mailgun|ses|smtp|nodemailer/i,
-    /twilio|vonage|nexmo|messagebird/i,
-    /segment|mixpanel|amplitude|heap|datadog/i,
-    /stripe\s*\.\s*\w+/i,
-    /sentry\s*\.\s*captureException/i,
-    /slack|discord|teams/i,
-  ],
-};
+  for (const line of lines) {
+    const stripped = line.trim();
+    if (stripped.startsWith('//') || stripped.startsWith('#')) continue;
 
-// ─── Source detectors (where PII enters) ─────────────────────────────────────
-
-const SOURCE_PATTERNS = [
-  /req\s*\.\s*body/,
-  /req\s*\.\s*query/,
-  /req\s*\.\s*params/,
-  /request\s*\.\s*body/,
-  /event\s*\.\s*body/,
-  /formData/,
-  /getFieldValue/,
-  /useState\s*\(/,
-  /process\s*\.\s*env/,
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function buildFieldRegex(fieldName) {
-  // Matches: fieldName, obj.fieldName, obj["fieldName"], obj?.fieldName,
-  //          fieldName:, "fieldName", 'fieldName'
-  const escaped = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(
-    `(?:^|[^\\w])(?:${escaped})(?:[^\\w]|$)`,
-    'i',
-  );
-}
-
-function detectSinks(content) {
-  const found = [];
-  for (const [sink, patterns] of Object.entries(SINK_PATTERNS)) {
-    if (patterns.some((p) => p.test(content))) {
-      found.push(sink);
+    // Detect PII field accesses: req.body.email, user.email, body.email, etc.
+    // and any assignment from them: const x = req.body.email
+    const assignMatch = stripped.match(
+      /(?:const|let|var|=)\s+(\w+)\s*=\s*(?:\w+\.)*(\w+)/
+    );
+    if (assignMatch) {
+      const [, varName, field] = assignMatch;
+      if (PII_FIELDS.has(field.toLowerCase()) || PII_FIELDS.has(field)) {
+        aliases.add(varName);
+      }
     }
-  }
-  return found;
-}
 
-function detectSources(content) {
-  return SOURCE_PATTERNS.some((p) => p.test(content));
-}
-
-function getFileSinkLines(lines, sinkType) {
-  const patterns = SINK_PATTERNS[sinkType] || [];
-  const hits = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (patterns.some((p) => p.test(lines[i]))) {
-      hits.push(i + 1);
-    }
-  }
-  return hits.slice(0, 3); // first 3 occurrences
-}
-
-// ─── Main tracer ──────────────────────────────────────────────────────────────
-
-/**
- * Trace PII field flows across source files.
- *
- * @param {Array<{filePath: string, content: string}>} sourceFiles
- * @returns {{ flows, summary, riskCounts }}
- */
-function tracePiiFlows(sourceFiles) {
-  const flows = [];
-  const seenFields = new Set();
-
-  const candidates = sourceFiles.filter(
-    ({ content }) => content && content.length <= MAX_FILE_BYTES,
-  ).slice(0, MAX_FILES_PER_RUN);
-
-  for (const { filePath, content } of candidates) {
-    const lines = content.split('\n');
-    const lowerContent = content.toLowerCase();
-    const hasSources = detectSources(content);
-    const sinks = detectSinks(content);
-
-    if (sinks.length === 0) continue; // no sinks — nothing flows anywhere
-
-    for (const [fieldName, tier] of Object.entries(FIELD_TIER_MAP)) {
-      const regex = buildFieldRegex(fieldName);
-      if (!regex.test(lowerContent)) continue;
-
-      const key = `${filePath}:${fieldName}`;
-      if (seenFields.has(key)) continue;
-      seenFields.add(key);
-
-      // Find first line where the field appears
-      let sourceLine = null;
-      for (let i = 0; i < lines.length; i++) {
-        if (regex.test(lines[i].toLowerCase())) {
-          sourceLine = i + 1;
-          break;
+    // Destructuring: const { email, phone } = req.body
+    const destructureMatch = stripped.match(/(?:const|let|var)\s*\{([^}]+)\}\s*=/);
+    if (destructureMatch) {
+      const fields = destructureMatch[1].split(',').map(f => f.trim().split(':')[0].trim().split(' ').pop());
+      for (const field of fields) {
+        if (field && (PII_FIELDS.has(field.toLowerCase()) || PII_FIELDS.has(field))) {
+          aliases.add(field);
         }
       }
+    }
 
-      // Collect sink lines
-      const sinkDetails = sinks.map((sink) => ({
-        type: sink,
-        lines: getFileSinkLines(lines, sink),
-      }));
-
-      flows.push({
-        field: fieldName,
-        tier,
-        filePath,
-        sourceLine,
-        hasExternalSource: hasSources,
-        sinks: sinkDetails,
-      });
+    // Parameter names: function handler(req, { email, phone })
+    const paramMatch = stripped.match(/function\s+\w*\s*\([^)]*\{([^}]+)\}/);
+    if (paramMatch) {
+      const fields = paramMatch[1].split(',').map(f => f.trim());
+      for (const field of fields) {
+        if (PII_FIELDS.has(field.toLowerCase()) || PII_FIELDS.has(field)) {
+          aliases.add(field);
+        }
+      }
     }
   }
 
-  // Sort by tier severity then field name
-  const TIER_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2 };
-  flows.sort((a, b) => {
-    const td = TIER_ORDER[a.tier] - TIER_ORDER[b.tier];
-    return td !== 0 ? td : a.field.localeCompare(b.field);
+  return aliases;
+}
+
+// ---------------------------------------------------------------------------
+// Check whether a given line references a PII field or alias
+// ---------------------------------------------------------------------------
+function lineReferencesPii(line, aliases) {
+  const stripped = stripStrings(line);
+
+  // Direct field access: .email, .password, body.email, req.body.ssn
+  for (const field of PII_FIELDS) {
+    const re = new RegExp(`\\.${field}\\b|\\b${field}\\b`, 'i');
+    if (re.test(stripped)) return { matched: true, field };
+  }
+
+  // Alias variable
+  for (const alias of aliases) {
+    if (new RegExp(`\\b${alias}\\b`).test(stripped)) return { matched: true, field: alias };
+  }
+
+  return { matched: false, field: null };
+}
+
+// ---------------------------------------------------------------------------
+// Strip string literal contents to avoid matching PII field names in strings
+// ---------------------------------------------------------------------------
+function stripStrings(line) {
+  return line
+    .replace(/"[^"]*"/g, '""')
+    .replace(/'[^']*'/g, "''")
+    .replace(/`[^`]*`/g, '``');
+}
+
+// ---------------------------------------------------------------------------
+// Classify the sink type from a line
+// ---------------------------------------------------------------------------
+function classifySink(line) {
+  const sinks = [];
+  if (LOG_SINK_RE.test(line)) sinks.push('logging');
+  if (ANALYTICS_SINK_RE.test(line)) sinks.push('analytics');
+  if (HTTP_SINK_RE.test(line)) sinks.push('external-http');
+  if (DB_SINK_RE.test(line) && !DB_ENCRYPTED_MARKER_RE.test(line)) sinks.push('db-unencrypted');
+  return sinks;
+}
+
+// ---------------------------------------------------------------------------
+// Trace PII flows in a single file
+// ---------------------------------------------------------------------------
+function traceFile(filePath, content) {
+  const findings = [];
+  const lines = content.split('\n');
+
+  // Skip test files and generated files
+  const isTest = /\.(test|spec)\.[jt]sx?$/.test(filePath)
+    || filePath.includes('__tests__')
+    || filePath.includes('/tests/')
+    || filePath.includes('/test/');
+  const severity = isTest ? 'warning' : 'error';
+
+  const aliases = buildAliasMap(lines);
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Skip comment lines and blank lines
+    if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+
+    // Check if this line is a sink call
+    const sinkTypes = classifySink(line);
+    if (sinkTypes.length === 0) continue;
+
+    // Check if the sink call references a PII field or alias
+    const { matched, field } = lineReferencesPii(line, aliases);
+    if (!matched) continue;
+
+    // Suppress if there's a log-safe or pii-ok marker on this or previous line
+    const prevLine = i > 0 ? lines[i - 1] : '';
+    if (/\/\/\s*(log-safe|pii-ok|pii-flow-ok)/i.test(line) || /\/\/\s*(log-safe|pii-ok|pii-flow-ok)/i.test(prevLine)) continue;
+
+    const sinkLabel = sinkTypes.join(' + ');
+    findings.push({
+      file: filePath,
+      line: i + 1,
+      severity,
+      rule: 'pii-flow',
+      sinks: sinkTypes,
+      field,
+      detail: `PII field '${field}' flows to ${sinkLabel} sink at line ${i + 1}`,
+      snippet: trimmed.slice(0, 120),
+    });
+  }
+
+  return findings;
+}
+
+// ---------------------------------------------------------------------------
+// Main entrypoint: trace PII flows across a set of files
+// ---------------------------------------------------------------------------
+function tracePiiFlows(files, opts = {}) {
+  const { maxFindingsPerFile = 10 } = opts;
+  const allFindings = [];
+
+  for (const { path: filePath, content } of files) {
+    if (!content || typeof content !== 'string') continue;
+
+    // Only scan JS/TS and Python source files
+    if (!/\.[jt]sx?$|\.py$/.test(filePath)) continue;
+
+    const findings = traceFile(filePath, content);
+    allFindings.push(...findings.slice(0, maxFindingsPerFile));
+  }
+
+  // Sort: errors first, then by file + line
+  allFindings.sort((a, b) => {
+    if (a.severity !== b.severity) return a.severity === 'error' ? -1 : 1;
+    if (a.file !== b.file) return a.file.localeCompare(b.file);
+    return a.line - b.line;
   });
 
-  const riskCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0 };
-  for (const f of flows) riskCounts[f.tier]++;
-
-  const summary = flows.length === 0
-    ? 'No PII field flows detected.'
-    : `Detected ${flows.length} PII field flow(s): ${riskCounts.CRITICAL} critical, ${riskCounts.HIGH} high, ${riskCounts.MEDIUM} medium sensitivity.`;
-
-  return { flows, summary, riskCounts };
-}
-
-// ─── Claude narrative ─────────────────────────────────────────────────────────
-
-function buildNarrativePrompt(flows) {
-  const top = flows.slice(0, MAX_FINDINGS_FOR_NARRATIVE);
-  const lines = top.map((f) =>
-    `- [${f.tier}] \`${f.field}\` in \`${f.filePath}\` → sinks: ${f.sinks.map((s) => s.type).join(', ')}`,
-  );
-
-  return `You are a privacy engineer writing a board-level summary of PII data flows found in a codebase.
-
-PII FLOWS DETECTED:
-${lines.join('\n')}
-
-Write a concise (4-6 sentence) executive paragraph that:
-1. States the overall privacy posture
-2. Highlights the highest-risk flows (CRITICAL tier first)
-3. Names specific sinks that pose regulatory risk (logging PII = GDPR Article 5, external APIs = data transfer obligations)
-4. Ends with one prioritised remediation action
-
-Output ONLY the paragraph. No headers. No bullet points. No markdown.`;
-}
-
-// ─── Report renderer ──────────────────────────────────────────────────────────
-
-const SINK_LABELS = {
-  log: 'Application logs',
-  externalApi: 'External HTTP API',
-  database: 'Database write',
-  fileWrite: 'File system write',
-  response: 'HTTP response',
-  thirdParty: 'Third-party service',
-};
-
-const TIER_EMOJI = { CRITICAL: '🔴', HIGH: '🟠', MEDIUM: '🟡' };
-
-function renderReport({ hostName, scanDate, flows, riskCounts, narrative }) {
-  const date = scanDate || new Date().toISOString().split('T')[0];
-  const lines = [];
-
-  lines.push(`# PII Data Flow Report — ${hostName || 'Repository'}`);
-  lines.push(`**Scan date:** ${date}  `);
-  lines.push(`**Flows detected:** ${flows.length} (${riskCounts.CRITICAL} critical · ${riskCounts.HIGH} high · ${riskCounts.MEDIUM} medium)`);
-  lines.push('');
-
-  if (narrative) {
-    lines.push('## Executive Summary');
-    lines.push('');
-    lines.push(`> ${narrative}`);
-    lines.push('');
+  const byField = {};
+  for (const f of allFindings) {
+    byField[f.field] = (byField[f.field] || 0) + 1;
   }
 
-  lines.push('## Risk Overview');
-  lines.push('');
-  lines.push('| Tier | Count | Regulatory Risk |');
-  lines.push('|------|-------|----------------|');
-  lines.push(`| 🔴 Critical | ${riskCounts.CRITICAL} | GDPR Art. 9, PCI-DSS, HIPAA |`);
-  lines.push(`| 🟠 High | ${riskCounts.HIGH} | GDPR Art. 5/6, CCPA |`);
-  lines.push(`| 🟡 Medium | ${riskCounts.MEDIUM} | GDPR Art. 5 (data minimisation) |`);
-  lines.push('');
+  return {
+    findings: allFindings,
+    summary: {
+      total: allFindings.length,
+      errors: allFindings.filter(f => f.severity === 'error').length,
+      warnings: allFindings.filter(f => f.severity === 'warning').length,
+      bySink: {
+        logging: allFindings.filter(f => f.sinks.includes('logging')).length,
+        analytics: allFindings.filter(f => f.sinks.includes('analytics')).length,
+        externalHttp: allFindings.filter(f => f.sinks.includes('external-http')).length,
+        dbUnencrypted: allFindings.filter(f => f.sinks.includes('db-unencrypted')).length,
+      },
+      byField,
+    },
+  };
+}
 
-  if (flows.length === 0) {
-    lines.push('_No PII field flows detected in scanned files._');
-    return lines.join('\n');
+/**
+ * Render a markdown report for the PII flow findings.
+ */
+function renderPiiFlowReport(result) {
+  if (!result || result.findings.length === 0) {
+    return '## PII Flow Tracer\n\nNo PII flows to high-risk sinks detected.';
   }
 
-  lines.push('## PII Flow Map');
+  const { findings, summary } = result;
+  const lines = ['## 🔒 PII Flow Tracer\n'];
+
+  lines.push(`**${summary.total} PII flow${summary.total !== 1 ? 's' : ''} detected** — ${summary.errors} error${summary.errors !== 1 ? 's' : ''}, ${summary.warnings} warning${summary.warnings !== 1 ? 's' : ''}\n`);
+
+  if (summary.bySink.logging > 0) lines.push(`- 🪵 **${summary.bySink.logging}** flowing to **logging sinks** (GDPR Article 5 — data minimisation)`);
+  if (summary.bySink.analytics > 0) lines.push(`- 📊 **${summary.bySink.analytics}** flowing to **analytics** (consent required)`);
+  if (summary.bySink.externalHttp > 0) lines.push(`- 🌐 **${summary.bySink.externalHttp}** flowing to **external HTTP** (data transfer — SCCs / BCRs may apply)`);
+  if (summary.bySink.dbUnencrypted > 0) lines.push(`- 🗄️ **${summary.bySink.dbUnencrypted}** written to **database without encryption markers**`);
+
   lines.push('');
 
-  // Group by tier
-  for (const tier of ['CRITICAL', 'HIGH', 'MEDIUM']) {
-    const tierFlows = flows.filter((f) => f.tier === tier);
-    if (tierFlows.length === 0) continue;
+  // Group by file
+  const byFile = {};
+  for (const f of findings) {
+    (byFile[f.file] = byFile[f.file] || []).push(f);
+  }
 
-    lines.push(`### ${TIER_EMOJI[tier]} ${tier} Sensitivity Fields`);
-    lines.push('');
-    lines.push('| Field | File | Line | Sinks |');
-    lines.push('|-------|------|------|-------|');
-
-    for (const f of tierFlows) {
-      const sinkLabels = f.sinks
-        .map((s) => SINK_LABELS[s.type] || s.type)
-        .join(', ');
-      const shortPath = f.filePath.replace(/^.*\/(src|app|website)\//, '$1/');
-      lines.push(`| \`${f.field}\` | \`${shortPath}\` | ${f.sourceLine || '?'} | ${sinkLabels} |`);
+  for (const [file, filFindings] of Object.entries(byFile)) {
+    lines.push(`### \`${file}\``);
+    for (const f of filFindings) {
+      const sev = f.severity === 'error' ? '🔴' : '🟡';
+      lines.push(`- ${sev} **Line ${f.line}** — \`${f.field}\` → ${f.sinks.join(' + ')}`);
+      lines.push(`  \`${f.snippet}\``);
     }
     lines.push('');
   }
 
-  lines.push('## Remediation Guidance');
-  lines.push('');
-  lines.push('| Sink Type | Action Required |');
-  lines.push('|-----------|----------------|');
-  lines.push('| Application logs | Remove PII from log statements; use structured logging with field masking |');
-  lines.push('| External HTTP API | Document data transfer in RoPA; add DPA with vendor; encrypt in transit |');
-  lines.push('| Database write | Ensure field-level encryption for CRITICAL tier; document retention policy |');
-  lines.push('| File system write | Encrypt at rest; add access controls; document retention |');
-  lines.push('| HTTP response | Ensure HTTPS only; audit what PII clients receive; apply data minimisation |');
-  lines.push('| Third-party service | Review vendor DPA; check adequacy decisions for cross-border transfers |');
-  lines.push('');
-
-  lines.push('---');
-  lines.push('*Generated by GateTest Nuclear — PII Flow Tracer (Phase 6.2.15)*');
+  lines.push('**Suppression:** Add `// pii-flow-ok` on the same or preceding line to suppress a known-safe flow.');
 
   return lines.join('\n');
 }
 
-// ─── Main entry ───────────────────────────────────────────────────────────────
-
-/**
- * Trace PII flows and generate a report.
- *
- * @param {Object} opts
- * @param {Array<{filePath: string, content: string}>} opts.sourceFiles
- * @param {string}   [opts.hostName]
- * @param {string}   [opts.scanDate]
- * @param {Function} [opts.askClaude]  async (prompt) => string  (optional)
- * @returns {Promise<{ markdown, flows, riskCounts, summary, narrative }>}
- */
-async function generatePiiFlowReport({ sourceFiles = [], hostName, scanDate, askClaude } = {}) {
-  const { flows, summary, riskCounts } = tracePiiFlows(sourceFiles);
-
-  let narrative = null;
-  if (askClaude && flows.length > 0) {
-    try {
-      const prompt = buildNarrativePrompt(flows);
-      narrative = await askClaude(prompt);
-      if (narrative) narrative = narrative.trim();
-    } catch {
-      // Non-blocking — report ships without narrative
-    }
-  }
-
-  const markdown = renderReport({ hostName, scanDate, flows, riskCounts, narrative });
-
-  return { markdown, flows, riskCounts, summary, narrative };
-}
-
-module.exports = {
-  generatePiiFlowReport,
-  tracePiiFlows,
-  buildNarrativePrompt,
-  renderReport,
-  detectSinks,
-  detectSources,
-  PII_FIELDS,
-  FIELD_TIER_MAP,
-  SINK_PATTERNS,
-  MAX_FILES_PER_RUN,
-  MAX_FINDINGS_FOR_NARRATIVE,
-};
+module.exports = { tracePiiFlows, renderPiiFlowReport, PII_FIELDS };

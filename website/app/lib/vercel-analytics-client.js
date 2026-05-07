@@ -1,120 +1,104 @@
+/**
+ * Phase 6.2.3 — Vercel Analytics + Speed Insights client.
+ *
+ * Pulls page-load p95 latencies, serverless function error rates, and
+ * Web Vitals per route so the static↔runtime correlator can ask:
+ * "the finding at /api/checkout.ts line 42 — did this route degrade
+ * in prod in the last 7 days?"
+ *
+ * Auth: Vercel REST API token (stored encrypted in external_integrations).
+ * Scope: read:analytics on the team's project.
+ *
+ * API: https://vercel.com/docs/rest-api
+ */
+
 'use strict';
 
-/**
- * Phase 5.3.3 / Phase 6.2.3 — Vercel Analytics integration.
- *
- * Fetches serverless function error rates and latency data per route from
- * the Vercel REST API. The runtime-correlator uses this to surface which
- * GateTest findings are on routes that are actually failing in production.
- *
- * Auth: Bearer access token (Vercel personal access token or OAuth token).
- * Scoped to a single project; teamId optional for personal accounts.
- */
-
-const VERCEL_API_BASE = 'https://api.vercel.com';
-const DEFAULT_SINCE_HOURS = 24 * 7; // 7 days
-
-// ─── Route normalisation ──────────────────────────────────────────────────────
+const VERCEL_API = 'https://api.vercel.com';
+const DEFAULT_DAYS = 7;
 
 /**
- * Normalise a Vercel route path: strip query strings, collapse numeric IDs.
- */
-function normaliseRoute(path) {
-  if (!path || typeof path !== 'string') return '';
-  return path
-    .replace(/\?.*$/, '')             // strip query string
-    .replace(/\/\d+(?=\/|$)/g, '/:id') // numeric segments → :id
-    .replace(/\/$/, '');               // trailing slash
-}
-
-// ─── Event aggregation ────────────────────────────────────────────────────────
-
-function aggregateEvents(events) {
-  const routeMap = {};
-  for (const ev of events) {
-    if (!ev || ev.type !== 'error') continue;
-    const rawPath = (ev.payload && ev.payload.path) || ev.path || '';
-    const route = normaliseRoute(rawPath);
-    if (!route) continue;
-    if (!routeMap[route]) {
-      routeMap[route] = { route, errorCount: 0, lastSeen: '' };
-    }
-    routeMap[route].errorCount++;
-    const ts = String(ev.created || ev.timestamp || '');
-    if (!routeMap[route].lastSeen || ts > routeMap[route].lastSeen) {
-      routeMap[route].lastSeen = ts;
-    }
-  }
-  return Object.values(routeMap);
-}
-
-// ─── API client ───────────────────────────────────────────────────────────────
-
-/**
- * Fetch function error rates per route for a Vercel project.
+ * Fetch Web Vitals and p95 latencies per route for a Vercel project.
  *
- * @param {Object} opts
- * @param {string} opts.accessToken  - Vercel personal access token
- * @param {string} opts.projectId    - Vercel project ID
- * @param {string} [opts.teamId]     - Vercel team ID (optional)
- * @param {number} [opts.sinceHours] - lookback window in hours
- * @returns {Promise<Array<{ route, errorCount, lastSeen }>>}
+ * @param {object} opts
+ * @param {string} opts.token       Vercel API token
+ * @param {string} opts.projectId   Vercel project ID
+ * @param {string} [opts.teamId]    Vercel team ID (for team projects)
+ * @param {number} [opts.daysBack]  Time window (default: 7)
  */
-async function fetchFunctionMetrics({
-  accessToken,
-  projectId,
-  teamId,
-  sinceHours = DEFAULT_SINCE_HOURS,
-}) {
-  if (!accessToken) throw new Error('fetchFunctionMetrics: accessToken is required');
-  if (!projectId) throw new Error('fetchFunctionMetrics: projectId is required');
+async function fetchRoutePerformance(opts = {}) {
+  const { token, projectId, teamId, daysBack = DEFAULT_DAYS } = opts;
+  if (!token || !projectId) throw new Error('Vercel token and projectId are required');
 
-  const teamQuery = teamId ? `&teamId=${encodeURIComponent(teamId)}` : '';
-  const deploymentsUrl =
-    `${VERCEL_API_BASE}/v6/deployments?limit=5&projectId=${encodeURIComponent(projectId)}${teamQuery}`;
-
-  const deploymentsRes = await fetch(deploymentsUrl, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+  const from = Date.now() - daysBack * 86400 * 1000;
+  const params = new URLSearchParams({
+    projectId,
+    from: String(from),
+    ...(teamId ? { teamId } : {}),
   });
 
-  if (!deploymentsRes.ok) {
-    const text = await deploymentsRes.text();
-    throw new Error(`Vercel API error ${deploymentsRes.status}: ${text.slice(0, 200)}`);
+  const res = await fetch(`${VERCEL_API}/v1/web-analytics/vitals?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (res.status === 404) {
+    // Web Analytics not enabled on this project — return empty
+    return [];
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Vercel Analytics API error ${res.status}: ${text.slice(0, 200)}`);
   }
 
-  const depsJson = await deploymentsRes.json();
-  const deployments = Array.isArray(depsJson.deployments) ? depsJson.deployments : [];
-  if (deployments.length === 0) return [];
+  const data = await res.json();
+  const routes = data.data || data || [];
 
-  const since = Math.floor((Date.now() - sinceHours * 3600 * 1000) / 1000);
-  const results = [];
-
-  for (const dep of deployments.slice(0, 2)) {
-    const depId = dep.uid || dep.id;
-    if (!depId) continue;
-
-    try {
-      const eventsUrl = `${VERCEL_API_BASE}/v6/deployments/${encodeURIComponent(depId)}/events?limit=100&since=${since}`;
-      const eventsRes = await fetch(eventsUrl, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!eventsRes.ok) continue;
-
-      const eventsJson = await eventsRes.json();
-      const events = Array.isArray(eventsJson) ? eventsJson : [];
-      results.push(...aggregateEvents(events));
-    } catch {
-      // Non-blocking per deployment
-    }
-  }
-
-  return results;
+  return routes.map(r => ({
+    route: r.path || r.route || '/',
+    lcp: r.lcp?.p95 ?? null,
+    fid: r.fid?.p95 ?? null,
+    cls: r.cls?.p95 ?? null,
+    ttfb: r.ttfb?.p95 ?? null,
+    pageViews: r.pageViews ?? r.visits ?? 0,
+  }));
 }
 
-module.exports = {
-  fetchFunctionMetrics,
-  normaliseRoute,
-  aggregateEvents,
-  VERCEL_API_BASE,
-  DEFAULT_SINCE_HOURS,
-};
+/**
+ * Fetch serverless function invocation error rates per route.
+ */
+async function fetchFunctionErrors(opts = {}) {
+  const { token, projectId, teamId, daysBack = DEFAULT_DAYS } = opts;
+  if (!token || !projectId) throw new Error('Vercel token and projectId are required');
+
+  const from = new Date(Date.now() - daysBack * 86400 * 1000).toISOString();
+  const params = new URLSearchParams({
+    projectId,
+    since: from,
+    limit: '50',
+    ...(teamId ? { teamId } : {}),
+  });
+
+  const res = await fetch(`${VERCEL_API}/v6/deployments?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Vercel Deployments API error ${res.status}: ${text.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  const deployments = data.deployments || [];
+
+  // Return the most recent deployments with error indicators
+  return deployments.slice(0, 10).map(d => ({
+    id: d.uid,
+    url: d.url,
+    state: d.state,
+    createdAt: d.createdAt,
+    errorMessage: d.errorMessage || null,
+    readyState: d.readyState,
+  }));
+}
+
+module.exports = { fetchRoutePerformance, fetchFunctionErrors };

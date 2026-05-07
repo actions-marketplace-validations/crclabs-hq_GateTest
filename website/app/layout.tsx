@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import PreLaunchBanner from "./components/PreLaunchBanner";
-
 // Next.js 16 — viewport is a separate export from metadata.
 export const viewport: Viewport = {
   width: "device-width",
@@ -118,7 +116,6 @@ export default function RootLayout({
             }),
           }}
         />
-        <PreLaunchBanner />
         <main>{children}</main>
       </body>
     </html>

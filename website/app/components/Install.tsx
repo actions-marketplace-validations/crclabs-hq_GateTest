@@ -83,7 +83,7 @@ export default function Install() {
               your existing branch protection blocks the merge.
             </p>
 
-            <div className="rounded-lg bg-black/30 border border-border p-4 mb-5 font-[var(--font-mono)] text-xs overflow-x-auto">
+            <div className="rounded-lg bg-[#0a0a12] border border-white/10 p-4 mb-5 font-[var(--font-mono)] text-xs overflow-x-auto">
               <p className="text-white/40 mb-1"># install</p>
               <p className="text-emerald-400 mb-3">npx gatetest --suite full</p>
               <p className="text-white/40 mb-1"># or pin to your CI runner</p>

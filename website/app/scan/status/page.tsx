@@ -37,6 +37,9 @@ interface ScanResult {
   totalSourceFiles?: number;
   scannedFiles?: number;
   filesSkippedForBudget?: number;
+  // Phase 1.2b: per-module findings map returned by /api/scan/run so
+  // the fix API can run the cross-scanner re-validation gate.
+  findingsByModule?: Record<string, string[]>;
 }
 
 interface FixResult {
@@ -94,16 +97,6 @@ function severityOf(detail: string): "critical" | "high" | "medium" | "low" {
   return "low";
 }
 
-function SeverityBadge({ sev }: { sev: string }) {
-  const cfg: Record<string, { label: string; cls: string }> = {
-    critical: { label: "CRITICAL", cls: "bg-red-500/20 text-red-400 border border-red-500/30" },
-    high: { label: "HIGH", cls: "bg-orange-500/20 text-orange-400 border border-orange-500/30" },
-    medium: { label: "MEDIUM", cls: "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" },
-    low: { label: "LOW", cls: "bg-blue-500/20 text-blue-400 border border-blue-500/30" },
-  };
-  const c = cfg[sev] || cfg.low;
-  return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded font-mono tracking-wider ${c.cls}`}>{c.label}</span>;
-}
 
 function ScanningState({ repo, tier, animModules, animIndex, elapsed }: {
   repo: string; tier: string;
@@ -205,7 +198,6 @@ export default function ScanStatus() {
   // Live progress from /api/scan/fix/stream — null when not streaming.
   const [fixProgress, setFixProgress] = useState<{ elapsedMs: number; elapsedHuman: string } | null>(null);
   const [fixError, setFixError] = useState("");
-  const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
   const startTimeRef = useRef(Date.now());
   const scanTriggered = useRef(false);
   const fixTriggered = useRef(false);
@@ -606,7 +598,12 @@ export default function ScanStatus() {
             <div className="mb-10 rounded-2xl p-6 sm:p-8 text-center"
               style={{ background: "rgba(45,212,191,0.05)", border: "1px solid rgba(45,212,191,0.15)" }}>
               <div className="w-12 h-12 rounded-full border-2 border-teal-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-              <h2 className="text-xl font-bold text-white mb-2">Claude is fixing your code…</h2>
+              <h2 className="text-xl font-bold text-white mb-2">
+                Claude is fixing your code…
+                {fixProgress?.elapsedHuman && (
+                  <span className="ml-2 text-teal-400 font-mono text-base"> · {fixProgress.elapsedHuman}</span>
+                )}
+              </h2>
               <p className="text-white/40 text-sm">Reading every file, generating fixes, re-running the scanner on each one. This takes 1–3 minutes.</p>
               <div className="mt-5 mx-auto max-w-xs">
                 <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
@@ -658,44 +655,30 @@ export default function ScanStatus() {
             </div>
           )}
 
-        {/* Honest coverage line — show how much of the customer's repo we
-            actually inspected. Surfaced inline so "did you scan everything?"
-            is answered without scrolling. */}
-        {isComplete && scanResult?.totalSourceFiles !== undefined && (
-          <div className="mb-4 px-4 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
-            <span>
-              <span className="font-mono tabular-nums">{scanResult.scannedFiles ?? 0}</span>
-              {" / "}
-              <span className="font-mono tabular-nums">{scanResult.totalSourceFiles}</span>
-              {" source files inspected"}
+          {/* ── Coverage stats — honest disclosure of how much we scanned ── */}
+          {scanResult.totalSourceFiles !== undefined && (
+            <div className="mb-6 flex items-center gap-2 px-4 py-2 rounded-lg text-xs text-white/25"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <span className="font-mono tabular-nums text-white/40">{scanResult.scannedFiles ?? 0}</span>
+              <span>/ {scanResult.totalSourceFiles} source files inspected</span>
               {(scanResult.filesSkippedForBudget ?? 0) > 0 && (
-                <span className="text-amber-600">
-                  {" — "}{scanResult.filesSkippedForBudget} skipped (tier file budget)
+                <span className="ml-auto text-amber-400/70">
+                  {scanResult.filesSkippedForBudget} skipped — upgrade tier for full coverage
                 </span>
               )}
-            </span>
-            {(scanResult.filesSkippedForBudget ?? 0) > 0 && (
-              <span className="text-slate-500 italic">Upgrade tier for full coverage</span>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {/* Completion section */}
-        {isComplete && (
-          <div className="space-y-4">
-            {/* Result summary */}
-            <div className={`p-5 rounded-xl border ${
-              (scanResult?.totalIssues || 0) === 0
-                ? "bg-green-50 border-green-200"
-                : "bg-amber-50 border-amber-200"
-            }`}>
-              <p className="font-bold text-foreground">
-                {(scanResult?.totalIssues || 0) === 0
-                  ? "Your code passed all checks."
-                  : `${scanResult?.totalIssues} issue${(scanResult?.totalIssues || 0) > 1 ? "s" : ""} need attention.`}
-              </p>
-              <p className="text-sm text-muted mt-1">
-                {scanResult?.completedModules} modules scanned in {scanResult?.duration}ms
+          {/* ── Result headline ── */}
+          {!hasIssues ? (
+            <div className="text-center mb-10">
+              <div className="w-20 h-20 rounded-full mx-auto mb-5 flex items-center justify-center"
+                style={{ background: "rgba(16,185,129,0.15)", border: "2px solid rgba(16,185,129,0.4)" }}>
+                <span className="text-4xl font-bold text-emerald-400">✓</span>
+              </div>
+              <h2 className="text-4xl sm:text-5xl font-bold text-white mb-3">GATE: PASSED</h2>
+              <p className="text-white/40 text-lg">
+                {scanResult.completedModules} modules · {scanResult.totalModules > 0 ? `${scanResult.totalModules * 8}+` : "800+"} checks · all clean
               </p>
             </div>
           ) : (
@@ -722,32 +705,6 @@ export default function ScanStatus() {
                   <div className="text-white/30 text-xs mt-0.5">{s.label}</div>
                 </div>
               ))}
-            </div>
-          )}
-
-                {fixing && (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200">
-                    <span className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-amber-800">
-                        Claude is reading your code and generating fixes
-                        {fixProgress && fixProgress.elapsedHuman ? (
-                          <>
-                            <span className="text-amber-700"> · </span>
-                            <span className="font-mono tabular-nums text-amber-900">{fixProgress.elapsedHuman}</span>
-                            <span className="text-amber-700 text-xs"> elapsed</span>
-                          </>
-                        ) : (
-                          <>…</>
-                        )}
-                      </p>
-                      <p className="text-xs text-amber-700 mt-0.5">
-                        Typically 30&ndash;90 seconds. Each fix is re-scanned before commit. Heartbeat every 5 seconds confirms the connection is live.
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           )}
 

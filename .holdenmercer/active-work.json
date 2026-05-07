@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "active": [
+    {
+      "branch": "claude/onboard-hm-2026-05-06",
+      "agent": "task:20260506-144950-8e9209",
+      "scope": [
+        ".holdenmercer/brief.md",
+        ".holdenmercer/invariants.md"
+      ],
+      "startedAt": "2026-05-06T14:51:04+00:00",
+      "intent": "Onboard GateTest with Holden Mercer \u2014 write the brief + invariants files (previous attempt left a stale claim but never committed them). Gate workflow already installed; just laying down the canonical context files."
+    },
+    {
+      "branch": "claude/onboard-2026-05-06",
+      "agent": "task:20260506-114405-3bc04f",
+      "scope": [
+        ".holdenmercer/brief.md",
+        ".holdenmercer/invariants.md"
+      ],
+      "startedAt": "2026-05-06T11:44:57+00:00",
+      "intent": "Onboard GateTest with Holden Mercer \u2014 write .holdenmercer/brief.md + .holdenmercer/invariants.md so future Claude sessions have grounded context. Gate workflow already installed."
+    }
+  ]
+}

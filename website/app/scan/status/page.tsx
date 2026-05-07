@@ -32,6 +32,11 @@ interface ScanResult {
   error?: string;
   canRetry?: boolean;
   fixableIssues?: FixableIssue[];
+  // Tier-aware coverage: customers see how many files were inspected
+  // out of the total source-file count in the repo.
+  totalSourceFiles?: number;
+  scannedFiles?: number;
+  filesSkippedForBudget?: number;
   // Phase 1.2b: per-module findings map returned by /api/scan/run so
   // the fix API can run the cross-scanner re-validation gate.
   findingsByModule?: Record<string, string[]>;
@@ -92,16 +97,6 @@ function severityOf(detail: string): "critical" | "high" | "medium" | "low" {
   return "low";
 }
 
-function SeverityBadge({ sev }: { sev: string }) {
-  const cfg: Record<string, { label: string; cls: string }> = {
-    critical: { label: "CRITICAL", cls: "bg-red-500/20 text-red-400 border border-red-500/30" },
-    high: { label: "HIGH", cls: "bg-orange-500/20 text-orange-400 border border-orange-500/30" },
-    medium: { label: "MEDIUM", cls: "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" },
-    low: { label: "LOW", cls: "bg-blue-500/20 text-blue-400 border border-blue-500/30" },
-  };
-  const c = cfg[sev] || cfg.low;
-  return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded font-mono tracking-wider ${c.cls}`}>{c.label}</span>;
-}
 
 function ScanningState({ repo, tier, animModules, animIndex, elapsed }: {
   repo: string; tier: string;
@@ -200,8 +195,9 @@ export default function ScanStatus() {
   const [animIndex, setAnimIndex] = useState(0);
   const [fixing, setFixing] = useState(false);
   const [fixResult, setFixResult] = useState<FixResult | null>(null);
+  // Live progress from /api/scan/fix/stream — null when not streaming.
+  const [fixProgress, setFixProgress] = useState<{ elapsedMs: number; elapsedHuman: string } | null>(null);
   const [fixError, setFixError] = useState("");
-  const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
   const startTimeRef = useRef(Date.now());
   const scanTriggered = useRef(false);
   const fixTriggered = useRef(false);
@@ -329,8 +325,14 @@ export default function ScanStatus() {
     setFixing(true);
     setFixResult(null);
     setFixError("");
+    setFixProgress({ elapsedMs: 0, elapsedHuman: "0s" });
+
     try {
-      const res = await fetch("/api/scan/fix", {
+      // Streaming endpoint — emits started/heartbeat/done/error events
+      // so the UI can show live elapsed time instead of staring at a
+      // blank spinner. Falls back to the plain JSON endpoint if the
+      // stream errors before producing a `done` event.
+      const res = await fetch("/api/scan/fix/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -343,12 +345,62 @@ export default function ScanStatus() {
           originalFindingsByModule: scanResult?.findingsByModule || {},
         }),
       });
-      const data = await res.json() as FixResult;
-      setFixResult(data);
+      if (!res.ok || !res.body) {
+        throw new Error(`Fix stream failed: ${res.status} ${res.statusText}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finalEvent: FixResult | null = null;
+      let streamError: string | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sep = buffer.indexOf("\n\n");
+        while (sep >= 0) {
+          const block = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          let eventName = "message";
+          const dataLines: string[] = [];
+          for (const line of block.split("\n")) {
+            if (line.startsWith("event:")) eventName = line.slice(6).trim();
+            else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+          }
+          if (dataLines.length > 0) {
+            let parsed: unknown;
+            try { parsed = JSON.parse(dataLines.join("\n")); } catch { parsed = dataLines.join("\n"); }
+            if (eventName === "heartbeat" && parsed && typeof parsed === "object") {
+              const h = parsed as { elapsedMs?: number; elapsedHuman?: string };
+              setFixProgress({
+                elapsedMs: h.elapsedMs ?? 0,
+                elapsedHuman: h.elapsedHuman ?? "",
+              });
+            } else if (eventName === "done") {
+              finalEvent = parsed as FixResult;
+            } else if (eventName === "error" && parsed && typeof parsed === "object") {
+              streamError = (parsed as { message?: string }).message ?? "Fix stream errored";
+            }
+          }
+          sep = buffer.indexOf("\n\n");
+        }
+      }
+
+      if (streamError && !finalEvent) {
+        setFixError(streamError);
+      } else if (finalEvent) {
+        setFixResult(finalEvent);
+      } else {
+        setFixError("Fix stream closed without a final result.");
+      }
     } catch (err) {
       setFixError(err instanceof Error ? err.message : "Fix failed");
     } finally {
       setFixing(false);
+      setFixProgress(null);
     }
   }
 
@@ -546,7 +598,12 @@ export default function ScanStatus() {
             <div className="mb-10 rounded-2xl p-6 sm:p-8 text-center"
               style={{ background: "rgba(45,212,191,0.05)", border: "1px solid rgba(45,212,191,0.15)" }}>
               <div className="w-12 h-12 rounded-full border-2 border-teal-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-              <h2 className="text-xl font-bold text-white mb-2">Claude is fixing your code…</h2>
+              <h2 className="text-xl font-bold text-white mb-2">
+                Claude is fixing your code…
+                {fixProgress?.elapsedHuman && (
+                  <span className="ml-2 text-teal-400 font-mono text-base"> · {fixProgress.elapsedHuman}</span>
+                )}
+              </h2>
               <p className="text-white/40 text-sm">Reading every file, generating fixes, re-running the scanner on each one. This takes 1–3 minutes.</p>
               <div className="mt-5 mx-auto max-w-xs">
                 <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
@@ -598,6 +655,20 @@ export default function ScanStatus() {
             </div>
           )}
 
+          {/* ── Coverage stats — honest disclosure of how much we scanned ── */}
+          {scanResult.totalSourceFiles !== undefined && (
+            <div className="mb-6 flex items-center gap-2 px-4 py-2 rounded-lg text-xs text-white/25"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <span className="font-mono tabular-nums text-white/40">{scanResult.scannedFiles ?? 0}</span>
+              <span>/ {scanResult.totalSourceFiles} source files inspected</span>
+              {(scanResult.filesSkippedForBudget ?? 0) > 0 && (
+                <span className="ml-auto text-amber-400/70">
+                  {scanResult.filesSkippedForBudget} skipped — upgrade tier for full coverage
+                </span>
+              )}
+            </div>
+          )}
+
           {/* ── Result headline ── */}
           {!hasIssues ? (
             <div className="text-center mb-10">
@@ -634,81 +705,6 @@ export default function ScanStatus() {
                   <div className="text-white/30 text-xs mt-0.5">{s.label}</div>
                 </div>
               ))}
-            </div>
-          )}
-
-          {/* ── Stats row ── */}
-          <div className="grid grid-cols-3 gap-3 mb-8">
-            {[
-              { value: scanResult.completedModules, label: "Modules scanned" },
-              { value: `${scanResult.duration ? Math.round(scanResult.duration / 1000) : elapsed}s`, label: "Scan time" },
-              { value: fixResult?.filesFixed || scanResult.totalFixed || 0, label: "Files fixed" },
-            ].map((s) => (
-              <div key={s.label} className="text-center rounded-xl py-4"
-                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="text-xl font-bold text-white">{s.value}</div>
-                <div className="text-white/25 text-xs mt-0.5">{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* ── Module findings list ── */}
-          {hasIssues && failedModules.length > 0 && (
-            <div className="mb-8">
-              <h3 className="text-white/50 text-xs font-semibold tracking-wider uppercase mb-3">Findings by module</h3>
-              <div className="space-y-2">
-                {failedModules.map((mod) => {
-                  const label = MODULE_LABELS[mod.name] || mod.name;
-                  const isOpen = expandedModules.has(mod.name);
-                  return (
-                    <div key={mod.name} className="rounded-xl overflow-hidden"
-                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                      <button
-                        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white/[0.03] transition-colors"
-                        onClick={() => setExpandedModules((s) => { const n = new Set(s); if (n.has(mod.name)) { n.delete(mod.name); } else { n.add(mod.name); } return n; })}>
-                        <div className="flex items-center gap-3">
-                          <span className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold shrink-0"
-                            style={{ background: "rgba(239,68,68,0.15)", color: "#f87171" }}>!</span>
-                          <span className="font-medium text-white/80 text-sm">{label}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                            style={{ background: "rgba(239,68,68,0.15)", color: "#f87171" }}>
-                            {mod.issues || (mod.details?.length || 1)} issue{(mod.issues || (mod.details?.length || 1)) > 1 ? "s" : ""}
-                          </span>
-                          <span className={`text-white/30 text-xs transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}>▾</span>
-                        </div>
-                      </button>
-
-                      {isOpen && mod.details && mod.details.length > 0 && (
-                        <div className="border-t border-white/[0.05] divide-y divide-white/[0.04]">
-                          {mod.details.map((d, i) => {
-                            const sev = severityOf(d);
-                            const fileMatch = d.match(/^([\w./\-@+]+?\.[\w]{1,8})(?::(\d+))?(?::\d+)?(?:\s*[-—:]\s*|\s+)(.+)$/);
-                            return (
-                              <div key={i} className="px-4 py-2.5 flex items-start gap-3">
-                                <div className="pt-0.5"><SeverityBadge sev={sev} /></div>
-                                <div className="flex-1 min-w-0">
-                                  {fileMatch ? (
-                                    <>
-                                      <code className="text-teal-400/70 text-xs font-mono block truncate">
-                                        {fileMatch[1]}{fileMatch[2] ? `:${fileMatch[2]}` : ""}
-                                      </code>
-                                      <p className="text-white/55 text-xs mt-0.5">{fileMatch[3]}</p>
-                                    </>
-                                  ) : (
-                                    <p className="text-white/55 text-xs font-mono">{d}</p>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           )}
 

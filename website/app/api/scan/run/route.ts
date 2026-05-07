@@ -27,7 +27,25 @@ import { sendGluecronCallback } from "@/app/lib/gluecron-callback";
 export const maxDuration = 300;
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
-const MAX_FILES_TO_READ = 50;
+
+// Tier-aware file-read caps. Old hardcoded 50 was leaving 90% of a
+// real repo unscanned. New ceilings target the realistic max a single
+// 5-minute Vercel function can chew through, with the time-budget
+// bail-out below as the safety net for repos that exceed even these.
+//   quick:   200 files (fast feedback, $29 — still ~4x the old cap)
+//   full:    1000 files (most production repos fit, $99)
+//   nuclear: 2000 files (large monorepos, $399)
+function maxFilesForTier(tier: string): number {
+  if (tier === "nuclear") return 2000;
+  if (tier === "full") return 1000;
+  return 200; // "quick" + any unrecognised value
+}
+
+// Concurrency cap on parallel Gluecron blob fetches. Avoids hammering
+// the upstream when reading 1000+ files; keeps headroom inside the
+// per-IP rate budget. Empirically 8 sustains ~30-50 reads/sec.
+const BLOB_READ_CONCURRENCY = 8;
+
 // Leave 30s headroom for Stripe metadata writes and response serialisation.
 const SCAN_TIME_BUDGET_MS = 260_000;
 
@@ -82,6 +100,11 @@ interface ScanRepoResult {
   totalIssues: number;
   duration: number;
   authSource?: string | null;
+  // Honest coverage signals — customer sees how much of their repo we
+  // actually inspected. Helps the "did you scan everything?" question.
+  totalSourceFiles?: number;
+  scannedFiles?: number;
+  filesSkippedForBudget?: number;
   error?: string;
 }
 
@@ -122,22 +145,46 @@ async function scanRepo(owner: string, repo: string, tier: string): Promise<Scan
       !f.includes("node_modules") && !f.includes(".next") && !f.includes("dist/")
   );
 
-  // Read source files (up to MAX_FILES_TO_READ) in parallel for speed.
-  // Bail early if we are already close to the time budget — better to return
-  // whatever we have than to let Vercel kill the function mid-response.
+  // Read source files in parallel with bounded concurrency. Bail early
+  // if we're already close to the time budget so Vercel doesn't kill
+  // the function mid-response.
   if (Date.now() > deadline) {
     return { modules: [], totalIssues: 0, duration: Date.now() - startTime, authSource: auth.source, error: "scan timed out fetching file tree" };
   }
-  const readPromises = sourceFiles.slice(0, MAX_FILES_TO_READ).map(async (filePath): Promise<RepoFile | null> => {
-    try {
-      const content = await fetchBlob(owner, repo, filePath, "HEAD", token);
-      if (content) {
-        return { path: filePath, content };
+
+  const fileLimit = maxFilesForTier(tier);
+  const filesToRead = sourceFiles.slice(0, fileLimit);
+  const filesSkippedForBudget = sourceFiles.length - filesToRead.length;
+
+  // Bounded-concurrency worker pool — caps parallel Gluecron blob
+  // fetches at BLOB_READ_CONCURRENCY so we don't hammer upstream when
+  // a customer has 1000+ files.
+  const fileContents: RepoFile[] = [];
+  let cursor = 0;
+  let aborted = false;
+  // Re-capture token as a guaranteed-string so the inner closure
+  // doesn't lose the narrowing applied by the `if (!token) return`
+  // guard above (TS narrowing doesn't survive every closure boundary).
+  const tokenStr: string = token;
+  async function readWorker() {
+    while (cursor < filesToRead.length && !aborted) {
+      const idx = cursor++;
+      const filePath = filesToRead[idx];
+      if (filePath === undefined) continue;
+      if (Date.now() > deadline - 5000) {
+        aborted = true;
+        return;
       }
-      return null;
-    } catch { return null; }
-  });
-  const fileContents: RepoFile[] = (await Promise.all(readPromises)).filter((f): f is RepoFile => f !== null);
+      try {
+        const content = await fetchBlob(owner, repo, filePath, "HEAD", tokenStr);
+        if (content) fileContents.push({ path: filePath, content });
+      } catch {
+        // skip
+      }
+    }
+  }
+  const workerCount = Math.min(BLOB_READ_CONCURRENCY, filesToRead.length);
+  await Promise.all(Array.from({ length: workerCount }, readWorker));
 
   // Run the tier through the unified module registry — every module does real work.
   // nuclear + scan_fix get their own tier keys (which include mutationAnalysis).
@@ -153,6 +200,9 @@ async function scanRepo(owner: string, repo: string, tier: string): Promise<Scan
   });
 
   return {
+    totalSourceFiles: sourceFiles.length,
+    scannedFiles: fileContents.length,
+    filesSkippedForBudget: filesSkippedForBudget + (aborted ? filesToRead.length - fileContents.length : 0),
     modules,
     totalIssues,
     duration: Date.now() - startTime,

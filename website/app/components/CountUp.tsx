@@ -8,10 +8,24 @@ interface CountUpProps {
   className?: string;
 }
 
+// Resolve the OS-level "reduced motion" preference at module scope so the
+// useState initialiser below doesn't need to inspect window during SSR.
+// WCAG 2.3.3 + the a11y:reduced-motion rule.
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 export default function CountUp({ value, duration = 1600, className = "" }: CountUpProps) {
   const ref = useRef<HTMLSpanElement | null>(null);
+  // Lazy initialisers so the prefers-reduced-motion check happens once at
+  // mount instead of inside the effect (avoids react-hooks/set-state-in-effect
+  // violation while still honouring the OS preference).
   const [display, setDisplay] = useState(value);
-  const [animated, setAnimated] = useState(false);
+  const [animated, setAnimated] = useState(() => prefersReducedMotion());
 
   const match = value.match(/^(\$?)(\d+(?:\.\d+)?)(.*)$/);
   const prefix = match ? match[1] : "";
@@ -20,18 +34,6 @@ export default function CountUp({ value, duration = 1600, className = "" }: Coun
 
   useEffect(() => {
     if (!ref.current || isNaN(target) || animated) {
-      return;
-    }
-    // Honour OS-level "reduced motion" preference: skip the count-up
-    // animation entirely and show the final value. WCAG 2.3.3 + the
-    // a11y:reduced-motion rule.
-    const prefersReduced =
-      typeof window !== "undefined" &&
-      window.matchMedia &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReduced) {
-      // Deferred to next microtask to avoid synchronous setState-in-effect lint error
-      Promise.resolve().then(() => { setDisplay(value); setAnimated(true); });
       return;
     }
     const node = ref.current;

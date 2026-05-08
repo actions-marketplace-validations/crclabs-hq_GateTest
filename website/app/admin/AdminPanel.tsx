@@ -1435,6 +1435,7 @@ interface RepoScanState {
   status: "idle" | "scanning" | "fixing" | "done" | "error";
   prUrl?: string;
   error?: string;
+  errorDetails?: string[];
   issues?: number;
 }
 
@@ -1506,6 +1507,7 @@ function WatchdogPanel() {
           issues,
           prUrl: fixData.prUrl,
           error: fixData.prUrl ? undefined : (fixData.error || fixData.message),
+          errorDetails: fixData.prUrl ? undefined : (fixData.errors as string[] | undefined),
         },
       }));
     } catch (err) {
@@ -1709,7 +1711,15 @@ function WatchdogPanel() {
                   <span className="text-xs text-emerald-600 font-medium">✓ No issues found</span>
                 )}
                 {state?.status === "done" && !state.prUrl && (state.issues || 0) > 0 && (
-                  <span className="text-xs text-gray-400">{state.error || "No auto-fixable issues"}</span>
+                  <span className="text-xs text-gray-400 max-w-xs">
+                    {state.error || "No auto-fixable issues"}
+                    {state.errorDetails && state.errorDetails.length > 0 && (
+                      <span className="block text-red-500 truncate" title={state.errorDetails.join("\n")}>
+                        {state.errorDetails[0]}
+                        {state.errorDetails.length > 1 && ` (+${state.errorDetails.length - 1} more)`}
+                      </span>
+                    )}
+                  </span>
                 )}
                 {state?.status === "error" && (
                   <span className="text-xs text-red-600">{state.error}</span>

@@ -63,6 +63,7 @@ interface ScanResult {
   totalIssues: number;
   status: string;
   modules?: Array<{ name: string; status: string; details?: string[] }>;
+  findingsByModule?: Record<string, string[]>;
 }
 
 async function scanRepo(target: string, baseUrl: string): Promise<ScanResult | null> {
@@ -80,15 +81,37 @@ async function scanRepo(target: string, baseUrl: string): Promise<ScanResult | n
       totalIssues: Number(data.totalIssues || 0),
       status: data.totalIssues === 0 ? "healthy" : "degraded",
       modules: data.modules || [],
+      findingsByModule: data.findingsByModule || {},
     };
   } catch {
     return null;
   }
 }
 
-// Extract fixable {file, issue, module} triples from scan module details
-function extractFixableIssues(modules: Array<{ name: string; status: string; details?: string[] }>): Array<{ file: string; issue: string; module: string }> {
+// Extract fixable {file, issue, module} triples from scan results.
+// Uses unredacted findingsByModule when available — modules[].details has file
+// paths stripped for non-fix tiers to prevent copy-paste bypass.
+function extractFixableIssues(
+  modules: Array<{ name: string; status: string; details?: string[] }>,
+  findingsByModule?: Record<string, string[]>
+): Array<{ file: string; issue: string; module: string }> {
   const issues: Array<{ file: string; issue: string; module: string }> = [];
+
+  if (findingsByModule && Object.keys(findingsByModule).length > 0) {
+    const failedModuleNames = new Set(modules.filter((m) => m.status === "failed").map((m) => m.name));
+    for (const [moduleName, details] of Object.entries(findingsByModule)) {
+      if (!failedModuleNames.has(moduleName)) continue;
+      for (const d of details) {
+        const withLine = d.match(/^([\w./\-@+]+?\.[\w]{1,8})(?::\d+)?(?:\s*[-—:]\s*|\s+)(.+)$/);
+        if (withLine) { issues.push({ file: withLine[1], issue: withLine[2], module: moduleName }); continue; }
+        const fileOnly = d.match(/^([\w./\-@+]+?\.[\w]{1,8})\s*[:—-]\s*(.+)$/);
+        if (fileOnly) { issues.push({ file: fileOnly[1], issue: fileOnly[2], module: moduleName }); }
+      }
+    }
+    return issues;
+  }
+
+  // Fallback to modules[].details (may be redacted)
   for (const mod of modules) {
     if (mod.status !== "failed") continue;
     for (const d of mod.details || []) {
@@ -156,7 +179,7 @@ export async function GET(req: NextRequest) {
     // Trigger auto-fix for repos if issues found and auto-fix is enabled
     if (watch.auto_fix_enabled && watch.target_type === "repo" && result.totalIssues > 0 && result.modules) {
       try {
-        const fixableIssues = extractFixableIssues(result.modules);
+        const fixableIssues = extractFixableIssues(result.modules, result.findingsByModule);
         if (fixableIssues.length > 0) {
           const fixRes = await fetch(`${baseUrl}/api/scan/fix`, {
             method: "POST",

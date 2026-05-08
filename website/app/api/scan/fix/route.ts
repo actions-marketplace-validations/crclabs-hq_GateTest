@@ -183,6 +183,10 @@ const { attemptFixWithRetries, summariseAttempts } = require("@/app/lib/fix-atte
   summariseAttempts: (attempts: Array<{ outcome: string; durationMs: number }>) => string;
 };
  
+const { tryRuleBasedFix } = require("@/app/lib/rule-based-fixer") as {
+  tryRuleBasedFix: (content: string, filePath: string, issues: string[]) => string | null;
+};
+
 const { enrichFixContext } = require("@/app/lib/fix-context-enricher") as {
   enrichFixContext: (opts: {
     filePath: string;
@@ -814,7 +818,13 @@ export async function POST(req: NextRequest) {
       // feedback about what was introduced. On total failure, all attempts
       // are surfaced in the response so the UI can show the full trail.
       const loopResult = await attemptFixWithRetries({
-        askClaude: (currentIssues: string[]) => askClaude(originalContent, filePath, currentIssues, fixContextSummary),
+        askClaude: (currentIssues: string[]) => {
+          // Zero-API fast path: try deterministic rules first. If all issues
+          // are covered, skip the Anthropic call entirely.
+          const ruleFixed = tryRuleBasedFix(originalContent, filePath, currentIssues);
+          if (ruleFixed !== null) return Promise.resolve(ruleFixed);
+          return askClaude(originalContent, filePath, currentIssues, fixContextSummary);
+        },
         validateFix,
         verifyFixQuality,
         originalContent,

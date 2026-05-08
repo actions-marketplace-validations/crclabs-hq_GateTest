@@ -183,6 +183,28 @@ const { attemptFixWithRetries, summariseAttempts } = require("@/app/lib/fix-atte
   summariseAttempts: (attempts: Array<{ outcome: string; durationMs: number }>) => string;
 };
  
+const { tryRuleBasedFix } = require("@/app/lib/rule-based-fixer") as {
+  tryRuleBasedFix: (content: string, filePath: string, issues: string[]) => string | null;
+};
+
+const { tryAstFix } = require("@/app/lib/ast-fixer") as {
+  tryAstFix: (content: string, filePath: string, issues: string[]) => string | null;
+};
+
+const { recordSuccessfulFixes, tryRecipeFix: tryRecipeFixDb } = require("@/app/lib/fix-recipe-store") as {
+  recordSuccessfulFixes: (
+    sql: unknown,
+    fixes: Array<{ file: string; original: string; fixed: string; issues: string[] }>,
+    moduleHint?: string
+  ) => Promise<void>;
+  tryRecipeFix: (opts: {
+    sql: unknown;
+    content: string;
+    filePath: string;
+    issueObjects: Array<{ module: string; issue: string }>;
+  }) => Promise<string | null>;
+};
+
 const { enrichFixContext } = require("@/app/lib/fix-context-enricher") as {
   enrichFixContext: (opts: {
     filePath: string;
@@ -847,6 +869,16 @@ export async function POST(req: NextRequest) {
   // re-running the same payload works without re-running the whole scan.
   const failedFiles: Array<{ file: string; issues: string[]; reason: string }> = [];
 
+  // Build a map from filePath → [{module, issue}] for recipe DB lookup. Used by
+  // the zero-API fast path 3 inside the per-file askClaude wrapper below.
+  const fileIssueObjectsMap = new Map<string, Array<{ module: string; issue: string }>>();
+  for (const iss of workingIssues) {
+    if (!iss.file) continue;
+    const existing = fileIssueObjectsMap.get(iss.file) || [];
+    existing.push({ module: iss.module || "unknown", issue: iss.issue });
+    fileIssueObjectsMap.set(iss.file, existing);
+  }
+
   // Process files in parallel (capped concurrency) — major UX win over sequential
   const fileEntries = Array.from(issuesByFile.entries());
   await mapWithAdaptiveConcurrency(fileEntries, FIX_CONCURRENCY, async ([filePath, fileIssues], state) => {
@@ -919,7 +951,25 @@ export async function POST(req: NextRequest) {
       // feedback about what was introduced. On total failure, all attempts
       // are surfaced in the response so the UI can show the full trail.
       const loopResult = await attemptFixWithRetries({
-        askClaude: (currentIssues: string[]) => askClaude(originalContent, filePath, currentIssues, priorArtContext, fixContextSummary),
+        askClaude: async (currentIssues: string[]) => {
+          // Zero-API fast path 1: deterministic regex rules (handles Python + simple JS).
+          const ruleFixed = tryRuleBasedFix(originalContent, filePath, currentIssues);
+          if (ruleFixed !== null) return ruleFixed;
+          // Zero-API fast path 2: AST transforms (JS/TS, handles multiline & nested).
+          const astFixed = tryAstFix(originalContent, filePath, currentIssues);
+          if (astFixed !== null) return astFixed;
+          // Zero-API fast path 3: recipe DB (learned from prior gate-passing Claude fixes).
+          try {
+            const { getDb: getRecipeDb } = require("@/app/lib/db") as { getDb: () => unknown };
+            const recipeSql = getRecipeDb();
+            const issueObjects = fileIssueObjectsMap.get(filePath) || [];
+            if (issueObjects.length > 0) {
+              const recipeFixed = await tryRecipeFixDb({ sql: recipeSql, content: originalContent, filePath, issueObjects });
+              if (recipeFixed !== null) return recipeFixed;
+            }
+          } catch { /* recipe DB unavailable — fall through to Claude */ }
+          return askClaude(originalContent, filePath, currentIssues, fixContextSummary);
+        },
         validateFix,
         verifyFixQuality,
         originalContent,
@@ -1145,6 +1195,15 @@ export async function POST(req: NextRequest) {
       });
     }
   }
+
+  // Fix recipe recording — learn from every gated fix so future scans
+  // of the same pattern can bypass Claude entirely. Best-effort: any
+  // DB failure must not block the PR from being created.
+  try {
+    const { getDb: getRecipeDb } = require("@/app/lib/db") as { getDb: () => unknown };
+    const recipeSql = getRecipeDb();
+    recordSuccessfulFixes(recipeSql, fixes, input.tier || "full").catch(() => {}); // error-ok — best-effort recipe recording; DB outage must never block the PR
+  } catch { /* brain unavailable — never block fix flow */ }
 
   // Phase 1.3 — test generation per fix. For every successful,
   // gate-passed fix, ask Claude to write a regression test that

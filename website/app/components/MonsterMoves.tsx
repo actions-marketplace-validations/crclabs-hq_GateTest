@@ -138,7 +138,7 @@ const tagColor: Record<string, string> = {
 
 export default function MonsterMoves() {
   return (
-    <section className="py-24 px-6 border-t border-white/8 relative overflow-hidden">
+    <section className="py-24 px-6 border-t border-border/30 bg-[#0a0a12] relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-violet-500/3 to-transparent pointer-events-none" />
 
       <div className="relative z-10 mx-auto max-w-6xl">

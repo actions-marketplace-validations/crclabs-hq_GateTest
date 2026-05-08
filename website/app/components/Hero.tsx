@@ -1,3 +1,5 @@
+import WebsiteCheckerInput from "./WebsiteCheckerInput";
+
 export default function Hero() {
   return (
     <section className="relative overflow-hidden bg-[#0a0a12]">
@@ -78,6 +80,14 @@ export default function Hero() {
                 <div className="text-xs text-white/35 mt-0.5">{s.label}</div>
               </div>
             ))}
+          </div>
+
+          {/* Website checker — for non-technical users */}
+          <div className="mt-8 pt-6 border-t border-white/6">
+            <p className="text-xs text-white/35 mb-3">
+              No GitHub account? Check any live website for free:
+            </p>
+            <WebsiteCheckerInput />
           </div>
         </div>
 

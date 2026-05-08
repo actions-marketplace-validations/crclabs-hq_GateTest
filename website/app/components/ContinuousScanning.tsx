@@ -65,7 +65,7 @@ const tiers = [
 
 export default function ContinuousScanning() {
   return (
-    <section className="py-24 px-6 border-t border-white/8 relative overflow-hidden">
+    <section className="py-24 px-6 border-t border-border/30 bg-[#0a0a12] relative overflow-hidden">
       <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-gradient-to-l from-teal-500/5 to-transparent rounded-full blur-[100px] pointer-events-none" />
 
       <div className="relative z-10 mx-auto max-w-6xl">

@@ -1,22 +1,21 @@
 // ============================================================================
-// CHAOS-MODULE TEST — Phase 3.4 of THE FIX-FIRST BUILD PLAN
+// CHAOS-MODULE TEST — rewritten for the zero-dep static-analysis implementation
 // ============================================================================
-// Covers src/modules/chaos.js — the resilience-testing module that
-// injects failures (slow network, API failures, offline mode) via
-// Playwright. The browser-side scenarios can't run in CI without
-// Playwright + a target URL, but the module's CONFIG / SKIP /
-// PLAYWRIGHT-DETECTION paths are testable and important — they
-// determine whether the module fails-soft or fails-confused when
-// dependencies are missing.
+// Covers src/modules/chaos.js — Playwright removed. Module now walks source
+// files looking for error-boundary, timeout, retry, offline, and degradation
+// patterns. HTTP probe optional (URL-gated). All 5 scenario methods preserved
+// for backward compat.
 // ============================================================================
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 const ChaosModule = require('../src/modules/chaos');
 
-// Minimal stub of the result object the module writes to. Records every
-// addCheck call so tests can assert on what got reported.
+// Minimal stub of the result object
 function makeResult() {
   const calls = [];
   return {
@@ -27,8 +26,8 @@ function makeResult() {
   };
 }
 
-// Minimal config stub matching the GateTestConfig surface the module uses.
-function makeConfig({ chaosUrl, explorerUrl, liveCrawlerUrl } = {}) {
+// Minimal config stub
+function makeConfig({ chaosUrl, explorerUrl, liveCrawlerUrl, projectRoot } = {}) {
   return {
     getModuleConfig(name) {
       if (name === 'chaos') return chaosUrl ? { url: chaosUrl } : {};
@@ -37,144 +36,268 @@ function makeConfig({ chaosUrl, explorerUrl, liveCrawlerUrl } = {}) {
     get(key) {
       if (key === 'explorer.url') return explorerUrl;
       if (key === 'liveCrawler.url') return liveCrawlerUrl;
+      if (key === 'projectRoot') return projectRoot;
       return undefined;
     },
   };
+}
+
+// Create a temp directory with source files for testing
+function makeTmpProject(files) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatetest-chaos-'));
+  for (const [rel, content] of Object.entries(files)) {
+    const full = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, content);
+  }
+  return dir;
 }
 
 // ---------- Module shape ----------
 
 test('ChaosModule — module shape', () => {
   const mod = new ChaosModule();
-  assert.equal(typeof mod.name, 'string');
-  assert.ok(mod.name.length > 0);
   assert.equal(mod.name, 'chaos');
   assert.equal(typeof mod.description, 'string');
   assert.ok(mod.description.length > 0);
   assert.equal(typeof mod.run, 'function');
 });
 
-test('ChaosModule — has the five resilience scenarios as private methods', () => {
+test('ChaosModule — legacy scenario methods still exist (backward compat)', () => {
   const mod = new ChaosModule();
-  // The five scenarios named in the module header — slow network,
-  // API failures, offline, missing resources, timeouts.
   assert.equal(typeof mod._testSlowNetwork, 'function');
   assert.equal(typeof mod._testApiFailures, 'function');
   assert.equal(typeof mod._testOfflineMode, 'function');
   assert.equal(typeof mod._testMissingResources, 'function');
   assert.equal(typeof mod._testTimeouts, 'function');
+  assert.equal(typeof mod._testErrorBoundaries, 'function');
+  assert.equal(typeof mod._testTimeoutHygiene, 'function');
+  assert.equal(typeof mod._testRetryLogic, 'function');
+  assert.equal(typeof mod._testOfflineCapability, 'function');
+  assert.equal(typeof mod._testGracefulDegradation, 'function');
 });
 
-// ---------- run() early-return paths ----------
+// ---------- run() on empty project ----------
 
-test('run — no URL configured anywhere → fails soft with config message, never touches Playwright', async () => {
-  const mod = new ChaosModule();
-  const result = makeResult();
-  const config = makeConfig(); // nothing configured
-
-  await mod.run(result, config);
-
-  assert.equal(result.calls.length, 1);
-  const c = result.calls[0];
-  assert.equal(c.name, 'chaos:config');
-  assert.equal(c.passed, true); // info, not a failure — we don't punish absence
-  assert.match(c.meta.message, /No URL configured/);
+test('run — empty project dir records source-skip check only', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatetest-chaos-empty-'));
+  try {
+    const mod = new ChaosModule();
+    const result = makeResult();
+    const config = makeConfig({ projectRoot: dir });
+    await mod.run(result, config);
+    const sourceCheck = result.calls.find((c) => c.name === 'chaos:source');
+    assert.ok(sourceCheck, 'expected chaos:source check');
+    assert.equal(sourceCheck.passed, true);
+    assert.match(sourceCheck.meta.message, /No source files found/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
-test('run — chaos.url takes precedence over explorer.url and liveCrawler.url', async () => {
-  // We can't actually launch a browser in tests, but we CAN verify the
-  // URL-resolution logic by stubbing module._launch... actually, the
-  // current module doesn't expose a stub seam. Until it does, we only
-  // assert the config-resolution branch via the no-Playwright path
-  // (covered below) which still resolves the URL first.
-  const mod = new ChaosModule();
-  const result = makeResult();
-  const config = makeConfig({
-    chaosUrl: 'https://chaos.example.com',
-    explorerUrl: 'https://explorer.example.com',
-    liveCrawlerUrl: 'https://crawler.example.com',
+// ---------- Error-boundary detection ----------
+
+test('_testErrorBoundaries — passes when try/catch is widespread', async () => {
+  const dir = makeTmpProject({
+    'a.js': 'try { doThing(); } catch(e) { handleError(e); }',
+    'b.js': 'try { fetch() } catch(e) {}', // error-ok — test fixture string
+    'c.ts': 'promise.catch(err => log(err));',
+    'd.ts': 'class Foo extends ErrorBoundary {}',
+    'e.js': 'try { x() } catch {}', // error-ok — test fixture string
+    'f.js': 'try { y() } catch {}', // error-ok — test fixture string
   });
-
-  // Hijack require('playwright') to throw — ensures we exit before
-  // any browser launch. The module's catch block records the
-  // chaos:playwright check.
-  const pwPath = require.resolve('module');
-  const Module = require(pwPath);
-  const origResolve = Module._resolveFilename;
-  Module._resolveFilename = function (req, parent, ...rest) {
-    if (req === 'playwright') throw new Error("Cannot find module 'playwright'");
-    return origResolve.call(this, req, parent, ...rest);
-  };
-
   try {
-    await mod.run(result, config);
+    const mod = new ChaosModule();
+    const result = makeResult();
+    await mod._testErrorBoundaries(
+      ['a.js','b.js','c.ts','d.ts','e.js','f.js'].map(f => path.join(dir, f)),
+      result
+    );
+    const check = result.calls.find((c) => c.name === 'chaos:error-boundaries');
+    assert.ok(check);
+    assert.equal(check.passed, true);
   } finally {
-    Module._resolveFilename = origResolve;
+    fs.rmSync(dir, { recursive: true, force: true });
   }
-
-  // Should have recorded a "playwright not installed" check
-  const pwCheck = result.calls.find((c) => c.name === 'chaos:playwright');
-  assert.ok(pwCheck, 'expected chaos:playwright check to fire');
-  assert.equal(pwCheck.passed, false);
-  assert.match(pwCheck.meta.message, /Playwright not installed/);
-  assert.match(pwCheck.meta.suggestion, /npm install playwright/);
 });
 
-test('run — falls back to liveCrawler.url when no chaos.url configured', async () => {
+test('_testErrorBoundaries — warns when fewer than 5% of files have error handling', async () => {
+  // 1 file has try/catch but 30 files have none → ratio 1/31 ≈ 3%
+  const files = {};
+  for (let i = 0; i < 30; i++) files[`plain${i}.js`] = `const x = ${i};`;
+  files['withTry.js'] = 'try { doThing(); } catch(e) {}'; // error-ok — test fixture string
+  const dir = makeTmpProject(files);
+  try {
+    const mod = new ChaosModule();
+    const result = makeResult();
+    const allFiles = Object.keys(files).map(f => path.join(dir, f));
+    await mod._testErrorBoundaries(allFiles, result);
+    const check = result.calls.find((c) => c.name === 'chaos:error-boundaries');
+    assert.ok(check);
+    assert.equal(check.passed, false);
+    assert.match(check.meta.message, /Very few error boundaries/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- Timeout detection ----------
+
+test('_testTimeoutHygiene — passes when AbortController present', async () => {
+  const dir = makeTmpProject({ 'api.js': 'const ctrl = new AbortController(); fetch(url, { signal: ctrl.signal });' });
+  try {
+    const mod = new ChaosModule();
+    const result = makeResult();
+    await mod._testTimeoutHygiene([path.join(dir, 'api.js')], result);
+    const check = result.calls.find((c) => c.name === 'chaos:timeouts');
+    assert.ok(check);
+    assert.equal(check.passed, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('_testTimeoutHygiene — warns when no timeout patterns found', async () => {
+  const dir = makeTmpProject({ 'api.js': 'fetch(url);' });
+  try {
+    const mod = new ChaosModule();
+    const result = makeResult();
+    await mod._testTimeoutHygiene([path.join(dir, 'api.js')], result);
+    const check = result.calls.find((c) => c.name === 'chaos:timeouts');
+    assert.ok(check);
+    assert.equal(check.passed, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- Retry detection ----------
+
+test('_testRetryLogic — passes (info) when no retry found', async () => {
+  const dir = makeTmpProject({ 'simple.js': 'const x = 1;' });
+  try {
+    const mod = new ChaosModule();
+    const result = makeResult();
+    await mod._testRetryLogic([path.join(dir, 'simple.js')], result);
+    const check = result.calls.find((c) => c.name === 'chaos:retry');
+    assert.ok(check);
+    assert.equal(check.passed, true); // info-level pass
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('_testRetryLogic — passes when p-retry pattern found', async () => {
+  const dir = makeTmpProject({ 'api.js': "const retry = require('p-retry');" });
+  try {
+    const mod = new ChaosModule();
+    const result = makeResult();
+    await mod._testRetryLogic([path.join(dir, 'api.js')], result);
+    const check = result.calls.find((c) => c.name === 'chaos:retry');
+    assert.ok(check);
+    assert.equal(check.passed, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- Offline capability ----------
+
+test('_testOfflineCapability — info pass when no service worker', async () => {
+  const dir = makeTmpProject({ 'app.js': 'console.log("hello");' });
+  try {
+    const mod = new ChaosModule();
+    const result = makeResult();
+    await mod._testOfflineCapability([path.join(dir, 'app.js')], result);
+    const check = result.calls.find((c) => c.name === 'chaos:offline');
+    assert.ok(check);
+    assert.equal(check.passed, true);
+    assert.match(check.meta.message, /informational/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('_testOfflineCapability — passes when serviceWorker detected', async () => {
+  const dir = makeTmpProject({ 'sw.js': "self.addEventListener('install', e => {});" });
+  try {
+    const mod = new ChaosModule();
+    const result = makeResult();
+    await mod._testOfflineCapability([path.join(dir, 'sw.js')], result);
+    const check = result.calls.find((c) => c.name === 'chaos:offline');
+    assert.ok(check);
+    assert.equal(check.passed, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- Graceful degradation ----------
+
+test('_testGracefulDegradation — info when no loading state patterns', async () => {
+  const dir = makeTmpProject({ 'page.js': 'const x = 1;' });
+  try {
+    const mod = new ChaosModule();
+    const result = makeResult();
+    await mod._testGracefulDegradation([path.join(dir, 'page.js')], result);
+    const check = result.calls.find((c) => c.name === 'chaos:degradation');
+    assert.ok(check);
+    // can be pass or fail at info level — just check the key exists
+    assert.ok(typeof check.passed === 'boolean');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('_testGracefulDegradation — passes when Suspense + isLoading present', async () => {
+  const files = {};
+  for (let i = 0; i < 10; i++) files[`comp${i}.tsx`] = `<Suspense fallback={<Skeleton />}><Component /></Suspense>`;
+  const dir = makeTmpProject(files);
+  try {
+    const mod = new ChaosModule();
+    const result = makeResult();
+    await mod._testGracefulDegradation(Object.keys(files).map(f => path.join(dir, f)), result);
+    const check = result.calls.find((c) => c.name === 'chaos:degradation');
+    assert.ok(check);
+    assert.equal(check.passed, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- Legacy method stubs ----------
+
+test('_testApiFailures stub records a pass check', async () => {
   const mod = new ChaosModule();
   const result = makeResult();
-  const config = makeConfig({ liveCrawlerUrl: 'https://fallback.example.com' });
-
-  // Same playwright stub as above
-  const Module = require('module');
-  const origResolve = Module._resolveFilename;
-  Module._resolveFilename = function (req, parent, ...rest) {
-    if (req === 'playwright') throw new Error("Cannot find module 'playwright'");
-    return origResolve.call(this, req, parent, ...rest);
-  };
-
-  try {
-    await mod.run(result, config);
-  } finally {
-    Module._resolveFilename = origResolve;
-  }
-
-  // URL fallback worked → we got past the no-URL early return →
-  // hit the playwright-missing branch (which is what we want to assert).
-  const pwCheck = result.calls.find((c) => c.name === 'chaos:playwright');
-  assert.ok(pwCheck, 'expected to reach the Playwright-load step');
+  await mod._testApiFailures(null, null, result);
+  const check = result.calls.find((c) => c.name === 'chaos:api-failures');
+  assert.ok(check);
+  assert.equal(check.passed, true);
 });
 
-test('run — no URL anywhere does NOT attempt to require playwright', async () => {
+test('_testOfflineMode stub records a pass check', async () => {
   const mod = new ChaosModule();
   const result = makeResult();
-  const config = makeConfig();
-
-  let playwrightLoadAttempted = false;
-  const Module = require('module');
-  const origResolve = Module._resolveFilename;
-  Module._resolveFilename = function (req, parent, ...rest) {
-    if (req === 'playwright') {
-      playwrightLoadAttempted = true;
-      throw new Error("Cannot find module 'playwright'");
-    }
-    return origResolve.call(this, req, parent, ...rest);
-  };
-
-  try {
-    await mod.run(result, config);
-  } finally {
-    Module._resolveFilename = origResolve;
-  }
-
-  assert.equal(playwrightLoadAttempted, false, 'Playwright should not be touched when no URL is configured');
+  await mod._testOfflineMode(null, null, result);
+  const check = result.calls.find((c) => c.name === 'chaos:offline-mode');
+  assert.ok(check);
+  assert.equal(check.passed, true);
 });
 
-// ---------- Coverage for the registered tier inclusion ----------
+test('_testMissingResources stub records a pass check', async () => {
+  const mod = new ChaosModule();
+  const result = makeResult();
+  await mod._testMissingResources(null, null, result);
+  const check = result.calls.find((c) => c.name === 'chaos:missing-resources');
+  assert.ok(check);
+  assert.equal(check.passed, true);
+});
 
-test('ChaosModule — listed as a runnable module (CommonJS export)', () => {
-  // The registry imports this via require — make sure the module
-  // exports a class that's `new`-able with no required arguments.
+// ---------- Module is registerable ----------
+
+test('ChaosModule — constructable with no args', () => {
   const mod = new ChaosModule();
   assert.ok(mod instanceof ChaosModule);
+  assert.equal(mod.name, 'chaos');
 });

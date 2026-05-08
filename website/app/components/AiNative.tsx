@@ -66,7 +66,7 @@ const colorMap = {
 
 export default function AiNative() {
   return (
-    <section id="features" className="py-24 px-6 border-t border-white/8 relative overflow-hidden">
+    <section id="features" className="py-24 px-6 border-t border-border/30 bg-[#0a0a12] relative overflow-hidden">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-teal-500/6 to-transparent rounded-full blur-[120px] pointer-events-none" />
 
       <div className="relative z-10 mx-auto max-w-6xl">

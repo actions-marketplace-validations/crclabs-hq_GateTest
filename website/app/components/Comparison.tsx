@@ -34,7 +34,7 @@ const severityBadge = (s: string) => {
 
 export default function Comparison() {
   return (
-    <section id="comparison" className="py-24 px-6 border-t border-white/8">
+    <section id="comparison" className="py-24 px-6 border-t border-border/30 bg-[#0a0a12]">
       <div className="mx-auto max-w-6xl">
         <div className="text-center mb-14">
           <span className="inline-block px-3 py-1 rounded-full bg-white/5 border border-white/10 text-white/50 text-xs font-semibold uppercase tracking-widest mb-4">

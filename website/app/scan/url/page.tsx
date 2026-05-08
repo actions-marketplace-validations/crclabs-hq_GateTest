@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 interface WebFinding {
   severity: "critical" | "warning" | "info" | "pass";
@@ -366,12 +367,12 @@ function UrlScanInner() {
                 open a fix PR automatically.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <a
+                <Link
                   href="/#pricing"
                   className="px-6 py-2.5 rounded-xl bg-[#2dd4bf] text-black font-semibold text-sm hover:bg-[#14b8a6] transition-colors text-center"
                 >
                   Scan My GitHub Repo →
-                </a>
+                </Link>
                 <button
                   onClick={() => { setResult(null); setUrl(""); setTimeout(() => inputRef.current?.focus(), 50); }}
                   className="px-6 py-2.5 rounded-xl border border-white/12 text-white/50 font-medium text-sm hover:text-white hover:border-white/25 transition-colors"

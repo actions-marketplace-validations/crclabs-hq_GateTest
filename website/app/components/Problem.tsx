@@ -18,7 +18,7 @@ export default function Problem() {
   const monthlyBurn = 870;
 
   return (
-    <section className="py-24 px-6 border-t border-white/8">
+    <section className="py-24 px-6 border-t border-border/30 bg-[#0a0a12]">
       <div className="mx-auto max-w-6xl">
         <div className="text-center mb-16">
           <span className="inline-block px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold uppercase tracking-widest mb-4">

@@ -267,7 +267,7 @@ async function recordSuccessfulFixes(sql, fixes, moduleHint = 'unknown') {
   const promises = fixes.flatMap(({ file, original, fixed, issues }) =>
     issues.map(issue =>
       recordRecipe({ sql, module: moduleHint, issue, filePath: file, beforeContent: original, afterContent: fixed })
-        .catch(() => {})
+        .catch(() => {}) // error-ok — individual recipe recording failures are non-blocking by design
     )
   );
   await Promise.allSettled(promises);

@@ -1097,7 +1097,7 @@ export async function POST(req: NextRequest) {
   try {
     const { getDb: getRecipeDb } = require("@/app/lib/db") as { getDb: () => unknown };
     const recipeSql = getRecipeDb();
-    recordSuccessfulFixes(recipeSql, fixes, input.tier || "full").catch(() => {});
+    recordSuccessfulFixes(recipeSql, fixes, input.tier || "full").catch(() => {}); // error-ok — best-effort recipe recording; DB outage must never block the PR
   } catch { /* brain unavailable — never block fix flow */ }
 
   // Phase 1.3 — test generation per fix. For every successful,

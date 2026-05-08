@@ -291,29 +291,29 @@ class ChaosModule extends BaseModule {
   // Legacy method stubs — kept for backward-compat with existing tests
   // that assert these method names exist. All delegate to static analysis.
   // ------------------------------------------------------------------
-  async _testSlowNetwork(browser, baseUrl, result) { // eslint-disable-line no-unused-vars
+  async _testSlowNetwork(_browser, baseUrl, result) {
     return this._testHttpResilience(baseUrl, result);
   }
 
-  async _testApiFailures(browser, baseUrl, result) { // eslint-disable-line no-unused-vars
+  async _testApiFailures(_browser, _baseUrl, result) {
     result.addCheck('chaos:api-failures', true, {
       message: 'API failure resilience assessed via static error-boundary analysis',
     });
   }
 
-  async _testOfflineMode(browser, baseUrl, result) { // eslint-disable-line no-unused-vars
+  async _testOfflineMode(_browser, _baseUrl, result) {
     result.addCheck('chaos:offline-mode', true, {
       message: 'Offline resilience assessed via static offline-patterns analysis',
     });
   }
 
-  async _testMissingResources(browser, baseUrl, result) { // eslint-disable-line no-unused-vars
+  async _testMissingResources(_browser, _baseUrl, result) {
     result.addCheck('chaos:missing-resources', true, {
       message: 'Resource resilience assessed via static degradation analysis',
     });
   }
 
-  async _testTimeouts(browser, baseUrl, result) { // eslint-disable-line no-unused-vars
+  async _testTimeouts(_browser, baseUrl, result) {
     return this._testHttpResilience(baseUrl, result);
   }
 

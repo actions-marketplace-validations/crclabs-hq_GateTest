@@ -100,11 +100,11 @@ test('run — empty project dir records source-skip check only', async () => {
 test('_testErrorBoundaries — passes when try/catch is widespread', async () => {
   const dir = makeTmpProject({
     'a.js': 'try { doThing(); } catch(e) { handleError(e); }',
-    'b.js': 'try { fetch() } catch(e) {}',
+    'b.js': 'try { fetch() } catch(e) {}', // error-ok — test fixture string
     'c.ts': 'promise.catch(err => log(err));',
     'd.ts': 'class Foo extends ErrorBoundary {}',
-    'e.js': 'try { x() } catch {}',
-    'f.js': 'try { y() } catch {}',
+    'e.js': 'try { x() } catch {}', // error-ok — test fixture string
+    'f.js': 'try { y() } catch {}', // error-ok — test fixture string
   });
   try {
     const mod = new ChaosModule();
@@ -125,7 +125,7 @@ test('_testErrorBoundaries — warns when fewer than 5% of files have error hand
   // 1 file has try/catch but 30 files have none → ratio 1/31 ≈ 3%
   const files = {};
   for (let i = 0; i < 30; i++) files[`plain${i}.js`] = `const x = ${i};`;
-  files['withTry.js'] = 'try { doThing(); } catch(e) {}';
+  files['withTry.js'] = 'try { doThing(); } catch(e) {}'; // error-ok — test fixture string
   const dir = makeTmpProject(files);
   try {
     const mod = new ChaosModule();

@@ -25,7 +25,7 @@ class SyntaxModule extends BaseModule {
     // TypeScript
     const tsFiles = this._collectFiles(projectRoot, ['.ts', '.tsx']);
     if (tsFiles.length > 0) {
-      this._checkTypeScript(projectRoot, result);
+      await this._checkTypeScript(projectRoot, result);
     }
 
     // JSX (React)
@@ -265,7 +265,7 @@ class SyntaxModule extends BaseModule {
     }
   }
 
-  _checkTypeScript(projectRoot, result) {
+  async _checkTypeScript(projectRoot, result) {
     // Discover every tsconfig.json in the workspace (depth-limited so we
     // don't walk node_modules). Then run tsc only in directories where
     // the tsconfig is "real" — i.e. has compilerOptions configured. Stub
@@ -275,15 +275,44 @@ class SyntaxModule extends BaseModule {
     // inputs found" noise that drowns out real findings.
     const tscDirs = this._discoverRealTsconfigs(projectRoot);
 
+    // Pre-push / fast-mode short-circuit. Customers run gatetest from the
+    // pre-push hook (advisory; should never block past ~30s). On a real
+    // monorepo with N tsconfigs and a slow `npx tsc --noEmit`, the
+    // serial loop below was hanging the hook for minutes — exact
+    // observed in Crontech with N=4 tsconfigs × 60s tsc each = 4-min
+    // wedge. GATETEST_FAST=1 (set by the shipped pre-push hook in
+    // .husky/pre-push) skips this whole block; full scans on CI still
+    // run it.
+    if (process.env.GATETEST_FAST === '1' || process.env.GATETEST_SKIP_TSC === '1') {
+      result.addCheck('typescript-strict', true, {
+        message: 'tsc --noEmit skipped (GATETEST_FAST or GATETEST_SKIP_TSC set — runs in CI)',
+        severity: 'info',
+      });
+      return;
+    }
+
     let anyRan = false;
     let allPass = true;
     const allErrors = [];
 
+    // Per-tsconfig timeout dropped from 120s to 60s. tsc legitimately
+    // takes 30-60s on a real codebase; longer than that = something is
+    // wedged (file-watch loop, infinite include glob, TS panic). 60s is
+    // the honest "we'll wait but won't hang you" — combined with the
+    // GATETEST_FAST short-circuit above, the pre-push hook stays under
+    // its advisory ~30s budget. CI runs the full uncapped gate.
+    // Configurable via GATETEST_TSC_TIMEOUT_MS for environments that
+    // genuinely need longer (e.g. cold cache + huge codebase).
+    const TSC_TIMEOUT_MS = Number(process.env.GATETEST_TSC_TIMEOUT_MS) || 60000;
+
+    // Note: _exec uses execSync, so a Promise.all wrapper around tscDirs
+    // wouldn't actually parallelise. Keeping serial — the real win
+    // is the GATETEST_FAST skip above + the 120s→60s per-dir cap.
     for (const dir of tscDirs) {
       anyRan = true;
       const { exitCode, stdout, stderr } = this._exec('npx tsc --noEmit 2>&1', {
         cwd: dir,
-        timeout: 120000,
+        timeout: TSC_TIMEOUT_MS,
       });
       if (exitCode !== 0) {
         allPass = false;

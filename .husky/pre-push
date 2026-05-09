@@ -23,7 +23,11 @@ if [ -n "${CI:-}" ]; then
 fi
 
 echo "[GateTest pre-push] Running quick suite before push ..."
-if ! node "$(git rev-parse --show-toplevel)/bin/gatetest.js" --suite quick; then
+# GATETEST_FAST=1 tells potentially-slow modules (e.g. syntax → tsc
+# --noEmit, which can take 30-60s per tsconfig on a real monorepo) to
+# skip themselves with an info-level "deferred to CI" check. CI runs
+# the full uncapped gate; the local hook stays advisory and snappy.
+if ! GATETEST_FAST=1 node "$(git rev-parse --show-toplevel)/bin/gatetest.js" --suite quick; then
   echo ""
   echo "[GateTest pre-push] BLOCKED — quick suite reported errors above."
   echo "Fix the errors and try again, or override with: git push --no-verify"

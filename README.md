@@ -102,6 +102,10 @@ gatetest --suite full --fix
 # Only scan changed files (instant pre-commit)
 gatetest --diff
 
+# Incremental PR scan — only files changed since the base ref (5x-30x faster)
+gatetest --since main
+gatetest --pr                 # alias for --since origin/main
+
 # Watch mode — re-scan on every file change
 gatetest --watch
 
@@ -167,6 +171,8 @@ gatetest --suite full             Run every module (90 modules)
 gatetest --suite quick            Fast pre-commit checks
 gatetest --module security        Run a single module
 gatetest --diff                   Only scan git-changed files
+gatetest --since <ref>            Incremental scan: only files changed vs <ref>
+gatetest --pr                     Alias for --since origin/main (PR workflow)
 gatetest --fix                    Auto-fix safe issues
 gatetest --watch                  Watch mode — re-scan on changes
 gatetest --sarif                  Output SARIF for GitHub Security tab

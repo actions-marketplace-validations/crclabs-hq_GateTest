@@ -53,6 +53,9 @@ const HELP = `
     --stop-first       Stop on first module failure
     --fix              Auto-fix safe issues (formatting, imports, etc.)
     --diff             Only scan git-changed files (fast pre-commit mode)
+    --since <ref>      Incremental scan: only files changed since <ref>
+                       (e.g. main, origin/main, HEAD~5). 5x-30x faster on PRs.
+    --pr               Alias for --since origin/main (typical PR workflow)
     --watch            Watch for file changes and re-scan continuously
     --sarif            Output results in SARIF format (for GitHub Security)
     --junit            Output results in JUnit XML format (for CI)
@@ -79,6 +82,9 @@ const HELP = `
     gatetest --module security        Security scan only
     gatetest --module visual          Visual regression only
     gatetest --suite quick            Fast pre-commit checks
+    gatetest --pr                     Incremental: scan files changed vs origin/main
+    gatetest --since main             Incremental: scan files changed vs main
+    gatetest --since HEAD~3           Incremental: scan files changed in last 3 commits
     gatetest --server https://gatetest.ai    Scan server SSL, headers, DNS
     gatetest --crawl https://zoobicon.com   Crawl and test live site
     gatetest --diagnose https://mysite.com  Full real-time diagnosis + action plan
@@ -184,11 +190,15 @@ async function main() {
     return;
   }
 
+  // --pr is sugar for --since origin/main. Explicit --since wins if both are set.
+  const incrementalSince = args.since || (args.pr ? 'origin/main' : null);
+
   const gatetest = new GateTest(projectRoot, {
     parallel: args.parallel || false,
     stopOnFirstFailure: args['stop-first'] || false,
     autoFix: args.fix || false,
     diffOnly: args.diff || false,
+    incrementalSince,
     sarif: args.sarif || false,
     junit: args.junit || false,
   });
@@ -370,6 +380,8 @@ function parseArgs(argv) {
     else if (arg === '--stop-first') args['stop-first'] = true;
     else if (arg === '--fix') args.fix = true;
     else if (arg === '--diff') args.diff = true;
+    else if (arg === '--since' && argv[i + 1]) args.since = argv[++i];
+    else if (arg === '--pr') args.pr = true;
     else if (arg === '--watch') args.watch = true;
     else if (arg === '--sarif') args.sarif = true;
     else if (arg === '--junit') args.junit = true;

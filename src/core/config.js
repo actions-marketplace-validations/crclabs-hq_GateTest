@@ -390,6 +390,46 @@ const DEFAULT_CONFIG = {
     },
   },
 
+  // Incremental scan — when `--since <ref>` / `--pr` is set, the runner
+  // only scans files changed in the working tree relative to that ref.
+  // Modules listed here are ALWAYS run with the full repo state because
+  // they need cross-cutting knowledge (the whole import graph, the full
+  // env-var declaration set, etc.). A subset-scan would give bogus
+  // results, so they're skipped in incremental mode rather than
+  // partially run.
+  incremental: {
+    // Modules that need the WHOLE repo state. In incremental mode they
+    // are skipped entirely with a clear note in the result. Customers
+    // who want these checks should run a full scan (no --since / --pr).
+    skipList: [
+      'importCycle',       // needs the whole graph; subset gives bogus cycles
+      'deadCode',          // unused-export needs every importer to be visible
+      'duplicateCode',     // copy-paste detection across the entire codebase
+      'crossFileTaint',    // taint flow across all files
+      'openapiDrift',      // spec ↔ all-routes cross-reference
+      'trpcContract',      // procedure ↔ all-call-sites cross-reference
+      'monorepoConstraints', // boundary rules need every package visible
+      'architectureDrift', // codebase-shape inspection
+      'memory',            // surfaces the FULL memory store, not file-bound
+    ],
+    // Modules that ALWAYS run regardless of --since because they read
+    // git history / repo config rather than per-file scanning.
+    alwaysRunList: [
+      'secretRotation',  // git-history aware
+      'prSize',          // already a git-diff against the base ref
+    ],
+    // File extensions considered "scannable source" by the incremental
+    // file-list filter. Anything outside this set is dropped.
+    sourceExtensions: [
+      '.js', '.jsx', '.mjs', '.cjs',
+      '.ts', '.tsx', '.mts', '.cts',
+      '.py', '.go', '.rs',
+      '.java', '.rb', '.php', '.cs', '.kt', '.swift',
+      '.yml', '.yaml', '.json', '.md', '.sh', '.bash',
+      '.tf', '.toml', '.html', '.htm', '.css', '.scss',
+    ],
+  },
+
   // Reporting
   reporting: {
     outputDir: '.gatetest/reports',

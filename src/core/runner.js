@@ -139,6 +139,12 @@ class GateTestRunner extends EventEmitter {
       autoFix: false,           // --fix: automatically apply safe fixes
       diffOnly: false,          // --diff: only scan git-changed files
       changedFiles: null,       // list of changed files (populated by diff mode)
+      // --since <ref> / --pr: incremental scan. When set, modules only
+      // see files changed in the working tree relative to <ref>. Modules
+      // in config.incremental.skipList get skipped (they need full-repo
+      // state); modules in alwaysRunList get full-repo state regardless.
+      incrementalSince: null,
+      incrementalFiles: null,   // resolved list of changed files (Set of abs paths)
       ...options,
     };
   }
@@ -156,9 +162,56 @@ class GateTestRunner extends EventEmitter {
       this.options.changedFiles = this._getChangedFiles();
     }
 
+    // If --since / --pr was used, resolve the changed file list from git.
+    // Honest fallback: if git fails, log a warning and fall through to a
+    // full scan (don't crash). If 0 source files changed, return early
+    // with a green summary — that's a success outcome, not a failure.
+    if (this.options.incrementalSince && !this.options.incrementalFiles) {
+      const ref = this.options.incrementalSince;
+      const incremental = this._resolveIncrementalFiles(ref);
+      if (incremental.error) {
+        // Hard fallback: emit warning, run a full scan as if --since was
+        // never set. The user gets a clear note in stderr.
+        this.emit('incremental:fallback', { ref, reason: incremental.error });
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[GateTest] Incremental scan unavailable (${incremental.error}). ` +
+          `Falling back to full scan.`,
+        );
+        this.options.incrementalSince = null;
+      } else if (incremental.files.length === 0) {
+        // No source files changed — green outcome. Print a clear note
+        // and return a tiny summary rather than running 90 modules over
+        // an unchanged tree.
+        this.emit('incremental:empty', { ref });
+        // eslint-disable-next-line no-console
+        console.log(
+          `[GateTest] No relevant files changed since ${ref} — nothing to scan.`,
+        );
+        const endTime = Date.now();
+        return this._buildEmptyIncrementalSummary(startTime, endTime, ref);
+      } else {
+        this.options.incrementalFiles = new Set(incremental.files);
+        // eslint-disable-next-line no-console
+        console.log(
+          `[GateTest] Incremental scan: ${incremental.files.length} file(s) ` +
+          `changed since ${ref}`,
+        );
+        this.emit('incremental:resolved', {
+          ref,
+          fileCount: incremental.files.length,
+          files: incremental.files,
+        });
+      }
+    }
+
     const modulesToRun = moduleNames || Array.from(this.modules.keys());
 
-    this.emit('suite:start', { modules: modulesToRun, diffOnly: this.options.diffOnly });
+    this.emit('suite:start', {
+      modules: modulesToRun,
+      diffOnly: this.options.diffOnly,
+      incrementalSince: this.options.incrementalSince,
+    });
 
     if (this.options.parallel) {
       await this._runParallel(modulesToRun);
@@ -210,6 +263,24 @@ class GateTestRunner extends EventEmitter {
       return result;
     }
 
+    // Incremental-mode skip list: modules that need full-repo state
+    // (whole import graph, full env-var declaration set, etc.) get
+    // skipped with a clear note rather than running on a partial
+    // workspace and producing bogus results.
+    if (this.options.incrementalFiles && this._isIncrementalSkipped(name)) {
+      result.start();
+      result.addCheck('incremental:skipped', true, {
+        severity: 'info',
+        message:
+          `Module "${name}" needs full-repo state and is skipped in ` +
+          `incremental mode. Run a full scan (no --since / --pr) to ` +
+          `include it.`,
+      });
+      result.pass();
+      this.emit('module:skip', result);
+      return result;
+    }
+
     result.start();
     this.emit('module:start', result);
 
@@ -219,7 +290,26 @@ class GateTestRunner extends EventEmitter {
       moduleConfig._runnerOptions = this.options;
       // deployReadiness reads all prior results to compute the aggregate score
       moduleConfig._allResults = this.results;
-      await mod.run(result, moduleConfig);
+      // Incremental file filter — picked up by BaseModule._collectFiles
+      // and universal-checker.runLanguageChecks. Modules in the
+      // alwaysRunList get the full repo state so their cross-cutting
+      // logic still works.
+      const useIncremental =
+        !!this.options.incrementalFiles &&
+        !this._isIncrementalAlwaysRun(name);
+      if (useIncremental) {
+        moduleConfig._incrementalFiles = this.options.incrementalFiles;
+        // Stash the file Set on the module instance so BaseModule's
+        // _collectFiles (which doesn't get config as a parameter) can
+        // honour the filter transparently. Per-module-run scoped, never
+        // leaks across modules: the finally block clears it.
+        mod._currentIncrementalFiles = this.options.incrementalFiles;
+      }
+      try {
+        await mod.run(result, moduleConfig);
+      } finally {
+        if (useIncremental) mod._currentIncrementalFiles = null;
+      }
 
       // Only errors block — warnings are allowed through
       if (result.errorChecks.length > 0) {
@@ -307,6 +397,135 @@ class GateTestRunner extends EventEmitter {
   }
 
   /**
+   * Whether a module is on the incremental skip list (needs whole-repo
+   * state). Lookup is config-driven so projects can override via
+   * .gatetest.json.
+   */
+  _isIncrementalSkipped(name) {
+    const list = this._getIncrementalConfigList('skipList');
+    return list.includes(name);
+  }
+
+  /**
+   * Whether a module always runs against the full repo regardless of
+   * incremental mode (e.g. secret-rotation reads git history, prSize is
+   * already a git diff against the base ref).
+   */
+  _isIncrementalAlwaysRun(name) {
+    const list = this._getIncrementalConfigList('alwaysRunList');
+    return list.includes(name);
+  }
+
+  _getIncrementalConfigList(key) {
+    try {
+      const cfg =
+        (this.config && this.config.config && this.config.config.incremental) ||
+        {};
+      const list = cfg[key];
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  }
+
+  _getIncrementalSourceExtensions() {
+    try {
+      const cfg =
+        (this.config && this.config.config && this.config.config.incremental) ||
+        {};
+      const list = cfg.sourceExtensions;
+      if (Array.isArray(list) && list.length > 0) return list;
+    } catch {
+      // fall through
+    }
+    // Sensible default when config is unreachable (test scaffolding etc.)
+    return [
+      '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts',
+      '.py', '.go', '.rs', '.java', '.rb', '.php', '.cs', '.kt', '.swift',
+      '.yml', '.yaml', '.json', '.md', '.sh',
+    ];
+  }
+
+  /**
+   * Resolve the list of files changed since `<ref>` via
+   *   git diff --name-only --diff-filter=ACMR <ref>...HEAD
+   * Filters to source extensions and existing-on-disk files (a renamed-
+   * to-deleted file would otherwise crash module readers).
+   *
+   * Returns { files: string[] } on success or { error: string } on
+   * failure (not a git repo, ref doesn't exist, git missing, etc.). The
+   * caller decides whether to fall back to a full scan or not — runner
+   * always falls back rather than crashing.
+   */
+  _resolveIncrementalFiles(ref) {
+    const path = require('path');
+    const fs = require('fs');
+    const { execSync } = require('child_process');
+
+    const projectRoot =
+      (this.config && this.config.projectRoot) || process.cwd();
+
+    let raw;
+    try {
+      // ACMR = Added, Copied, Modified, Renamed. Excludes Deleted (no
+      // current file to scan) and Type-changed.
+      raw = execSync(
+        `git diff --name-only --diff-filter=ACMR ${ref}...HEAD`,
+        {
+          encoding: 'utf-8',
+          cwd: projectRoot,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        },
+      );
+    } catch (err) {
+      // git missing, not a repo, ref unknown, etc. — return error so the
+      // runner can decide what to do.
+      const msg = (err && err.stderr ? String(err.stderr).trim() : '') ||
+                  (err && err.message ? String(err.message) : 'git failed');
+      return { error: msg.split('\n')[0].slice(0, 160) };
+    }
+
+    const sourceExts = new Set(
+      this._getIncrementalSourceExtensions().map((e) => e.toLowerCase()),
+    );
+
+    const files = raw
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((rel) => path.resolve(projectRoot, rel))
+      .filter((abs) => {
+        const ext = path.extname(abs).toLowerCase();
+        return sourceExts.has(ext);
+      })
+      .filter((abs) => {
+        try { return fs.existsSync(abs); } catch { return false; }
+      });
+
+    return { files };
+  }
+
+  /**
+   * When 0 source files changed, return a tiny "all clear" summary
+   * rather than running 90 modules across an unchanged tree.
+   */
+  _buildEmptyIncrementalSummary(startTime, endTime, ref) {
+    return {
+      gateStatus: 'PASSED',
+      timestamp: new Date().toISOString(),
+      duration: endTime - startTime,
+      diffOnly: this.options.diffOnly,
+      changedFiles: [],
+      incremental: { since: ref, fileCount: 0, skipped: true },
+      modules: { total: 0, passed: 0, failed: 0, skipped: 0 },
+      checks: { total: 0, passed: 0, failed: 0, errors: 0, warnings: 0 },
+      fixes: { total: 0, details: [] },
+      results: [],
+      failedModules: [],
+    };
+  }
+
+  /**
    * Get list of files changed relative to the merge-base with the default branch.
    */
   _getChangedFiles() {
@@ -381,6 +600,15 @@ class GateTestRunner extends EventEmitter {
       duration: endTime - startTime,
       diffOnly: this.options.diffOnly,
       changedFiles: this.options.changedFiles,
+      incremental: this.options.incrementalSince
+        ? {
+            since: this.options.incrementalSince,
+            fileCount: this.options.incrementalFiles
+              ? this.options.incrementalFiles.size
+              : 0,
+            skipped: false,
+          }
+        : null,
       modules: {
         total: this.results.length,
         passed: passed.length,

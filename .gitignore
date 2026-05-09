@@ -11,3 +11,10 @@ website/.next/
 website/node_modules/
 website/test-results/
 website/playwright-report/
+
+# Parallel-agent worktrees — the Agent tool's `isolation: "worktree"` mode
+# creates a fresh git worktree under .claude/worktrees/agent-<id>/ for
+# each isolated sub-agent. They're tooling artifacts (a separate git
+# checkout), not project work, so they MUST be ignored — committing them
+# would trigger infinite recursion and break the hook check.
+.claude/worktrees/

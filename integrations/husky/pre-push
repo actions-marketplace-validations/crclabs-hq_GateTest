@@ -25,4 +25,7 @@ else
 fi
 
 echo "[GateTest] Running quick diff-mode gate before push ..."
-node "$GATETEST_CACHE/bin/gatetest.js" --suite quick --diff --project "$(pwd)"
+# GATETEST_FAST=1: hook stays advisory + snappy. Slow module steps
+# (e.g. syntax → tsc --noEmit, which can take 30-60s per tsconfig on
+# a real monorepo) skip with an info note and defer to CI's full gate.
+GATETEST_FAST=1 node "$GATETEST_CACHE/bin/gatetest.js" --suite quick --diff --project "$(pwd)"

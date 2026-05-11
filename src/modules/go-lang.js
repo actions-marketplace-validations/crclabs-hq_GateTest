@@ -7,7 +7,11 @@ const { runLanguageChecks } = require('../core/universal-checker');
 
 class GoModule extends BaseModule {
   constructor() { super('go', 'Go Checks — ignored errors, panics, goroutine hygiene'); }
-  async run(result, config) { runLanguageChecks('go', config.projectRoot, result); }
+  async run(result, config) {
+    runLanguageChecks('go', config.projectRoot, result, {
+      incrementalFiles: config._incrementalFiles,
+    });
+  }
 }
 
 module.exports = GoModule;

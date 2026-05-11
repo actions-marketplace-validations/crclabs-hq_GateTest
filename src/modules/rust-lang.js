@@ -7,7 +7,11 @@ const { runLanguageChecks } = require('../core/universal-checker');
 
 class RustModule extends BaseModule {
   constructor() { super('rust', 'Rust Checks — unwrap/panic/todo, unsafe block review'); }
-  async run(result, config) { runLanguageChecks('rust', config.projectRoot, result); }
+  async run(result, config) {
+    runLanguageChecks('rust', config.projectRoot, result, {
+      incrementalFiles: config._incrementalFiles,
+    });
+  }
 }
 
 module.exports = RustModule;

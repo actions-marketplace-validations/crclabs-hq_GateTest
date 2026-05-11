@@ -60,6 +60,10 @@ const BaseModule = require('./base-module');
 const DEFAULT_EXCLUDES = [
   'node_modules', '.git', 'dist', 'build', 'coverage', '.gatetest',
   '.next', '__pycache__', 'target', 'vendor', '.terraform', 'out',
+  // Tooling artifacts — `.claude/worktrees/` holds parallel-agent
+  // worktrees (separate git checkouts of the repo); scanning into
+  // them produces duplicate findings from the parent tree.
+  '.claude',
 ];
 
 const SOURCE_EXTS = new Set(['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts']);

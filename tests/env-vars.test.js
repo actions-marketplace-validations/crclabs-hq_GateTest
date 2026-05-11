@@ -223,3 +223,106 @@ describe('EnvVarsModule — summary', () => {
     assert.match(s.message, /declared=\d+/);
   });
 });
+
+describe('EnvVarsModule — missing-from-runtime (CI completeness)', () => {
+  let tmp;
+  let origEnv;
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-ev-rt-'));
+    origEnv = { ...process.env };
+  });
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    // Restore env exactly
+    for (const k of Object.keys(process.env)) {
+      if (!(k in origEnv)) delete process.env[k];
+    }
+    Object.assign(process.env, origEnv);
+  });
+
+  function setCI(platform = 'GITHUB_ACTIONS') {
+    process.env[platform] = 'true';
+    process.env.CI = 'true';
+  }
+
+  it('errors on declared+referenced key missing from runtime env in CI', async () => {
+    setCI();
+    delete process.env.MY_SECRET_KEY;
+    write(tmp, '.env.example', 'MY_SECRET_KEY=\n');
+    write(tmp, 'src/a.ts', 'const k = process.env.MY_SECRET_KEY;\n');
+    const r = await run(tmp);
+    const c = r.checks.find((ch) => ch.name === 'env-vars:missing-from-runtime:MY_SECRET_KEY');
+    assert.ok(c, 'should flag missing runtime key');
+    assert.strictEqual(c.severity, 'error');
+    assert.match(c.message, /crash on boot/);
+  });
+
+  it('warns (not errors) on declared-but-unreferenced key missing from runtime env', async () => {
+    setCI();
+    delete process.env.UNUSED_KEY;
+    write(tmp, '.env.example', 'UNUSED_KEY=\n');
+    write(tmp, 'src/a.ts', '// no env refs here\nconst x = 1;\n');
+    const r = await run(tmp);
+    const c = r.checks.find((ch) => ch.name === 'env-vars:missing-from-runtime:UNUSED_KEY');
+    assert.ok(c, 'should still flag unused but missing key');
+    assert.strictEqual(c.severity, 'warning');
+  });
+
+  it('does NOT flag when the key IS set in runtime env', async () => {
+    setCI();
+    process.env.MY_SECRET_KEY = 'real-value';
+    write(tmp, '.env.example', 'MY_SECRET_KEY=\n');
+    write(tmp, 'src/a.ts', 'const k = process.env.MY_SECRET_KEY;\n');
+    const r = await run(tmp);
+    const c = r.checks.find((ch) => ch.name === 'env-vars:missing-from-runtime:MY_SECRET_KEY');
+    assert.ok(!c, 'should NOT flag when key is present');
+  });
+
+  it('does NOT flag runtime-allowlist keys even if missing', async () => {
+    setCI();
+    delete process.env.VERCEL_URL;
+    write(tmp, '.env.example', 'VERCEL_URL=\n');
+    write(tmp, 'src/a.ts', 'const u = process.env.VERCEL_URL;\n');
+    const r = await run(tmp);
+    const c = r.checks.find((ch) => ch.name === 'env-vars:missing-from-runtime:VERCEL_URL');
+    assert.ok(!c, 'allowlist keys should never flag');
+  });
+
+  it('does NOT run the check when NOT in CI', async () => {
+    // Ensure no CI vars are set
+    for (const k of ['CI', 'GITHUB_ACTIONS', 'VERCEL', 'NETLIFY', 'GITLAB_CI',
+                     'CIRCLECI', 'RENDER', 'FLY_APP_NAME', 'RAILWAY_ENVIRONMENT',
+                     'HEROKU_APP_NAME', 'DYNO', 'AWS_LAMBDA_FUNCTION_NAME']) {
+      delete process.env[k];
+    }
+    delete process.env.MY_SECRET_KEY;
+    write(tmp, '.env.example', 'MY_SECRET_KEY=\n');
+    write(tmp, 'src/a.ts', 'const k = process.env.MY_SECRET_KEY;\n');
+    const r = await run(tmp);
+    const c = r.checks.find((ch) => ch.name === 'env-vars:missing-from-runtime:MY_SECRET_KEY');
+    assert.ok(!c, 'should not run outside CI');
+  });
+
+  it('detects Vercel platform specifically', async () => {
+    process.env.VERCEL = '1';
+    delete process.env.DB_URL;
+    write(tmp, '.env.example', 'DB_URL=\n');
+    write(tmp, 'src/a.ts', 'const d = process.env.DB_URL;\n');
+    const r = await run(tmp);
+    const c = r.checks.find((ch) => ch.name === 'env-vars:missing-from-runtime:DB_URL');
+    assert.ok(c, 'should flag on Vercel');
+    assert.match(c.message, /Vercel/);
+    assert.match(c.suggestion, /vercel\.com|Vercel/);
+  });
+
+  it('treats empty-string value as missing', async () => {
+    setCI();
+    process.env.EMPTY_KEY = '';
+    write(tmp, '.env.example', 'EMPTY_KEY=\n');
+    write(tmp, 'src/a.ts', 'const k = process.env.EMPTY_KEY;\n');
+    const r = await run(tmp);
+    const c = r.checks.find((ch) => ch.name === 'env-vars:missing-from-runtime:EMPTY_KEY');
+    assert.ok(c, 'empty string counts as missing');
+  });
+});

@@ -191,6 +191,7 @@ const DEFAULT_CONFIG = {
       'aiReview',
       'agentic',
       'fakeFixDetector',
+      'cveFeed',
     ],
     live: [
       'liveCrawler',
@@ -266,6 +267,8 @@ const DEFAULT_CONFIG = {
       'aiReview',
       'agentic',
       'fakeFixDetector',
+      'sbom',
+      'cveFeed',
     ],
   },
 

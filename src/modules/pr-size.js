@@ -127,7 +127,9 @@ class PrSizeModule extends BaseModule {
 
   async run(result, config) {
     const projectRoot = (config && config.projectRoot) || process.cwd();
-    const moduleConfig = (config && config.prSize) || {};
+    const moduleConfig = (config && typeof config.getModuleConfig === 'function')
+      ? config.getModuleConfig('prSize')
+      : (config && config.prSize) || {};
     const runnerOptions = (config && config.runnerOptions) || {};
     const thresholds = { ...DEFAULTS, ...moduleConfig };
 

@@ -5,7 +5,7 @@
 ## Short description (160 chars — paste verbatim into the Marketplace form)
 
 ```
-67 AI-powered quality modules scan your repo on every PR. Security, performance, accessibility, and more. Issues found AND fixed automatically.
+92 AI-powered quality modules scan your repo on every PR. Security, performance, accessibility, and more. Issues found AND fixed automatically.
 ```
 
 ---
@@ -14,13 +14,13 @@
 
 ---
 
-### Stop duct-taping 10 tools together. One gate. 67 modules. Zero compromise.
+### Stop duct-taping 10 tools together. One gate. 92 modules. Zero compromise.
 
 Every engineering team eventually builds the same fragile patchwork: ESLint for style, SonarQube for code quality, Snyk for vulnerabilities, Lighthouse for performance, axe for accessibility, Percy for visual regressions, hadolint for Dockerfiles, tfsec for Terraform, actionlint for CI — each with its own config, its own dashboard, its own billing, and its own false-positive noise.
 
 **GateTest replaces all of them with a single GitHub App.**
 
-Install once. Every push and pull request is scanned by 67 AI-powered modules in under 60 seconds. A pass/fail commit status lands on your PR. If issues are found, GateTest opens an automatic fix PR — diff reviewed, fix explained, ready to merge. You only pay when the scan delivers value.
+Install once. Every push and pull request is scanned by 92 AI-powered modules in under 60 seconds. A pass/fail commit status lands on your PR. If issues are found, GateTest opens an automatic fix PR — diff reviewed, fix explained, ready to merge. You only pay when the scan delivers value.
 
 ---
 
@@ -86,10 +86,10 @@ All plans use **pay-on-completion** — your card is held at checkout but captur
 |------|-------|-------------|
 | **Free** | $0/month | 1 scan/month on public repos. No card required. |
 | **Quick Scan** | $29 | Security + secrets + syntax + lint (4 modules). Results in under 15 seconds. |
-| **Full Scan** | $99 | All 67 modules. Full report in SARIF, JUnit, JSON, and HTML. Under 60 seconds. |
-| **Scan + Fix** | $199 | All 67 modules + automatic fix PR opened in your repo, ready to review and merge. |
+| **Full Scan** | $99 | All 92 modules. Full report in SARIF, JUnit, JSON, and HTML. Under 60 seconds. |
+| **Scan + Fix** | $199 | All 92 modules + automatic fix PR opened in your repo, ready to review and merge. |
 | **Nuclear** | $399 | Everything + mutation testing, chaos testing, live crawling, and autonomous exploration. |
-| **Continuous** | $49/month | All 67 modules scan on every push to every branch. Always-on protection. |
+| **Continuous** | $49/month | All 92 modules scan on every push to every branch. Always-on protection. |
 
 ---
 
@@ -158,9 +158,9 @@ GateTest's 9 universal language modules cover Python, Go, Rust, Java, Ruby, PHP,
 - **Type:** Per-unit or flat monthly
 - **Price:** $99
 - **Unit label:** scan
-- **Description:** Every module, every language. 67 AI-powered checks. SARIF output for GitHub Security. Results in under 60 seconds.
+- **Description:** Every module, every language. 92 AI-powered checks. SARIF output for GitHub Security. Results in under 60 seconds.
 - **Bullet points:**
-  - All 67 quality modules
+  - All 92 quality modules
   - SARIF output → GitHub Security tab
   - JUnit + JSON + HTML reports
   - N+1 queries, race conditions, float-money, TLS bypass, and 63 more
@@ -171,7 +171,7 @@ GateTest's 9 universal language modules cover Python, Go, Rust, Java, Ruby, PHP,
 - **Type:** Per-unit or flat monthly
 - **Price:** $199
 - **Unit label:** scan
-- **Description:** All 67 modules plus an automatic fix PR opened in your repo. Review the diff, merge, done.
+- **Description:** All 92 modules plus an automatic fix PR opened in your repo. Review the diff, merge, done.
 - **Bullet points:**
   - Everything in Full Scan
   - Auto-fix PR with AI-generated patches
@@ -183,7 +183,7 @@ GateTest's 9 universal language modules cover Python, Go, Rust, Java, Ruby, PHP,
 - **Type:** Per-unit or flat monthly
 - **Price:** $399
 - **Unit label:** scan
-- **Description:** The full arsenal: 67 modules + auto-fix + mutation testing + chaos testing + live crawling + autonomous exploration.
+- **Description:** The full arsenal: 92 modules + auto-fix + mutation testing + chaos testing + live crawling + autonomous exploration.
 - **Bullet points:**
   - Everything in Scan + Fix
   - Mutation testing (validates your tests catch real bugs)
@@ -195,10 +195,10 @@ GateTest's 9 universal language modules cover Python, Go, Rust, Java, Ruby, PHP,
 - **Plan name:** Continuous
 - **Type:** Flat monthly
 - **Price:** $49/month
-- **Description:** Scan every push to every branch. All 67 modules. Always-on protection. The equivalent of a full-time QA engineer reviewing every commit.
+- **Description:** Scan every push to every branch. All 92 modules. Always-on protection. The equivalent of a full-time QA engineer reviewing every commit.
 - **Bullet points:**
   - Scan on every push + PR
-  - All 67 quality modules
+  - All 92 quality modules
   - Commit status on every PR
   - Monthly billing, cancel anytime
   - Equivalent to Full Scan on every single push

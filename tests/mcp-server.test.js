@@ -142,12 +142,12 @@ describe('MCP server — tools/list', skipMcpOnWindows, () => {
 // ---------------------------------------------------------------------------
 
 describe('MCP server — check_health', skipMcpOnWindows, () => {
-  it('returns operational status with 90 modules', async () => {
+  it('returns operational status with 92 modules', async () => {
     const res = await callMcp('tools/call', { name: 'check_health', arguments: {} });
     assert.ok(res.result, `expected result: ${JSON.stringify(res).slice(0, 200)}`);
     const text = res.result.content[0].text;
     assert.ok(text.includes('Operational') || text.includes('✅'), `expected operational: ${text.slice(0, 200)}`);
-    assert.ok(text.includes('90'), `expected 90 modules in health output: ${text}`);
+    assert.ok(text.includes('92'), `expected 92 modules in health output: ${text}`);
   });
 
   it('returns content array with at least one text item', async () => {
@@ -163,10 +163,10 @@ describe('MCP server — check_health', skipMcpOnWindows, () => {
 // ---------------------------------------------------------------------------
 
 describe('MCP server — list_modules', skipMcpOnWindows, () => {
-  it('returns a list containing 90 modules', async () => {
+  it('returns a list containing 92 modules', async () => {
     const res = await callMcp('tools/call', { name: 'list_modules', arguments: {} });
     const text = res.result.content[0].text;
-    assert.ok(text.includes('90'), `expected 90 modules count: ${text.slice(0, 200)}`);
+    assert.ok(text.includes('92'), `expected 92 modules count: ${text.slice(0, 200)}`);
   });
 
   it('includes well-known module names in the output', async () => {

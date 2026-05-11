@@ -25,6 +25,7 @@ interface ScanTier {
   priceInCents: number;
   modules: string;
   description: string;
+  subscription?: boolean; // true = recurring monthly
 }
 
 const TIERS: Record<string, ScanTier> = {
@@ -65,7 +66,31 @@ const TIERS: Record<string, ScanTier> = {
     modules: "all-90+nuclear-stack",
     description:
       "Everything in Scan + Fix, PLUS: real Claude diagnosis on every finding (no templated snippets), cross-finding attack-chain correlation (textbook session-forgery / supply-chain vectors no per-finding scanner can see), mutation testing (proves your tests catch bugs), chaos / fuzz pass on entry points, and a CTO-readable executive summary report.",
+  },
 
+  // Continuous scanning tiers — recurring monthly subscriptions.
+  // Scan runs automatically on every push via the GitHub App.
+  // Uses Stripe subscription mode (not manual-capture payment).
+  continuous_quick: {
+    name: "Continuous Quick",
+    priceInCents: 4900,
+    modules: "syntax, lint, secrets, codeQuality",
+    description: "Automated scan on every push — quick suite (4 modules). Gate blocks merge on any error.",
+    subscription: true,
+  },
+  continuous_full: {
+    name: "Continuous Full",
+    priceInCents: 14900,
+    modules: "all-90",
+    description: "Automated scan on every push — all 90 modules. AI auto-fix PR opened on failure. The stack that replaces ESLint + SonarQube + Snyk.",
+    subscription: true,
+  },
+  continuous_nuclear: {
+    name: "Continuous Nuclear",
+    priceInCents: 29900,
+    modules: "all-90+nuclear-stack",
+    description: "Automated scan on every push — full Nuclear stack with Claude diagnosis, attack-chain correlation, mutation testing, and executive summary report per run.",
+    subscription: true,
   },
 };
 
@@ -151,27 +176,18 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Create Stripe Checkout Session with manual capture.
+    // Build Stripe Checkout Session params. Subscription tiers use
+    // mode=subscription with a recurring price; one-time tiers use
+    // mode=payment with manual capture (hold-then-charge model).
     //
-    // Apple Pay / Google Pay / Stripe Link: Stripe automatically surfaces
-    // these wallet methods in the Checkout sheet when the browser supports
-    // them (Safari for Apple Pay, Chrome for Google Pay) and the Stripe
-    // account has them enabled in the Dashboard. They ride on the `card`
-    // payment method type — no separate enum value needed. Adding `link`
-    // explicitly so a returning customer with a saved Stripe Link payment
-    // gets one-tap checkout. This is the "tap to pay with Apple/Google
-    // account" UX the Claude-distribution flow needs.
-    //
-    // Reference: https://docs.stripe.com/payments/apple-pay
-    //            https://docs.stripe.com/payments/link
+    // Apple Pay / Google Pay / Stripe Link ride on the card payment method
+    // type automatically when the Stripe account has them enabled.
+    const isSubscription = Boolean(tier.subscription);
+
     const params = new URLSearchParams({
       "payment_method_types[0]": "card",
       "payment_method_types[1]": "link",
-      mode: "payment",
-      "payment_intent_data[capture_method]": "manual",
-      "payment_intent_data[metadata][tier]": input.tier || "",
-      "payment_intent_data[metadata][repo_url]": input.repoUrl,
-      "payment_intent_data[metadata][modules]": tier.modules,
+      mode: isSubscription ? "subscription" : "payment",
       "metadata[tier]": input.tier || "",
       "metadata[repo_url]": input.repoUrl,
       "metadata[modules]": tier.modules,
@@ -180,13 +196,25 @@ export async function POST(req: NextRequest) {
       "line_items[0][price_data][product_data][name]": `GateTest ${tier.name}`,
       "line_items[0][price_data][product_data][description]": tier.description,
       "line_items[0][quantity]": "1",
-      // Mobile-friendly: Stripe shows wallet buttons (Apple Pay, Google
-      // Pay) above the card form when the browser advertises them.
-      // `submit_type=pay` makes the button say "Pay" instead of "Subscribe".
-      submit_type: "pay",
       success_url: `${BASE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${BASE_URL}/checkout/cancel`,
     });
+
+    if (isSubscription) {
+      // Recurring price — no manual capture for subscriptions.
+      params.set("line_items[0][price_data][recurring][interval]", "month");
+      params.set("subscription_data[metadata][tier]", input.tier || "");
+      params.set("subscription_data[metadata][repo_url]", input.repoUrl);
+      params.set("subscription_data[metadata][modules]", tier.modules);
+    } else {
+      // One-time payment with manual capture (hold-then-charge).
+      params.set("payment_intent_data[capture_method]", "manual");
+      params.set("payment_intent_data[metadata][tier]", input.tier || "");
+      params.set("payment_intent_data[metadata][repo_url]", input.repoUrl);
+      params.set("payment_intent_data[metadata][modules]", tier.modules);
+      // submit_type=pay shows "Pay" not "Subscribe" on the button.
+      params.set("submit_type", "pay");
+    }
 
     const session = await stripeRequest(
       "POST",

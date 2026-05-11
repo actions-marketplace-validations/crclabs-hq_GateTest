@@ -352,6 +352,7 @@ class SyntaxModule extends BaseModule {
       'node_modules', '.git', 'dist', 'build', 'coverage',
       '.next', '.nuxt', '.svelte-kit', '.output', '.vercel', '.turbo',
       '.gatetest', '.claude', 'out', 'vendor', '__pycache__',
+      'vscode-extension', // requires @types/vscode — not part of main project build
     ]);
 
     const isRealConfig = (configPath) => {

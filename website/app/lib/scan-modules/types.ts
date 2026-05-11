@@ -57,5 +57,23 @@ export const TIERS: Record<string, string[]> = {
     "migrations",
     "authFlaws",
     "flakyTests",
+    "mutationAnalysis",
+    "errorSwallow",
+  ],
+  nuclear: [
+    "syntax", "lint", "secrets", "codeQuality", "security",
+    "accessibility", "seo", "links", "compatibility", "dataIntegrity",
+    "documentation", "performance", "aiReview", "fakeFixDetector",
+    "dependencyFreshness", "maliciousDeps", "licenses", "iacSecurity",
+    "ciHardening", "migrations", "authFlaws", "flakyTests", "mutationAnalysis",
+    "errorSwallow",
+  ],
+  scan_fix: [
+    "syntax", "lint", "secrets", "codeQuality", "security",
+    "accessibility", "seo", "links", "compatibility", "dataIntegrity",
+    "documentation", "performance", "aiReview", "fakeFixDetector",
+    "dependencyFreshness", "maliciousDeps", "licenses", "iacSecurity",
+    "ciHardening", "migrations", "authFlaws", "flakyTests", "mutationAnalysis",
+    "errorSwallow",
   ],
 };

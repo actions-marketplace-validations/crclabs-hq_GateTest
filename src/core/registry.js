@@ -103,6 +103,9 @@ const BUILT_IN_MODULES = {
   envIntegrity: '../modules/env-integrity.js',
   systemd: '../modules/systemd.js',
   rollbackHonesty: '../modules/rollback-honesty.js',
+  // Supply chain trust
+  sbom: '../modules/sbom.js',
+  cveFeed: '../modules/cve-feed.js',
 };
 
 class ModuleRegistry {

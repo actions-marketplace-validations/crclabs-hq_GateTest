@@ -187,7 +187,10 @@ async function scanRepo(owner: string, repo: string, tier: string): Promise<Scan
   await Promise.all(Array.from({ length: workerCount }, readWorker));
 
   // Run the tier through the unified module registry — every module does real work.
-  const { modules, totalIssues } = await runTier(tier === "full" ? "full" : "quick", {
+  // nuclear + scan_fix get their own tier keys (which include mutationAnalysis).
+  const scanTier = tier === "nuclear" || tier === "scan_fix" ? tier
+    : tier === "full" ? "full" : "quick";
+  const { modules, totalIssues } = await runTier(scanTier, {
     owner,
     repo,
     files,
@@ -416,9 +419,26 @@ export async function POST(req: NextRequest) {
     // Brain unavailable — surface unmodified results.
   }
 
+  // For scan-only tiers ($29 quick / $99 full), redact file paths and line
+  // numbers from finding detail strings. Customers see WHAT is wrong but
+  // not WHERE, preventing copy-paste-into-Claude to bypass the fix tier.
+  // Fix tiers ($199 scan_fix / $399 nuclear) get full detail — the fix PR
+  // is the deliverable and requires the exact location.
+  const isFixTier = tier === "scan_fix" || tier === "nuclear";
+  const redactedModules = isFixTier
+    ? finalModules
+    : finalModules.map((m) => ({
+        ...m,
+        details: (m.details || []).map((d: string) => {
+          // Strip "path/to/file.ts:42 — " and "path/to/file.ts — " prefixes.
+          const stripped = d.replace(/^(?:error|warn(?:ing)?|info)\s*:\s*/i, "").trim();
+          return stripped.replace(/^[A-Za-z0-9_./@\-+]+?\.[A-Za-z0-9]{1,8}(?::\d+(?::\d+)?)?\s*[-—:]\s*/, "");
+        }),
+      }));
+
   return NextResponse.json({
     status: result.error ? "failed" : "complete",
-    modules: finalModules,
+    modules: redactedModules,
     totalModules: finalModules.length,
     completedModules: finalModules.length,
     totalIssues: finalTotalIssues,
@@ -430,6 +450,15 @@ export async function POST(req: NextRequest) {
     authSource: result.authSource,
     error: result.error,
     fixableIssues,
+    // Phase 1.2b activation: per-module findings map so the fix API can
+    // run the cross-scanner re-validation gate without a separate fetch.
+    // The gate diffs post-fix findings against this baseline to detect
+    // new regressions introduced by a fix.
+    findingsByModule: Object.fromEntries(
+      finalModules
+        .filter((m) => Array.isArray(m.details) && (m.details as string[]).length > 0)
+        .map((m) => [m.name, m.details as string[]])
+    ),
     // Honest disclosure of what the brain hid / softened. Operator
     // dashboard (5.2.4) consumes the same shape via /admin/learning.
     confidenceAdjustments: {

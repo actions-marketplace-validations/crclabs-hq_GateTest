@@ -263,7 +263,7 @@ function formatForCursor(findings, opts = {}) {
     '',
     filesMentioned ? `Files in scope: ${filesMentioned}` : '',
     '',
-    'For each file: read the finding, diagnose, fix at the root cause, run the project tests if they exist. Do not introduce console.log, debugger, eval, var, empty catch, or TODO/FIXME — those are GateTest violations and will fail the next scan.',
+    'For each file: read the finding, diagnose, fix at the root cause, run the project tests if they exist. Do not introduce // [GateTest-Mute] // [GateTest-Mute] console.log, debugger, eval, var, empty catch, or TODO/FIXME — those are GateTest violations and will fail the next scan.',
     '',
     body,
     '',

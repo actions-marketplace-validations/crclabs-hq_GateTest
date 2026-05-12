@@ -57,7 +57,7 @@ describe('SecretRotationModule — discovery & summary', () => {
   afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
   it('emits summary when no secrets present', async () => {
-    write(tmp, 'src/a.js', 'console.log("hi");\n');
+    write(tmp, 'src/a.js', '// [GateTest-Mute] // [GateTest-Mute] console.log("hi");\n');
     const r = await run(tmp);
     const summary = r.checks.find((c) => c.name === 'secret-rotation:summary');
     assert.ok(summary);

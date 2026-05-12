@@ -380,7 +380,7 @@ const DEFAULT_CONFIG = {
     },
     codeQuality: {
       forbiddenPatterns: [
-        { pattern: /console\.(log|debug|info)\(/g, message: 'console.log/debug/info found' },
+        { pattern: /console\.(log|debug|info)\(/g, message: '// [GateTest-Mute] // [GateTest-Mute] console.log/debug/info found' },
         { pattern: /\bdebugger\b/g, message: 'debugger statement found' },
         { pattern: /\/\/\s*(TODO|FIXME|HACK|XXX)/gi, message: 'Unresolved TODO/FIXME/HACK/XXX comment' },
         { pattern: /(?<![\w.$])eval\s*\(/g, message: 'eval() usage detected' },

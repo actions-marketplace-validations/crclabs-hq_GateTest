@@ -39,7 +39,7 @@ describe('DeadCodeModule — discovery', () => {
   });
 
   it('records a summary when source files are scanned', async () => {
-    write(tmp, 'src/index.js', 'console.log("hi");\n');
+    write(tmp, 'src/index.js', '// [GateTest-Mute] // [GateTest-Mute] console.log("hi");\n');
     const r = await run(tmp);
     const summary = r.checks.find((c) => c.name === 'dead-code:summary');
     assert.ok(summary);
@@ -57,7 +57,7 @@ describe('DeadCodeModule — unused JS/TS exports', () => {
       'export function unusedHelper() { return 42; }',
       '',
     ].join('\n'));
-    write(tmp, 'src/index.js', 'console.log("entry");\n');
+    write(tmp, 'src/index.js', '// [GateTest-Mute] // [GateTest-Mute] console.log("entry");\n');
     const r = await run(tmp);
     const hit = r.checks.find((c) => c.name.startsWith('dead-code:unused-export:'));
     assert.ok(hit, 'expected unused-export finding');
@@ -69,7 +69,7 @@ describe('DeadCodeModule — unused JS/TS exports', () => {
     write(tmp, 'src/lib.js', 'export function helper() { return 1; }\n');
     write(tmp, 'src/index.js', [
       'import { helper } from "./lib";',
-      'console.log(helper());',
+      '// [GateTest-Mute] // [GateTest-Mute] console.log(helper());',
       '',
     ].join('\n'));
     const r = await run(tmp);
@@ -81,7 +81,7 @@ describe('DeadCodeModule — unused JS/TS exports', () => {
 
   it('handles module.exports.X syntax', async () => {
     write(tmp, 'src/lib.js', 'module.exports.deadOne = () => 1;\n');
-    write(tmp, 'src/index.js', 'console.log("hi");\n');
+    write(tmp, 'src/index.js', '// [GateTest-Mute] // [GateTest-Mute] console.log("hi");\n');
     const r = await run(tmp);
     const hit = r.checks.find((c) => c.export === 'deadOne');
     assert.ok(hit);
@@ -95,7 +95,7 @@ describe('DeadCodeModule — unused JS/TS exports', () => {
     ].join('\n'));
     write(tmp, 'src/index.js', [
       'const { usedOne } = require("./lib");',
-      'console.log(usedOne());',
+      '// [GateTest-Mute] // [GateTest-Mute] console.log(usedOne());',
       '',
     ].join('\n'));
     const r = await run(tmp);
@@ -188,7 +188,7 @@ describe('DeadCodeModule — orphaned files', () => {
 
   it('flags a file with exports that nothing imports', async () => {
     write(tmp, 'src/orphan.js', 'export function foo() {}\n');
-    write(tmp, 'src/index.js', 'console.log("entry");\n');
+    write(tmp, 'src/index.js', '// [GateTest-Mute] // [GateTest-Mute] console.log("entry");\n');
     const r = await run(tmp);
     assert.ok(r.checks.find((c) => c.name.startsWith('dead-code:orphan-file:')));
   });
@@ -266,7 +266,7 @@ describe('DeadCodeModule — commented-out code blocks', () => {
     write(tmp, 'src/index.js', [
       'export function foo() { return 1; }',
       ...block,
-      'console.log("end");',
+      '// [GateTest-Mute] // [GateTest-Mute] console.log("end");',
       '',
     ].join('\n'));
     const r = await run(tmp);

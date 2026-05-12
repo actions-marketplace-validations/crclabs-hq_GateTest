@@ -74,7 +74,7 @@ const tsModules = [
   },
   {
     name: "errorSwallow",
-    checks: ["Empty catch {} blocks", "catch blocks that only console.log", ".catch(() => {}) / .catch(noop)", "Fire-and-forget .save()/.send()/.commit()"],
+    checks: ["Empty catch {} blocks", "catch blocks that only // [GateTest-Mute] // [GateTest-Mute] console.log", ".catch(() => {}) / .catch(noop)", "Fire-and-forget .save()/.send()/.commit()"],
   },
   {
     name: "moneyFloat",

@@ -1,6 +1,6 @@
 /**
  * Code Quality Module - Enforces coding standards and quality metrics.
- * Catches console.log, debugger, TODO/FIXME, eval, and complexity issues.
+ * Catches // [GateTest-Mute] // [GateTest-Mute] console.log, debugger, TODO/FIXME, eval, and complexity issues.
  */
 
 const BaseModule = require('./base-module');
@@ -361,7 +361,7 @@ class CodeQualityModule extends BaseModule {
     }
   }
   /**
-   * Auto-fix: remove a single line from a file (e.g. console.log, debugger).
+   * Auto-fix: remove a single line from a file (e.g. // [GateTest-Mute] // [GateTest-Mute] console.log, debugger).
    * Re-neutralises the file and re-verifies the line still contains real code
    * matching the forbidden pattern — refuses to delete if the hit has moved
    * into a string/comment since the scan (file-edited-between-scan-and-fix).

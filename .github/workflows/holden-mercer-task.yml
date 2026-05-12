@@ -1,0 +1,65 @@
+name: Holden Mercer — Background Task
+
+# Dispatched from the dashboard with a task prompt. Runs a Claude tool-use
+# loop in this repo for up to 6 hours, writes its result to
+# .holdenmercer/tasks/<task_id>.md, and commits its work along the way.
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: "Opaque task id from the dashboard."
+        required: true
+      prompt:
+        description: "The task for Claude to perform."
+        required: true
+      brief:
+        description: "Project brief for system context."
+        required: false
+        default: ""
+      model:
+        description: "Anthropic model id."
+        required: false
+        default: "claude-opus-4-7"
+      max_iters:
+        description: "Safety cap on tool-use turns."
+        required: false
+        default: "30"
+      branch:
+        description: "Branch to commit to. Empty = repo default."
+        required: false
+        default: ""
+
+permissions:
+  # Need write so the agent can commit files via the GitHub API.
+  contents: write
+  # Need actions:write so the agent can dispatch the gate workflow.
+  actions:  write
+
+jobs:
+  agent:
+    name: Holden Mercer agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install agent deps
+        run: pip install -q anthropic httpx
+
+      - name: Run the agent
+        env:
+          HM_REPO:           ${{ github.repository }}
+          HM_TASK_ID:        ${{ github.event.inputs.task_id }}
+          HM_PROMPT:         ${{ github.event.inputs.prompt }}
+          HM_BRIEF:          ${{ github.event.inputs.brief }}
+          HM_MODEL:          ${{ github.event.inputs.model }}
+          HM_MAX_ITERS:      ${{ github.event.inputs.max_iters }}
+          HM_BRANCH:         ${{ github.event.inputs.branch }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN:      ${{ secrets.GITHUB_TOKEN }}
+        run: python .holdenmercer/agent_runner.py

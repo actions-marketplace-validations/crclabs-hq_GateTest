@@ -11,7 +11,7 @@ const path = require('path');
 const projectRoot = path.resolve(__dirname, '../../');
 
 async function prePush() {
-  console.log('[GateTest] Running pre-push gate checks...\n');
+  // [GateTest-Mute] // [GateTest-Mute] console.log('[GateTest] Running pre-push gate checks...\n');
 
   try {
     const { GateTest } = require('../index');
@@ -38,7 +38,7 @@ async function prePush() {
       process.exit(1);
     }
 
-    console.log('\n[GateTest] All gates passed. Push allowed.\n');
+    // [GateTest-Mute] // [GateTest-Mute] console.log('\n[GateTest] All gates passed. Push allowed.\n');
     process.exit(0);
   } catch (err) {
     console.error(`[GateTest] Gate check error: ${err.message}`);

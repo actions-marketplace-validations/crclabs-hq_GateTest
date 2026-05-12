@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# ============================================================================
+# GATETEST SELF-PROTECTION PRE-PUSH HOOK
+# ============================================================================
+# We dogfood our own gate. This hook runs the QUICK suite locally
+# before every push — same suite CI runs — so red never reaches the
+# remote. Override with `git push --no-verify` only with Craig auth.
+#
+# To activate:  git config core.hooksPath .husky
+# (Or run:      ./scripts/install-hooks.sh)
+# ============================================================================
+set -e
+
+# Skip when there's nothing to push (e.g. branch deletion).
+if [ -z "$(git rev-parse HEAD 2>/dev/null)" ]; then
+  exit 0
+fi
+
+# Skip on CI runners — CI already runs the gate.
+if [ -n "${CI:-}" ]; then
+  echo "[GateTest pre-push] CI environment detected — gate runs in CI workflow, skipping local."
+  exit 0
+fi
+
+echo "[GateTest pre-push] Running quick suite before push ..."
+# GATETEST_FAST=1 tells potentially-slow modules (e.g. syntax → tsc
+# --noEmit, which can take 30-60s per tsconfig on a real monorepo) to
+# skip themselves with an info-level "deferred to CI" check. CI runs
+# the full uncapped gate; the local hook stays advisory and snappy.
+if ! GATETEST_FAST=1 node "$(git rev-parse --show-toplevel)/bin/gatetest.js" --suite quick; then
+  echo ""
+  echo "[GateTest pre-push] BLOCKED — quick suite reported errors above."
+  echo "Fix the errors and try again, or override with: git push --no-verify"
+  echo "(Override requires Craig's authorisation per the Bible.)"
+  exit 1
+fi
+echo "[GateTest pre-push] PASSED — pushing."

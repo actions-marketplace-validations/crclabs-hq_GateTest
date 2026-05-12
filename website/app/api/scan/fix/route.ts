@@ -19,6 +19,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { isAdminRequest } from "@/app/lib/admin-auth";
 import {
   createBranch,
   fetchBlob,
@@ -30,6 +31,15 @@ import {
   resolveRepoAuth,
   upsertFile,
 } from "../../../lib/gluecron-client";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { createLimiter, PRESETS } = require("@lib/rate-limit") as {
+  createLimiter: (opts: { windowMs: number; maxRequests: number }) => {
+    guard: (req: NextRequest) => Promise<{ allowed: boolean; status?: number; body?: Record<string, unknown>; headers?: Record<string, string> }>;
+  };
+  PRESETS: Record<string, { windowMs: number; maxRequests: number }>;
+};
+
+const _scanFixLimiter = createLimiter(PRESETS.scanFix);
 // Phase 1 of THE FIX-FIRST BUILD PLAN — N-attempt iterative loop with
 // structured per-attempt logging. The loop carries forward each previous
 // failure into the next prompt so Claude sees its own mistake. Pure JS
@@ -652,6 +662,18 @@ export async function POST(req: NextRequest) {
 
   if (!ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: "AI not configured (ANTHROPIC_API_KEY)" }, { status: 503 });
+  }
+
+  // Rate-limit AFTER body parsing + validation, BEFORE Anthropic/GitHub API calls.
+  // Admin requests bypass the limiter — they are internal and authenticated.
+  if (!isAdminRequest(req)) {
+    const _rlScanFix = await _scanFixLimiter.guard(req);
+    if (!_rlScanFix.allowed) {
+      return NextResponse.json(_rlScanFix.body, {
+        status: _rlScanFix.status ?? 429,
+        headers: _rlScanFix.headers as Record<string, string>,
+      });
+    }
   }
 
   // Accept gluecron.com URLs first; fall back to github.com for links

@@ -17,6 +17,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import https from "https";
 import { isAdminRequest } from "@/app/lib/admin-auth";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { createLimiter, PRESETS } = require("@lib/rate-limit") as {
+  createLimiter: (opts: { windowMs: number; maxRequests: number }) => {
+    guard: (req: NextRequest) => Promise<{ allowed: boolean; status?: number; body?: Record<string, unknown>; headers?: Record<string, string> }>;
+  };
+  PRESETS: Record<string, { windowMs: number; maxRequests: number }>;
+};
+
+const _scanRunLimiter = createLimiter(PRESETS.scanRun);
 import { fetchBlob, fetchTree, resolveRepoAuth } from "@/app/lib/gluecron-client";
 import { runTier, type RepoFile, TIERS } from "@/app/lib/scan-modules";
 // Wire contract reference: Gluecron.com/GATETEST_HOOK.md — each repo keeps its
@@ -224,6 +233,18 @@ async function _postImpl(req: NextRequest): Promise<ReturnType<typeof NextRespon
   // Admin bypass: if the request carries a valid admin cookie, we skip all
   // Stripe interaction entirely. Admin scans never create or capture charges.
   const isAdmin = isAdminRequest(req);
+
+  // Rate-limit AFTER body parsing + admin check, BEFORE any Gluecron/Stripe calls.
+  // Admin requests bypass the limiter — they are internal and authenticated.
+  if (!isAdmin) {
+    const _rlScanRun = await _scanRunLimiter.guard(req);
+    if (!_rlScanRun.allowed) {
+      return NextResponse.json(_rlScanRun.body, {
+        status: _rlScanRun.status ?? 429,
+        headers: _rlScanRun.headers as Record<string, string>,
+      });
+    }
+  }
 
   // ── Idempotency guard + authoritative tier resolution ────────────
   // /api/scan/run can be invoked multiple times for the same session

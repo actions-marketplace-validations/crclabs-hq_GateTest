@@ -165,6 +165,24 @@ async function scanRepo(owner: string, repo: string, tier: string): Promise<Scan
 }
 
 export async function POST(req: NextRequest) {
+  // Outer guard — Node 24 changed unhandledRejection from 'warn' to 'throw'.
+  // Any await that escapes the inner try/catch blocks (e.g. an unexpected throw
+  // from extractIssuesFromModules or the final NextResponse.json call) must not
+  // crash the Vercel function. This outer try/catch is the last resort; the
+  // inner guards below are the first line of defence.
+  try {
+  return await _postImpl(req);
+  } catch (outerErr) { // error-ok — outermost guard; inner guards should catch first
+    const msg = outerErr instanceof Error ? outerErr.message : String(outerErr);
+    console.error("[GateTest] scan/run POST crashed unexpectedly:", msg);
+    return NextResponse.json(
+      { status: "failed", error: "Scan failed — please try again or contact support." },
+      { status: 500 }
+    );
+  }
+}
+
+async function _postImpl(req: NextRequest): Promise<ReturnType<typeof NextResponse.json>> {
   let input: {
     sessionId?: string;
     repoUrl?: string;
@@ -266,8 +284,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Run the scan
-  const result = await scanRepo(owner, repo, tier || "quick");
+  // Run the scan — wrap in try/catch so any unexpected throw from scanRepo
+  // (e.g. an unhandled rejection inside a module) returns a 500 JSON response
+  // instead of crashing the Vercel function (Node 24 unhandledRejection = throw).
+  let result: Awaited<ReturnType<typeof scanRepo>>;
+  try {
+    result = await scanRepo(owner, repo, tier || "quick");
+  } catch (err) { // error-ok — top-level scan crash guard; preserves Stripe hold for customer retry
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[GateTest] scanRepo crashed unexpectedly:", msg);
+    return NextResponse.json(
+      { status: "failed", error: "Scan failed — please try again or contact support." },
+      { status: 500 }
+    );
+  }
 
   // If we have a session ID AND this is NOT an admin request, update Stripe
   // and capture payment. Admins never touch billing.

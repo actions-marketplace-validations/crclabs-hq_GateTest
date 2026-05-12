@@ -666,6 +666,14 @@ export async function POST(req: NextRequest) {
   const owner = repoMatch[1];
   const repo = repoMatch[2].replace(/\.git$/, "");
 
+  // Top-level guard — wraps everything from auth resolution through PR creation.
+  // Node 24 changed unhandledRejection from 'warn' to 'throw'; any uncaught
+  // await inside this function would crash the Vercel function. The inner
+  // try/catch at the branch-creation block catches PR-layer failures; this outer
+  // guard catches auth, file fetching, syntax gate, scanner gate, and any other
+  // unexpected throw so the customer always gets a JSON 500 instead of a crash.
+  try {
+
   // Resolve Gluecron PAT and confirm repo access with a probe request.
   const auth = await resolveRepoAuth(owner, repo);
   if (!auth.token) {
@@ -1284,6 +1292,15 @@ export async function POST(req: NextRequest) {
       fixesGenerated: fixes.length,
       errors,
     }, { status: 500 });
+  }
+
+  } catch (outerErr) { // error-ok — outer guard: catches auth / file-fetch / gate throws that bypassed inner handler
+    const msg = outerErr instanceof Error ? outerErr.message : "Unexpected fix-route error";
+    console.error("[GateTest] scan/fix route crashed:", msg);
+    return NextResponse.json(
+      { status: "error", error: "Fix failed — please try again or contact support." },
+      { status: 500 }
+    );
   }
 }
 

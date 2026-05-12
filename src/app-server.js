@@ -33,6 +33,25 @@ const WEBHOOK_SECRET = process.env.GATETEST_WEBHOOK_SECRET;
 const GATETEST_DIR = path.resolve(__dirname, '..');
 
 // ============================================================
+//  Node 24 crash-on-unhandled-rejection safety net
+//  Node.js v24 changed the default unhandledRejection behaviour
+//  from 'warn' to 'throw', which crashes the process. The correct
+//  fix is per-handler try/catch (applied throughout this file), but
+//  this process-level guard is the last-resort safety net so a
+//  single missed .catch() never takes the server down under HN load.
+// ============================================================
+process.on('unhandledRejection', (reason) => {
+  console.error('[GateTest] CRITICAL unhandled rejection — would crash Node 24:', reason);
+  // Do NOT exit. Per-request handlers are the first line of defence;
+  // this is the safety net. Log loudly so the deploy log captures it.
+});
+process.on('uncaughtException', (err) => {
+  console.error('[GateTest] CRITICAL uncaught exception:', err);
+  // Same posture — log, don't exit. A crash here would drop all
+  // in-flight webhook deliveries from GitHub.
+});
+
+// ============================================================
 //  GitHub App JWT Authentication
 // ============================================================
 
@@ -329,6 +348,14 @@ const server = http.createServer(async (req, res) => {
   // Webhook endpoint
   if (req.method === 'POST' && req.url === '/webhook') {
     const chunks = [];
+    // Guard the incoming request stream. If the client disconnects mid-upload,
+    // IncomingMessage emits 'error'. Without this listener the event becomes an
+    // uncaughtException. Our process-level handler catches it via the safety net
+    // above, but handling it here is the cleaner first line of defence.
+    req.on('error', (err) => {
+      console.error('[GateTest] Webhook request stream error (client disconnected?):', err.message);
+      try { if (!res.headersSent) { res.writeHead(400); res.end('Request error'); } } catch { /* socket-ok */ }
+    });
     req.on('data', (c) => chunks.push(c));
     req.on('end', async () => {
       const body = Buffer.concat(chunks).toString('utf-8');
@@ -421,6 +448,14 @@ if (!APP_ID) {
 `);
   process.exit(1);
 }
+
+// Catch malformed HTTP requests before they bubble as uncaught
+// exceptions. Without this handler, a client that sends a
+// truncated or garbage HTTP preamble logs an uncaught socket error.
+server.on('clientError', (err, socket) => {
+  console.error('[GateTest] HTTP client error:', err.message);
+  try { socket.destroy(); } catch { /* socket-ok */ }
+});
 
 server.listen(PORT, () => {
   console.log(`

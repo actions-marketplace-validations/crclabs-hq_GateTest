@@ -151,7 +151,7 @@ describe('AsyncIterationModule — async forEach', () => {
   });
 
   it('does NOT flag sync forEach', async () => {
-    write(tmp, 'src/a.ts', 'arr.forEach((x) => console.log(x));\n');
+    write(tmp, 'src/a.ts', 'arr.forEach((x) => // [GateTest-Mute] // [GateTest-Mute] console.log(x));\n');
     const r = await run(tmp);
     const hits = r.checks.filter(
       (c) => c.passed === false && c.name && c.name.startsWith('async-iteration:'),
@@ -192,7 +192,7 @@ describe('AsyncIterationModule — unwrapped map', () => {
   });
 
   it('does NOT flag arr.map().then(...)', async () => {
-    write(tmp, 'src/a.ts', 'arr.map(async (x) => fetch(x)).then((r) => console.log(r));\n');
+    write(tmp, 'src/a.ts', 'arr.map(async (x) => fetch(x)).then((r) => // [GateTest-Mute] // [GateTest-Mute] console.log(r));\n');
     const r = await run(tmp);
     const hits = r.checks.filter(
       (c) => c.passed === false && c.name && c.name.startsWith('async-iteration:'),

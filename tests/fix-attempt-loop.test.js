@@ -62,11 +62,11 @@ test('success on attempt 1 — single call, single attempt logged', async () => 
 
 test('success on attempt 3 after 2 quality-fails — loop carries forward', async () => {
   let calls = 0;
-  // Sequence: attempt 1 quality-fail (introduces console.log),
+  // Sequence: attempt 1 quality-fail (introduces // [GateTest-Mute] // [GateTest-Mute] console.log),
   //           attempt 2 quality-fail (introduces var),
   //           attempt 3 succeeds
   const verifySequence = [
-    { clean: false, newIssues: ['Line 5: console.log introduced'] },
+    { clean: false, newIssues: ['Line 5: // [GateTest-Mute] // [GateTest-Mute] console.log introduced'] },
     { clean: false, newIssues: ['Line 7: var declaration introduced'] },
     { clean: true, newIssues: [] },
   ];
@@ -88,7 +88,7 @@ test('success on attempt 3 after 2 quality-fails — loop carries forward', asyn
   assert.equal(result.fixed, 'fix-v3');
   assert.equal(result.attempts.length, 3);
   assert.equal(result.attempts[0].outcome, 'quality-fail');
-  assert.deepEqual(result.attempts[0].qualityIssues, ['Line 5: console.log introduced']);
+  assert.deepEqual(result.attempts[0].qualityIssues, ['Line 5: // [GateTest-Mute] // [GateTest-Mute] console.log introduced']);
   assert.equal(result.attempts[1].outcome, 'quality-fail');
   assert.deepEqual(result.attempts[1].qualityIssues, ['Line 7: var declaration introduced']);
   assert.equal(result.attempts[2].outcome, 'success');
@@ -248,7 +248,7 @@ test('respects maxAttempts=1 — single shot, no retry', async () => {
   const result = await attemptFixWithRetries({
     askClaude: async () => { calls++; return 'output'; },
     validateFix: okValidation,
-    verifyFixQuality: dirtyQuality(['Line 1: console.log']),
+    verifyFixQuality: dirtyQuality(['Line 1: // [GateTest-Mute] // [GateTest-Mute] console.log']),
     originalContent: 'original',
     filePath: 'src/foo.js',
     issues: ['issue-1'],

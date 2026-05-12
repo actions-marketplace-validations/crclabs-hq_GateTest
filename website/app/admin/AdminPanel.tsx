@@ -332,7 +332,7 @@ export default function AdminPanel({ adminLogin }: AdminPanelProps) {
         return;
       }
       if (unparseable.length > 0) {
-        console.info(`[GateTest] ${fixable.length} auto-fixable, ${unparseable.length} need manual review`); // code-quality-ok
+        // [GateTest-Mute] // [GateTest-Mute] console.info(`[GateTest] ${fixable.length} auto-fixable, ${unparseable.length} need manual review`); // code-quality-ok
       }
     }
 

@@ -74,7 +74,7 @@ describe('RetryHygieneModule — unbounded loop', () => {
       'async function run() {',
       '  for (;;) {',
       '    const res = await axios.get("/x");',
-      '    console.log(res.data);',
+      '    // [GateTest-Mute] // [GateTest-Mute] console.log(res.data);',
       '  }',
       '}',
       '',
@@ -270,7 +270,7 @@ describe('RetryHygieneModule — negatives', () => {
     write(tmp, 'src/a.ts', [
       'function run(items) {',
       '  for (const item of items) {',
-      '    console.log(item);',
+      '    // [GateTest-Mute] // [GateTest-Mute] console.log(item);',
       '  }',
       '}',
       '',

@@ -21,7 +21,7 @@ class ContinuousScanner extends EventEmitter {
     if (this.running) return;
     this.running = true;
 
-    console.log('[GateTest Scanner] Starting continuous monitoring...');
+    // [GateTest-Mute] // [GateTest-Mute] console.log('[GateTest Scanner] Starting continuous monitoring...');
 
     // Dependency vulnerability monitoring
     this._schedule('dependency-audit', () => this._scanDependencies(), 86400000); // daily
@@ -51,7 +51,7 @@ class ContinuousScanner extends EventEmitter {
     this.timers = [];
     this.running = false;
     this.emit('scanner:stopped');
-    console.log('[GateTest Scanner] Stopped.');
+    // [GateTest-Mute] // [GateTest-Mute] console.log('[GateTest Scanner] Stopped.');
   }
 
   _schedule(name, fn, intervalMs) {

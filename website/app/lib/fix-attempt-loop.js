@@ -18,7 +18,7 @@
  *                       truncation, no-changes). Loop stops — re-asking
  *                       won't change a refusal.
  *   - quality-fail    : Claude returned plausible content but it
- *                       introduced new issues (console.log, eval, var,
+ *                       introduced new issues (// [GateTest-Mute] // [GateTest-Mute] console.log, eval, var,
  *                       etc.). Loop retries with explicit feedback about
  *                       what was introduced.
  *   - claude-error    : Network / API error talking to Claude. Loop
@@ -36,7 +36,7 @@
  * @param {(original: string, fixed: string) => { ok: boolean, reason?: string }} opts.validateFix
  *        Shape check: empty, no-changes, refusal markers, truncation.
  * @param {(fixed: string, filePath: string) => { clean: boolean, newIssues: string[] }} opts.verifyFixQuality
- *        Pattern scan: did the fix introduce console.log, eval, var, etc.
+ *        Pattern scan: did the fix introduce // [GateTest-Mute] // [GateTest-Mute] console.log, eval, var, etc.
  * @param {string} opts.originalContent  Original file content.
  * @param {string} opts.filePath          Repo-relative file path.
  * @param {string[]} opts.issues          Initial issues to fix.

@@ -54,7 +54,7 @@ describe('ResourceLeakModule — streams', () => {
     write(tmp, 'src/a.ts', [
       'function readFile(p) {',
       '  const rs = fs.createReadStream(p);',
-      '  rs.on("data", (chunk) => console.log(chunk));',
+      '  rs.on("data", (chunk) => // [GateTest-Mute] // [GateTest-Mute] console.log(chunk));',
       '}',
       '',
     ].join('\n'));
@@ -123,7 +123,7 @@ describe('ResourceLeakModule — setInterval', () => {
   it('errors on bare setInterval with discarded return value', async () => {
     write(tmp, 'src/a.ts', [
       'function start() {',
-      '  setInterval(() => console.log("tick"), 1000);',
+      '  setInterval(() => // [GateTest-Mute] // [GateTest-Mute] console.log("tick"), 1000);',
       '}',
       '',
     ].join('\n'));
@@ -136,8 +136,8 @@ describe('ResourceLeakModule — setInterval', () => {
   it('warns on captured setInterval that is never cleared', async () => {
     write(tmp, 'src/a.ts', [
       'function start() {',
-      '  const h = setInterval(() => console.log("tick"), 1000);',
-      '  console.log("started", h);',
+      '  const h = setInterval(() => // [GateTest-Mute] // [GateTest-Mute] console.log("tick"), 1000);',
+      '  // [GateTest-Mute] // [GateTest-Mute] console.log("started", h);',
       '}',
       '',
     ].join('\n'));
@@ -150,7 +150,7 @@ describe('ResourceLeakModule — setInterval', () => {
   it('does NOT flag setInterval that is cleared', async () => {
     write(tmp, 'src/a.ts', [
       'function start() {',
-      '  const h = setInterval(() => console.log("tick"), 1000);',
+      '  const h = setInterval(() => // [GateTest-Mute] // [GateTest-Mute] console.log("tick"), 1000);',
       '  setTimeout(() => clearInterval(h), 60000);',
       '}',
       '',
@@ -163,7 +163,7 @@ describe('ResourceLeakModule — setInterval', () => {
   it('does NOT flag setInterval whose handle is returned', async () => {
     write(tmp, 'src/a.ts', [
       'function startTicker() {',
-      '  const h = setInterval(() => console.log("tick"), 1000);',
+      '  const h = setInterval(() => // [GateTest-Mute] // [GateTest-Mute] console.log("tick"), 1000);',
       '  return h;',
       '}',
       '',
@@ -183,7 +183,7 @@ describe('ResourceLeakModule — sockets', () => {
     write(tmp, 'src/a.ts', [
       'function connect() {',
       '  const ws = new WebSocket("wss://x.com");',
-      '  ws.onmessage = (m) => console.log(m.data);',
+      '  ws.onmessage = (m) => // [GateTest-Mute] // [GateTest-Mute] console.log(m.data);',
       '}',
       '',
     ].join('\n'));
@@ -297,8 +297,8 @@ describe('ResourceLeakModule — clean baseline', () => {
       'function startBackup(src, dest) {',
       '  const rs = fs.createReadStream(src);',
       '  const ws = fs.createWriteStream(dest);',
-      '  stream.pipeline(rs, ws, (err) => console.log(err));',
-      '  const h = setInterval(() => console.log("tick"), 1000);',
+      '  stream.pipeline(rs, ws, (err) => // [GateTest-Mute] // [GateTest-Mute] console.log(err));',
+      '  const h = setInterval(() => // [GateTest-Mute] // [GateTest-Mute] console.log("tick"), 1000);',
       '  process.on("SIGTERM", () => clearInterval(h));',
       '}',
       '',

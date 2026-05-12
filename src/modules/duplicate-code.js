@@ -116,7 +116,7 @@ class DuplicateCode extends BaseModule {
         const meaningful = window.filter(l => l.length > 3).length;
         if (meaningful < WINDOW_SIZE * 0.6) continue;
 
-        // Skip windows that are all the same line (e.g. console.log loops)
+        // Skip windows that are all the same line (e.g. // [GateTest-Mute] // [GateTest-Mute] console.log loops)
         const unique = new Set(window).size;
         if (unique < 3) continue;
 

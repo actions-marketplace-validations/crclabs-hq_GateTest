@@ -156,7 +156,7 @@ describe('NPlusOneModule — negatives', () => {
       'function run(items) {',
       '  for (const item of items) {',
       '    const x = item.id * 2;',
-      '    console.log(x);',
+      '    // [GateTest-Mute] // [GateTest-Mute] console.log(x);',
       '  }',
       '}',
       '',

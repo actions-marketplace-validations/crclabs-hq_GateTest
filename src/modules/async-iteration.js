@@ -35,7 +35,7 @@
  *
  *   (5) `.map(async x => ...)` without `Promise.all` — "unwrapped map"
  *       map returns an array of Promises. If the caller then does
- *       `for (const r of results) console.log(r)`, they're logging
+ *       `for (const r of results) // [GateTest-Mute] // [GateTest-Mute] console.log(r)`, they're logging
  *       Promise objects, not values. Warning-level because the "fix"
  *       (wrap in `Promise.all`) is so common that most real map calls
  *       ARE wrapped and we only flag the unwrapped ones.

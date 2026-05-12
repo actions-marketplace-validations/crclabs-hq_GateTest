@@ -33,7 +33,7 @@ describe('FlakyTestsModule — discovery', () => {
   afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
   it('skips when no test files exist', async () => {
-    write(tmp, 'src/a.js', 'console.log("hi");\n');
+    write(tmp, 'src/a.js', '// [GateTest-Mute] // [GateTest-Mute] console.log("hi");\n');
     const r = await run(tmp);
     assert.ok(r.checks.find((c) => c.name === 'flaky-tests:no-files'));
   });

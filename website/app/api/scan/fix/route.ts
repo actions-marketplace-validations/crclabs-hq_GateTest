@@ -1396,6 +1396,7 @@ export async function POST(req: NextRequest) {
     // critique posts as a separate PR comment so the customer sees
     // a second pair of eyes on every fix.
     let pairReviewSummary: string | undefined;
+    let confidenceSummary: string | undefined;
     if (input.tier === "scan_fix") {
       try {
         // Build map: source-file → regression-test-content for the
@@ -1415,6 +1416,47 @@ export async function POST(req: NextRequest) {
         pairReviewSummary = review.summary;
         const reviewMarkdown = renderReviewComment(review.reviews, review.averages);
         await postPrComment(owner, repo, prNumber, reviewMarkdown, token);
+
+        // Tier-1 Item 5 — Confidence-Aware Reporting.
+        // Aggregate the pair-review 4-axis scores into a per-fix confidence
+        // and apply the per-tier threshold gate. Non-blocking: we surface
+        // the gate decision in the response + PR comment but never reject
+        // a fix that already shipped to the branch (the customer keeps
+        // what they paid for). Future: feed this back into the loop to
+        // re-attempt fixes below threshold.
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const {
+            aggregateConfidence,
+            summariseConfidence,
+            formatConfidenceReport,
+          } = require("@lib/confidence-gate") as {
+            aggregateConfidence: (s: unknown) => number | null;
+            summariseConfidence: (opts: { fixes: Array<{ file: string; scores?: unknown }>; tier: string }) => string;
+            formatConfidenceReport: (opts: { fixes: Array<{ file: string; scores?: unknown }>; tier: string }) => string;
+          };
+          const fixesWithScores = review.reviews.map((r) => ({
+            file: r.file,
+            scores: r.scores || undefined,
+          }));
+          const confTier = input.tier || "scan_fix";
+          confidenceSummary = summariseConfidence({ fixes: fixesWithScores, tier: confTier });
+          // Best-effort log of per-fix confidence for ops visibility.
+          for (const f of fixesWithScores) {
+            const conf = aggregateConfidence(f.scores);
+            if (conf !== null && conf < 0.85) {
+              console.log(`[GateTest] low-confidence fix ${f.file}: ${conf.toFixed(2)} (scan_fix threshold 0.85)`);
+            }
+          }
+          const confidenceMarkdown = formatConfidenceReport({ fixes: fixesWithScores, tier: confTier });
+          await postPrComment(owner, repo, prNumber, confidenceMarkdown, token);
+        } catch (confErr) {
+          // Non-critical — fix shipped, pair review posted, only the
+          // confidence summary failed.
+          const message = confErr instanceof Error ? confErr.message : "confidence report failed";
+          errors.push(`Confidence report failed (no comment posted): ${message}`);
+          confidenceSummary = `confidence: failed (${message})`;
+        }
       } catch (err) {
         // Non-critical — PR + verification already posted. Pair review
         // is a $199-tier value-add; if Claude is degraded, the rest
@@ -1444,6 +1486,9 @@ export async function POST(req: NextRequest) {
       pairReview: pairReviewSummary
         ? { summary: pairReviewSummary }
         : { skipped: true, reason: "tier is not scan_fix — pair review is a $199-tier value-add" },
+      confidence: confidenceSummary
+        ? { summary: confidenceSummary }
+        : { skipped: true, reason: "tier is not scan_fix — confidence-aware reporting is a $199-tier value-add" },
       architecture: architectureSummary
         ? { summary: architectureSummary }
         : { skipped: true, reason: "tier is not scan_fix or originalFileContents not supplied — architecture annotation is a $199-tier value-add" },

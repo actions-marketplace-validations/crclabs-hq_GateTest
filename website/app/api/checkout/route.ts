@@ -16,6 +16,15 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import https from "https";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { createLimiter, PRESETS } = require("@lib/rate-limit") as {
+  createLimiter: (opts: { windowMs: number; maxRequests: number }) => {
+    guard: (req: NextRequest) => Promise<{ allowed: boolean; status?: number; body?: Record<string, unknown>; headers?: Record<string, string> }>;
+  };
+  PRESETS: Record<string, { windowMs: number; maxRequests: number }>;
+};
+
+const _checkoutLimiter = createLimiter(PRESETS.checkout);
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://gatetest.ai";
@@ -128,6 +137,15 @@ export async function POST(req: NextRequest) {
     input = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  // Rate-limit AFTER body parsing, BEFORE any Stripe API call.
+  const _rlCheckout = await _checkoutLimiter.guard(req);
+  if (!_rlCheckout.allowed) {
+    return NextResponse.json(_rlCheckout.body, {
+      status: _rlCheckout.status ?? 429,
+      headers: _rlCheckout.headers as Record<string, string>,
+    });
   }
 
   const tier = TIERS[input.tier || ""];

@@ -61,17 +61,23 @@ export async function POST(req: NextRequest) {
     process.env.NEXT_PUBLIC_BASE_URL ||
     (req.nextUrl.origin ? req.nextUrl.origin : "");
 
-  await githubEvents.processGitHubEvent({
-    rawBody,
-    eventType,
-    delivery,
-    signatureHeader,
-    env: process.env,
-    sql,
-    queueStore,
-    fetchImpl: typeof fetch === "function" ? fetch : undefined,
-    baseUrl,
-  });
+  try {
+    await githubEvents.processGitHubEvent({
+      rawBody,
+      eventType,
+      delivery,
+      signatureHeader,
+      env: process.env,
+      sql,
+      queueStore,
+      fetchImpl: typeof fetch === "function" ? fetch : undefined,
+      baseUrl,
+    });
+  } catch (err) { // error-ok — webhook handler must never crash the Vercel function
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[GateTest] GitHub webhook processing error:", msg);
+    return NextResponse.json({ error: "Internal webhook error" }, { status: 500 });
+  }
 
   return NextResponse.json({ status: "processing" });
 }

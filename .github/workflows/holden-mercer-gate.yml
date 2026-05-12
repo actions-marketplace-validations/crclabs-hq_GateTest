@@ -1,0 +1,95 @@
+name: Holden Mercer — Gate
+
+# Triggered manually from the dashboard, plus on every push to working branches
+# so commits Claude makes auto-gate without anyone asking.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'claude/**'
+      - 'holden/**'
+      - 'hm/**'
+
+jobs:
+  gate:
+    name: Lint + typecheck + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        if: ${{ hashFiles('**/package.json') != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Set up Python
+        if: ${{ hashFiles('requirements.txt') != '' || hashFiles('pyproject.toml') != '' || hashFiles('**/requirements.txt') != '' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run custom gate
+        if: ${{ hashFiles('.holdenmercer/gate.sh') != '' }}
+        run: bash .holdenmercer/gate.sh
+
+      - name: Default Node gate
+        if: ${{ hashFiles('.holdenmercer/gate.sh') == '' && hashFiles('**/package.json') != '' }}
+        run: |
+          set -e
+          # Install (root, then frontend/, then any nested package.json)
+          for dir in . frontend; do
+            if [ -f "$dir/package.json" ]; then
+              echo "::group::npm install ($dir)"
+              ( cd "$dir" && (npm ci 2>/dev/null || npm install) )
+              echo "::endgroup::"
+              if (cd "$dir" && node -e "process.exit(JSON.parse(require('fs').readFileSync('package.json')).scripts?.lint?0:1)") 2>/dev/null; then
+                echo "::group::npm run lint ($dir)"
+                ( cd "$dir" && npm run lint )
+                echo "::endgroup::"
+              fi
+              if (cd "$dir" && node -e "process.exit(JSON.parse(require('fs').readFileSync('package.json')).scripts?.typecheck?0:1)") 2>/dev/null; then
+                echo "::group::npm run typecheck ($dir)"
+                ( cd "$dir" && npm run typecheck )
+                echo "::endgroup::"
+              fi
+              if (cd "$dir" && node -e "process.exit(JSON.parse(require('fs').readFileSync('package.json')).scripts?.build?0:1)") 2>/dev/null; then
+                echo "::group::npm run build ($dir)"
+                ( cd "$dir" && npm run build )
+                echo "::endgroup::"
+              fi
+              if (cd "$dir" && node -e "process.exit(JSON.parse(require('fs').readFileSync('package.json')).scripts?.test?0:1)") 2>/dev/null; then
+                echo "::group::npm test ($dir)"
+                ( cd "$dir" && npm test --silent --if-present )
+                echo "::endgroup::"
+              fi
+            fi
+          done
+
+      - name: Default Python gate
+        if: ${{ hashFiles('.holdenmercer/gate.sh') == '' && (hashFiles('requirements.txt') != '' || hashFiles('pyproject.toml') != '') }}
+        run: |
+          set -e
+          if [ -f requirements.txt ]; then
+            echo "::group::pip install (requirements.txt)"
+            pip install -q -r requirements.txt pytest pytest-asyncio
+            echo "::endgroup::"
+          else
+            pip install -q pytest pytest-asyncio
+          fi
+          if [ -d tests ] || ls test_*.py 2>/dev/null || ls *_test.py 2>/dev/null; then
+            echo "::group::pytest"
+            python -m pytest -q
+            echo "::endgroup::"
+          else
+            echo "no tests/ directory and no test_*.py files — skipping pytest"
+          fi
+
+      - name: No gate configured
+        if: ${{ hashFiles('.holdenmercer/gate.sh') == '' && hashFiles('**/package.json') == '' && hashFiles('requirements.txt') == '' && hashFiles('pyproject.toml') == '' }}
+        run: |
+          echo "No package.json, requirements.txt, pyproject.toml, or .holdenmercer/gate.sh found."
+          echo "Drop a gate.sh in .holdenmercer/ to define your own gate, or add a Node/Python project."

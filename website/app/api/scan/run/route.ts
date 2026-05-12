@@ -18,10 +18,14 @@ import { NextRequest, NextResponse } from "next/server";
 import https from "https";
 import { isAdminRequest } from "@/app/lib/admin-auth";
 import { fetchBlob, fetchTree, resolveRepoAuth } from "@/app/lib/gluecron-client";
-import { runTier, type RepoFile } from "@/app/lib/scan-modules";
+import { runTier, type RepoFile, TIERS } from "@/app/lib/scan-modules";
 // Wire contract reference: Gluecron.com/GATETEST_HOOK.md — each repo keeps its
 // own copy per the HTTP-only coupling rule.
 import { sendGluecronCallback } from "@/app/lib/gluecron-callback";
+import { extractIssuesFromModules } from "@/app/lib/issue-extractor";
+
+/** Safe set of tier names — anything outside this set falls back to "quick". */
+const KNOWN_TIERS = new Set(Object.keys(TIERS));
 
 // 5-minute function budget — needs Vercel Pro; Hobby cap is 60s.
 export const maxDuration = 300;
@@ -111,6 +115,9 @@ interface ScanRepoResult {
 async function scanRepo(owner: string, repo: string, tier: string): Promise<ScanRepoResult> {
   const startTime = Date.now();
   const deadline = startTime + SCAN_TIME_BUDGET_MS;
+  // Normalise tier — unknown strings fall back to "quick" explicitly rather
+  // than relying on runTier's silent TIERS[tier] || TIERS.quick fallback.
+  const normalisedTier = KNOWN_TIERS.has(tier) ? tier : "quick";
 
   // Resolve Gluecron auth. Gluecron is PAT-only; resolveRepoAuth pings
   // the repo endpoint to confirm the token has access before we attempt
@@ -187,10 +194,7 @@ async function scanRepo(owner: string, repo: string, tier: string): Promise<Scan
   await Promise.all(Array.from({ length: workerCount }, readWorker));
 
   // Run the tier through the unified module registry — every module does real work.
-  // nuclear + scan_fix get their own tier keys (which include mutationAnalysis).
-  const scanTier = tier === "nuclear" || tier === "scan_fix" ? tier
-    : tier === "full" ? "full" : "quick";
-  const { modules, totalIssues } = await runTier(scanTier, {
+  const { modules, totalIssues } = await runTier(normalisedTier, {
     owner,
     repo,
     files,
@@ -360,22 +364,14 @@ export async function POST(req: NextRequest) {
   }
 
   // Build structured fixable-issue list from module details for the Fix Agent.
-  const fixableIssues: { file: string; issue: string; module: string }[] = [];
-  const FILE_DETAIL = /^([A-Za-z0-9_./@\-+]+?\.[A-Za-z0-9]{1,8})\s*[:—\-]\s*(.+)$/;
-  const MISSING_FILE = /^repo:\s*missing\s+(.+)/i;
-  for (const mod of result.modules) {
-    for (const detail of (mod.details || [])) {
-      const stripped = detail.replace(/^(?:error|warn(?:ing)?|info)\s*:\s*/i, "").trim();
-      const fileMatch = stripped.match(FILE_DETAIL);
-      if (fileMatch) {
-        fixableIssues.push({ file: fileMatch[1], issue: fileMatch[2], module: mod.name });
-      }
-      const missingMatch = stripped.match(MISSING_FILE);
-      if (missingMatch) {
-        fixableIssues.push({ file: missingMatch[1].trim(), issue: `CREATE_FILE: ${stripped}`, module: mod.name });
-      }
-    }
-  }
+  // Uses the shared extractor (issue-extractor.ts) which handles Dockerfile
+  // findings, package.json sub-key shapes, and all severity-prefix variants
+  // that the old inline regex silently dropped (~39% of findings).
+  // failedOnly: false — include skipped modules' details so nothing is lost.
+  const { fixable: fixableIssues } = extractIssuesFromModules(
+    result.modules.map((m) => ({ name: m.name, status: m.status, details: m.details })),
+    { failedOnly: false }
+  );
 
   // Phase 5.2.3 — confidence-aware reporting. Adjust per-finding severity
   // based on the brain's per-(module, pattern) confidence scores.

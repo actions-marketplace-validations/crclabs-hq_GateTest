@@ -15,7 +15,10 @@
 import https from "https";
 import { getDb } from "./db";
 import { fetchBlob, fetchTree, resolveRepoAuth } from "./gluecron-client";
-import { runTier, type RepoFile } from "./scan-modules";
+import { runTier, type RepoFile, TIERS } from "./scan-modules";
+
+/** Safe set of tier names — anything outside this set falls back to "quick". */
+const KNOWN_TIERS = new Set(Object.keys(TIERS));
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const MAX_FILES_TO_READ = 50;
@@ -116,8 +119,9 @@ export async function runScanDirect(
 
   const capped = files.slice(0, MAX_FILES_TO_READ);
   const filePaths = capped.map((f) => f.path);
+  const normalisedTier = KNOWN_TIERS.has(tier) ? tier : "quick";
 
-  const { modules, totalIssues } = await runTier(tier === "full" ? "full" : "quick", {
+  const { modules, totalIssues } = await runTier(normalisedTier, {
     owner: projectName || "direct",
     repo: projectName || "upload",
     files: filePaths,
@@ -204,7 +208,8 @@ export async function runScan(
     });
   const fileContents: RepoFile[] = (await Promise.all(readPromises)).filter((f): f is RepoFile => f !== null);
 
-  const { modules, totalIssues } = await runTier(tier === "full" ? "full" : "quick", {
+  const normalisedTier = KNOWN_TIERS.has(tier) ? tier : "quick";
+  const { modules, totalIssues } = await runTier(normalisedTier, {
     owner,
     repo,
     files,

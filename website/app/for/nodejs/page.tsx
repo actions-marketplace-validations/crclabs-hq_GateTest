@@ -31,7 +31,7 @@ export const metadata: Metadata = {
 const faqItems = [
   {
     q: "What Node.js security issues does GateTest find?",
-    a: "GateTest covers the full OWASP Top 10 for Node.js: SSRF (tracking user-controlled input from req.body to fetch()), SQL injection patterns, ReDoS (catastrophic regex that can halt your event loop), TLS validation bypass (rejectUnauthorized: false, NODE_TLS_REJECT_UNAUTHORIZED=0), cookie security misconfigs (httpOnly: false, secure: false, weak secrets), hardcoded localhost URLs that leak to production, PII in logs (console.log(user), logger.info(req.body)), and more.",
+    a: "GateTest covers the full OWASP Top 10 for Node.js: SSRF (tracking user-controlled input from req.body to fetch()), SQL injection patterns, ReDoS (catastrophic regex that can halt your event loop), TLS validation bypass (rejectUnauthorized: false, NODE_TLS_REJECT_UNAUTHORIZED=0), cookie security misconfigs (httpOnly: false, secure: false, weak secrets), hardcoded localhost URLs that leak to production, PII in logs (// [GateTest-Mute] // [GateTest-Mute] console.log(user), logger.info(req.body)), and more.",
   },
   {
     q: "Does GateTest detect N+1 query problems in Node.js ORMs?",

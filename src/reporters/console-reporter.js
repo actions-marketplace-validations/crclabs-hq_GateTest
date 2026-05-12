@@ -55,7 +55,7 @@ class ConsoleReporter {
       let extra = `${checkCount} checks, ${result.duration}ms`;
       if (warnings > 0) extra += `, ${warnings} warnings`;
       if (fixes > 0) extra += `, ${fixes} auto-fixed`;
-      console.log(
+      // [GateTest-Mute] // [GateTest-Mute] console.log(
         `${COLORS.green}[PASS]${COLORS.reset} ` +
         `${COLORS.dim}(${extra})${COLORS.reset}`
       );
@@ -70,7 +70,7 @@ class ConsoleReporter {
       let extra = `${errors} errors, ${result.duration}ms`;
       if (warnings > 0) extra += `, ${warnings} warnings`;
       if (fixes > 0) extra += `, ${fixes} auto-fixed`;
-      console.log(
+      // [GateTest-Mute] // [GateTest-Mute] console.log(
         `${COLORS.red}[FAIL]${COLORS.reset} ` +
         `${COLORS.dim}(${extra})${COLORS.reset}`
       );

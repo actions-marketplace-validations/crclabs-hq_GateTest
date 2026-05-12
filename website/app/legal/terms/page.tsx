@@ -412,7 +412,8 @@ export default function Terms() {
               <strong>12.4 Your right to terminate.</strong> You may terminate your account at any
               time by contacting us at hello@gatetest.ai or through in-app controls where provided.
               Active Stripe holds will be released and no further charges will be made. Fees paid
-              for completed scans are non-refundable except as set out in the Refund Policy.
+              for completed scans are final and non-refundable, except where a non-waivable
+              statutory consumer right applies in your jurisdiction.
             </p>
             <p className="mt-2">
               <strong>12.5 No liability for suspension or termination.</strong> Subject to
@@ -677,8 +678,8 @@ export default function Terms() {
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-2">22. Entire Agreement</h2>
             <p>
-              These Terms, together with the Privacy Policy, the Refund &amp; Cancellation Policy,
-              and any tier-specific or enterprise addenda expressly incorporated by reference,
+              These Terms, together with the Privacy Policy and any tier-specific or enterprise
+              addenda expressly incorporated by reference,
               constitute the entire agreement between you and GateTest regarding the Service and
               supersede all prior or contemporaneous agreements, proposals, representations, or
               communications, whether oral or written, regarding the subject matter. In the event
@@ -713,8 +714,8 @@ export default function Terms() {
               after the effective date of modified Terms constitutes your acceptance of those Terms.
               If you do not agree to the modified Terms, your sole remedy is to stop using the
               Service and to terminate your account before the effective date; any pre-paid fees
-              for unused Service will be refunded pro rata where required by applicable law or the
-              Refund Policy.
+              for unused Service will be refunded pro rata only where required by non-waivable
+              applicable law.
             </p>
             <p className="mt-2">
               <strong>23.4 Non-material changes.</strong> Changes that do not materially reduce

@@ -61,7 +61,6 @@ test.describe("Landing Page", () => {
     await expect(footer).toBeVisible();
     await expect(page.locator('a[href="/legal/privacy"]')).toBeVisible();
     await expect(page.locator('a[href="/legal/terms"]')).toBeVisible();
-    await expect(page.locator('a[href="/legal/refunds"]')).toBeVisible();
   });
 
   test("footer has contact email", async ({ page }) => {
@@ -84,13 +83,6 @@ test.describe("Legal Pages", () => {
     await expect(page.locator("text=Who We Are")).toBeVisible();
   });
 
-  test("refund policy loads", async ({ page }) => {
-    await page.goto("/legal/refunds");
-    await expect(page).toHaveTitle(/Refund Policy/);
-    await expect(
-      page.getByRole("heading", { name: /Payment Model/ })
-    ).toBeVisible();
-  });
 });
 
 test.describe("SEO & Meta Tags", () => {

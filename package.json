@@ -4,8 +4,8 @@
   "description": "GateTest - Advanced QA gate between Claude and GitHub. Nothing ships unless it's pristine.",
   "main": "src/index.js",
   "bin": {
-    "gatetest": "./bin/gatetest.js",
-    "gatetest-mcp": "./bin/gatetest-mcp.mjs"
+    "gatetest": "bin/gatetest.js",
+    "gatetest-mcp": "bin/gatetest-mcp.mjs"
   },
   "files": [
     "bin/",

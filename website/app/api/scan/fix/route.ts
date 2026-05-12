@@ -813,7 +813,7 @@ export async function POST(req: NextRequest) {
   // Build a map from filePath → [{module, issue}] for recipe DB lookup. Used by
   // the zero-API fast path 3 inside the per-file askClaude wrapper below.
   const fileIssueObjectsMap = new Map<string, Array<{ module: string; issue: string }>>();
-  for (const iss of workingIssues) {
+  for (const iss of issues) {
     if (!iss.file) continue;
     const existing = fileIssueObjectsMap.get(iss.file) || [];
     existing.push({ module: iss.module || "unknown", issue: iss.issue });

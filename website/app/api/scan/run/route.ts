@@ -33,8 +33,41 @@ import { runTier, type RepoFile, TIERS } from "@/app/lib/scan-modules";
 import { sendGluecronCallback } from "@/app/lib/gluecron-callback";
 import { extractIssuesFromModules } from "@/app/lib/issue-extractor";
 
-/** Safe set of tier names — anything outside this set falls back to "quick". */
-const KNOWN_TIERS = new Set(Object.keys(TIERS));
+// Tier-1 Items 2+4 — Shadow Scan Preview + Tiered Feature Redaction.
+// `shadowFor` maps the paid tier to the tier we actually run (quick → quick_shadow);
+// `redactScanResult` post-processes the scan output to redact details for
+// modules outside the customer's paid tier and emit a shadowSummary upsell hook.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const {
+  computeShadowTier: shadowFor,
+  redactScanResult,
+  summariseShadowResult,
+} = require("@lib/scan-redaction") as {
+  computeShadowTier: (paidTier: string) => string;
+  redactScanResult: (opts: {
+    result: { modules: Array<Record<string, unknown>>; totalIssues: number };
+    paidTier: string;
+    tierModules: string[];
+  }) => {
+    modules: Array<Record<string, unknown>>;
+    totalIssues: number;
+    shadowSummary: {
+      hiddenIssues: number;
+      hiddenModules: number;
+      paidModules: number;
+      paidIssues: number;
+      upgradeHint: string;
+    };
+  };
+  summariseShadowResult: (s: Record<string, unknown>) => string;
+};
+
+/** Safe set of tier names — anything outside this set falls back to "quick".
+ *  Excludes synthetic `quick_shadow` since it's selected internally, not by
+ *  paid customers. */
+const KNOWN_TIERS = new Set(
+  Object.keys(TIERS).filter((t) => t !== "quick_shadow")
+);
 
 // 5-minute function budget — needs Vercel Pro; Hobby cap is 60s.
 export const maxDuration = 300;
@@ -104,6 +137,12 @@ async function scanRepo(owner: string, repo: string, tier: string): Promise<Scan
   // Normalise tier — unknown strings fall back to "quick" explicitly rather
   // than relying on runTier's silent TIERS[tier] || TIERS.quick fallback.
   const normalisedTier = KNOWN_TIERS.has(tier) ? tier : "quick";
+  // Tier-1 Item 2+4 — Shadow-preview tier resolution. For $29 customers
+  // we run the full static-scan suite (modulo Anthropic-cost modules)
+  // and redact details for modules outside their paid tier. The customer
+  // sees counts + module names as an upsell mechanic, with NO extra
+  // Anthropic spend.
+  const shadowTier: string = shadowFor(normalisedTier);
 
   // Resolve Gluecron auth. Gluecron is PAT-only; resolveRepoAuth pings
   // the repo endpoint to confirm the token has access before we attempt
@@ -155,8 +194,11 @@ async function scanRepo(owner: string, repo: string, tier: string): Promise<Scan
   });
   const fileContents: RepoFile[] = (await Promise.all(readPromises)).filter((f): f is RepoFile => f !== null);
 
-  // Run the tier through the unified module registry — every module does real work.
-  const { modules, totalIssues } = await runTier(normalisedTier, {
+  // Run the (shadow-resolved) tier through the unified module registry —
+  // every module does real work. For quick-tier paid customers, this is
+  // quick_shadow (full static scan minus Anthropic-cost modules); the
+  // raw result is then redacted in the response builder below.
+  const { modules, totalIssues } = await runTier(shadowTier, {
     owner,
     repo,
     files,
@@ -386,29 +428,56 @@ async function _postImpl(req: NextRequest): Promise<ReturnType<typeof NextRespon
     }
   }
 
-  // Build structured fixable-issue list from module details for the Fix Agent.
-  // Uses the shared extractor (issue-extractor.ts) which handles Dockerfile
-  // findings, package.json sub-key shapes, and all severity-prefix variants
-  // that the old inline regex silently dropped (~39% of findings).
+  // Tier-1 Items 2+4 — Shadow Preview / Tiered Redaction.
+  // For $29 customers we ran the FULL static-scan suite (minus AI-cost
+  // modules). Now we redact the details for modules outside their paid
+  // tier so they see counts + module names (with an upsell hint) but
+  // not the full findings. Paid Full / Scan+Fix / Nuclear tiers see
+  // everything verbatim — redaction is a no-op when paidTier === full.
+  const paidTier = tier || "quick";
+  const paidTierModules: string[] = TIERS[paidTier] || TIERS.quick;
+  const redacted = redactScanResult({
+    result: {
+      modules: result.modules as unknown as Array<Record<string, unknown>>,
+      totalIssues: result.totalIssues,
+    },
+    paidTier,
+    tierModules: paidTierModules,
+  });
+  // Log the redaction outcome for ops visibility (non-PII summary string).
+  if (redacted.shadowSummary.hiddenIssues > 0) {
+    console.log(
+      `[GateTest] ${summariseShadowResult(redacted.shadowSummary)}`
+    );
+  }
+
+  // Build structured fixable-issue list from REDACTED module details — the
+  // customer can only fix what they can see. Shared extractor handles
+  // Dockerfile, package.json sub-keys, and all severity-prefix variants.
   // failedOnly: false — include skipped modules' details so nothing is lost.
   const { fixable: fixableIssues } = extractIssuesFromModules(
-    result.modules.map((m) => ({ name: m.name, status: m.status, details: m.details })),
+    redacted.modules.map((m) => ({
+      name: m.name as string,
+      status: m.status as string,
+      details: (m.details as string[]) || undefined,
+    })),
     { failedOnly: false }
   );
 
   return NextResponse.json({
     status: result.error ? "failed" : "complete",
-    modules: result.modules,
-    totalModules: result.modules.length,
-    completedModules: result.modules.length,
-    totalIssues: result.totalIssues,
+    modules: redacted.modules,
+    totalModules: redacted.modules.length,
+    completedModules: redacted.modules.length,
+    totalIssues: redacted.totalIssues,
     totalFixed: 0,
     duration: result.duration,
     repoUrl,
-    tier,
+    tier: paidTier,
     admin: isAdmin,
     authSource: result.authSource,
     error: result.error,
     fixableIssues,
+    shadowSummary: redacted.shadowSummary,
   });
 }

@@ -55,25 +55,19 @@ class ConsoleReporter {
       let extra = `${checkCount} checks, ${result.duration}ms`;
       if (warnings > 0) extra += `, ${warnings} warnings`;
       if (fixes > 0) extra += `, ${fixes} auto-fixed`;
-      // [GateTest-Mute] // [GateTest-Mute] console.log(
-        `${COLORS.green}[PASS]${COLORS.reset} ` +
-        `${COLORS.dim}(${extra})${COLORS.reset}`
-      );
+      console.log(`${COLORS.green}[PASS]${COLORS.reset} ${COLORS.dim}(${extra})${COLORS.reset}`);
       // Show warnings even on pass
       for (const check of result.warningChecks) {
-        // [GateTest-Mute] // [GateTest-Mute] console.log(`    ${COLORS.yellow}~ ${check.name}${COLORS.reset}`);
+        console.log(`    ${COLORS.yellow}~ ${check.name}${COLORS.reset}`);
         if (check.message) {
-          // [GateTest-Mute] // [GateTest-Mute] console.log(`      ${COLORS.dim}${check.message}${COLORS.reset}`);
+          console.log(`      ${COLORS.dim}${check.message}${COLORS.reset}`);
         }
       }
     } else {
       let extra = `${errors} errors, ${result.duration}ms`;
       if (warnings > 0) extra += `, ${warnings} warnings`;
       if (fixes > 0) extra += `, ${fixes} auto-fixed`;
-      // [GateTest-Mute] // [GateTest-Mute] console.log(
-        `${COLORS.red}[FAIL]${COLORS.reset} ` +
-        `${COLORS.dim}(${extra})${COLORS.reset}`
-      );
+      console.log(`${COLORS.red}[FAIL]${COLORS.reset} ${COLORS.dim}(${extra})${COLORS.reset}`);
       // Show errors first
       for (const check of result.errorChecks) {
         const prefix = check.autoFixed

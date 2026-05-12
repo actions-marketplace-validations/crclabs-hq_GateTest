@@ -232,7 +232,9 @@ class HomoglyphModule extends BaseModule {
     let content;
     try { content = fs.readFileSync(file, 'utf-8'); } catch { return 0; }
 
-    const rel = path.relative(projectRoot, file);
+    // Normalize to forward-slash so the LOCALE/TEST path regexes match
+    // identically on Windows (path.relative emits `\` separators there).
+    const rel = path.relative(projectRoot, file).split(path.sep).join('/');
     const isLocale = LOCALE_PATH_RE.test(rel) || LOCALE_EXT_RE.test(rel);
     const isDoc = DOC_EXT_RE.test(rel);
     const isTestFile = TEST_PATH_RE.test(rel);

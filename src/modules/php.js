@@ -7,7 +7,11 @@ const { runLanguageChecks } = require('../core/universal-checker');
 
 class PhpModule extends BaseModule {
   constructor() { super('php', 'PHP Checks — eval, legacy mysql_, XSS, debug output'); }
-  async run(result, config) { runLanguageChecks('php', config.projectRoot, result); }
+  async run(result, config) {
+    runLanguageChecks('php', config.projectRoot, result, {
+      incrementalFiles: config._incrementalFiles,
+    });
+  }
 }
 
 module.exports = PhpModule;

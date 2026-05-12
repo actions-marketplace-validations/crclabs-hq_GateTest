@@ -43,6 +43,13 @@ function writeFile(root, rel, content) {
   fs.writeFileSync(full, content);
 }
 
+// path.relative emits backslashes on Windows; tests assert forward-slash
+// strings for cross-OS readability. Normalise once here so every test
+// compares on the same separator regardless of host OS.
+function rel(root, p) {
+  return path.relative(root, p).split(path.sep).join('/');
+}
+
 // ---------- Bug 1: .claude/ excluded by default ----------
 
 test('regression — .claude/worktrees/ is in defaultExcludes (bug from Crontech dogfood)', () => {
@@ -54,13 +61,13 @@ test('regression — .claude/worktrees/ is in defaultExcludes (bug from Crontech
 
     const mod = new TestableModule();
     const collected = mod._collectFiles(root, ['.js']);
-    const rel = collected.map((p) => path.relative(root, p));
+    const paths = collected.map((p) => rel(root, p));
 
     // The real source file IS collected
-    assert.ok(rel.includes('src/real.js'), 'src/real.js should be collected');
+    assert.ok(paths.includes('src/real.js'), 'src/real.js should be collected');
 
     // No .claude/ paths leak through
-    const leaked = rel.filter((r) => r.startsWith('.claude'));
+    const leaked = paths.filter((r) => r.startsWith('.claude'));
     assert.deepEqual(leaked, [], `expected zero .claude paths, got: ${leaked.join(', ')}`);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -76,10 +83,10 @@ test('regression — .claude in default excludes coexists with caller-supplied e
 
     const mod = new TestableModule();
     const collected = mod._collectFiles(root, ['.js'], ['experiments']);
-    const rel = collected.map((p) => path.relative(root, p)).sort();
+    const paths = collected.map((p) => rel(root, p)).sort();
 
     // src/keep.js included; experiments/ + .claude/ both excluded
-    assert.deepEqual(rel, ['src/keep.js']);
+    assert.deepEqual(paths, ['src/keep.js']);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -157,8 +164,8 @@ test('regression — JSX-configured monorepo workspace (apps/web) IS discovered'
     const mod = new SyntaxModule();
     const found = mod._discoverRealTsconfigs(root);
 
-    const rel = found.map((p) => path.relative(root, p)).sort();
-    assert.deepEqual(rel, ['apps/api', 'apps/web', 'packages/shared']);
+    const paths = found.map((p) => rel(root, p)).sort();
+    assert.deepEqual(paths, ['apps/api', 'apps/web', 'packages/shared']);
     // Notably the root is NOT included
     assert.ok(!found.includes(root));
   } finally {
@@ -180,9 +187,9 @@ test('regression — descent stops at depth 2 (does not walk into node_modules-d
     const mod = new SyntaxModule();
     const found = mod._discoverRealTsconfigs(root);
 
-    const rel = found.map((p) => path.relative(root, p));
-    assert.ok(rel.includes('apps/web'));
-    assert.ok(!rel.some((r) => r.includes('deep')), 'should not descend past depth 2');
+    const paths = found.map((p) => rel(root, p));
+    assert.ok(paths.includes('apps/web'));
+    assert.ok(!paths.some((r) => r.includes('deep')), 'should not descend past depth 2');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

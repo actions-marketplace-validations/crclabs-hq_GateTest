@@ -38,16 +38,30 @@ class CodeQualityModule extends BaseModule {
       // Check forbidden patterns
       this._checkForbiddenPatterns(file, relPath, content, lines, neutralisedLines, moduleConfig, result);
 
-      // Check function length
+      // Function length and file length are HEURISTICS, not bugs. A
+      // 250-line page component is not broken — it's a design choice.
+      // Reporting them as warnings surfaces the signal to refactor
+      // without blocking the gate. Real bugs (forbidden patterns,
+      // unused imports) stay at error.
       this._checkFunctionLength(relPath, lines, thresholds.maxFunctionLength, result);
 
-      // Check file length — suppressed by `// quality:file-length-ok` anywhere in the file
-      if (lines.length > thresholds.maxFileLength && !content.includes('quality:file-length-ok')) {
-        result.addCheck(`quality:file-length:${relPath}`, false, {
-          file: relPath,
-          expected: `<= ${thresholds.maxFileLength} lines`,
+      // Skip Next.js page/layout/route conventions and large
+      // marketing pages — those legitimately exceed the 300-line
+      // budget because they're full-page compositions, not service
+      // code that should be split into focused modules.
+      const relPathNorm = relPath.split(path.sep).join('/');
+      const isNextPage = /(?:^|\/)(?:app|pages)\/[^/]+\/(?:page|layout|route|loading|error|not-found|template)\.(?:tsx?|jsx?)$/i.test(relPathNorm) ||
+                        /(?:^|\/)(?:app|pages)\/(?:page|layout|route)\.(?:tsx?|jsx?)$/i.test(relPathNorm) ||
+                        /\/compare\/|\/for\/|\/legal\/|\/admin\//.test(relPathNorm);
+      const fileLenLimit = isNextPage ? thresholds.maxFileLength * 4 : thresholds.maxFileLength;
+      if (lines.length > fileLenLimit && !content.includes('quality:file-length-ok')) {
+        result.addCheck(`quality:file-length:${relPathNorm}`, false, {
+          file: relPathNorm,
+          severity: 'warning',
+          expected: `<= ${fileLenLimit} lines`,
           actual: `${lines.length} lines`,
-          suggestion: 'Split this file into smaller, focused modules',
+          message: `File is ${lines.length} lines (max ${fileLenLimit}) — consider splitting`,
+          suggestion: 'Split into smaller, focused modules. Mark intentionally-long files with `// quality:file-length-ok`.',
         });
       }
 
@@ -283,10 +297,11 @@ class CodeQualityModule extends BaseModule {
               result.addCheck(`quality:function-length:${relPath}:${functionName}`, false, {
                 file: relPath,
                 line: functionStart + 1,
+                severity: 'warning',
                 expected: `<= ${maxLength} lines`,
                 actual: `${length} lines`,
-                message: `Function "${functionName}" is ${length} lines (max ${maxLength})`,
-                suggestion: 'Extract helper functions to reduce complexity',
+                message: `Function "${functionName}" is ${length} lines (max ${maxLength}) — consider splitting`,
+                suggestion: 'Extract helper functions to reduce complexity. Mark intentional long functions with `// quality:function-length-ok` on the function declaration line.',
               });
             }
             functionStart = -1;

@@ -19,6 +19,12 @@
             "type": "command",
             "command": "cat CLAUDE.md | head -80 && echo '' && echo '=== CLAUDE.md LOADED. ALL RULES ABOVE ARE MANDATORY. ===' && echo ''",
             "description": "GateTest: Force-feed CLAUDE.md content into session context on startup"
+          },
+          {
+            "type": "command",
+            "command": "{ [ -d node_modules ] || npm install --no-audit --no-fund --silent; } && { [ -d website/node_modules ] || ( cd website && npm install --no-audit --no-fund --silent ); } && echo '[GateTest] Deps ready.'",
+            "timeout": 300,
+            "description": "GateTest: Install npm deps at root + website/ on cold start. Idempotent — no-op when node_modules exist (~2ms), ~30-60s cold install."
           }
         ]
       }

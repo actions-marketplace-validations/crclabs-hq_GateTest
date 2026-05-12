@@ -21,7 +21,7 @@
  *   - Never throws to the caller — callers get { ok, ran?, idle?, error? }.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const { MAX_ATTEMPTS } = require('./scan-queue-store');
 
 /**

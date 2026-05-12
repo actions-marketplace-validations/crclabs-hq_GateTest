@@ -32,7 +32,6 @@ const scanPlans = [
     description:
       "Every module. Security, accessibility, SEO, AI code review, and more.",
     modules: "All 90 modules",
-
     features: [
       "Everything in Quick Scan",
       "Security (OWASP, XSS, SQLi, SSRF, ReDoS, TLS, cookies)",
@@ -43,12 +42,11 @@ const scanPlans = [
       "Auth flaws — JWT, bcrypt, cookies",
       "Migration safety — dangerous SQL patterns",
       "Flaky test detector",
-      "AI code review by Claude",
+      "AI code review by Claude Opus 4.7 with adaptive thinking",
       "AI auto-fix PR — Claude opens a PR with the fixes",
     ],
     cta: "Run Full Scan",
     highlight: true,
-    unavailable: true,
   },
   {
     id: "scan_fix",
@@ -70,7 +68,6 @@ const scanPlans = [
     ],
     cta: "Run Scan + Fix",
     highlight: false,
-    unavailable: true,
   },
   {
     id: "nuclear",
@@ -92,20 +89,71 @@ const scanPlans = [
     ],
     cta: "Run Nuclear",
     highlight: false,
-    unavailable: true,
   },
 ];
 
-const comingSoon = [
-  "Live browser testing — real browser-powered page testing",
-  "Visual regression — screenshot comparison between deploys",
-  "Continuous monitoring — scan on every push, $49/month",
+const continuousPlans = [
+  {
+    id: "continuous_quick",
+    name: "Continuous Quick",
+    price: "$49",
+    period: "/mo",
+    description: "Automated gate on every push. Quick suite blocks merges on errors.",
+    modules: "4 modules · every push",
+    features: [
+      "Scan triggered on every git push",
+      "Syntax, linting, secrets, code quality",
+      "GitHub commit status — pass / fail on every PR",
+      "Merge blocked on any error-level finding",
+      "Monthly billing — cancel any time",
+    ],
+    cta: "Start Continuous Quick",
+    highlight: false,
+  },
+  {
+    id: "continuous_full",
+    name: "Continuous Full",
+    price: "$149",
+    period: "/mo",
+    badge: "Best value",
+    description: "All 90 modules on every push. Replaces ESLint Pro + SonarQube + Snyk (~$400+/mo stack) for one flat fee.",
+    modules: "All 90 modules · every push",
+    features: [
+      "Everything in Continuous Quick",
+      "All 90 modules on every push",
+      "AI auto-fix PR opened automatically on failure",
+      "Adaptive thinking repair — Opus 4.7 reasons through every bug",
+      "Security, supply chain, IaC, CI hardening on every commit",
+      "Replaces ESLint Pro + SonarQube + Snyk for ~$250/mo less",
+    ],
+    cta: "Start Continuous Full",
+    highlight: true,
+  },
+  {
+    id: "continuous_nuclear",
+    name: "Continuous Nuclear",
+    price: "$299",
+    period: "/mo",
+    description: "Full Nuclear stack automated on every push — diagnosis, chains, mutation, executive summary per run.",
+    modules: "All 90 + nuclear · every push",
+    features: [
+      "Everything in Continuous Full",
+      "Claude diagnosis on every finding — every push",
+      "Attack-chain correlation on every push",
+      "Mutation testing per run",
+      "Executive summary report per run",
+      "CISO-ready PDF on demand",
+    ],
+    cta: "Start Continuous Nuclear",
+    highlight: false,
+  },
 ];
 
 export default function Pricing() {
   const [repoUrl, setRepoUrl] = useState("");
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"onetime" | "continuous">("onetime");
 
   async function handleCheckout(tierId: string) {
     if (!repoUrl || !(repoUrl.includes("github.com") || repoUrl.includes("gluecron.com"))) {
@@ -142,6 +190,8 @@ export default function Pricing() {
     }
   }
 
+  const activePlans = tab === "onetime" ? scanPlans : continuousPlans;
+
   return (
     <section id="pricing" className="py-24 px-6 section-accent">
       <div className="relative z-10 mx-auto max-w-5xl">
@@ -153,18 +203,54 @@ export default function Pricing() {
             Pay when it&apos;s done. <span className="gradient-text">Not before.</span>
           </h2>
           <p className="text-muted text-lg max-w-2xl mx-auto">
-            We hold your card, run the scan, deliver the report, and Claude opens the fix PR.
-            If we can&apos;t complete it, you pay nothing.
+            One-time scans or continuous scanning on every push.
+            Card held until delivery — no charge if we can&apos;t complete it.
           </p>
         </div>
 
-        {/* Trust badge */}
-        <div className="flex justify-center mb-6">
-          <div className="inline-flex items-center gap-2 badge-accent px-5 py-2 text-sm font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            Card hold only &mdash; charged after successful scan delivery
+        {/* Tab selector */}
+        <div className="flex justify-center mb-8">
+          <div className="inline-flex rounded-xl border border-border bg-surface-dark p-1 gap-1">
+            <button
+              onClick={() => setTab("onetime")}
+              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                tab === "onetime"
+                  ? "bg-accent text-black"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              One-time scans
+            </button>
+            <button
+              onClick={() => setTab("continuous")}
+              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                tab === "continuous"
+                  ? "bg-accent text-black"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              Continuous · monthly
+            </button>
           </div>
         </div>
+
+        {tab === "continuous" && (
+          <div className="flex justify-center mb-8">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Scan triggered on every push · GitHub App required · cancel any time
+            </div>
+          </div>
+        )}
+
+        {tab === "onetime" && (
+          <div className="flex justify-center mb-6">
+            <div className="inline-flex items-center gap-2 badge-accent px-5 py-2 text-sm font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              Card hold only &mdash; charged after successful scan delivery
+            </div>
+          </div>
+        )}
 
         {/* Repo URL input */}
         <div className="max-w-xl mx-auto mb-12">
@@ -182,21 +268,19 @@ export default function Pricing() {
             }`}
           />
           {error && <p className="text-sm text-danger mt-2 text-center">{error}</p>}
-          <p className="text-xs text-muted mt-2 text-center">2. Choose a scan tier below</p>
+          <p className="text-xs text-muted mt-2 text-center">2. Choose a tier below</p>
         </div>
 
-        {/* Scan tiers */}
+        {/* Plan grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16 max-w-7xl mx-auto">
-          {scanPlans.map((plan) => (
+          {activePlans.map((plan) => (
             <div
-              key={plan.name}
+              key={plan.id}
               className={`rounded-2xl p-6 transition-all flex flex-col ${
-                plan.highlight
-                  ? "card-highlight"
-                  : "card"
+                plan.highlight ? "card-highlight" : "card"
               }`}
             >
-              {plan.highlight && (
+              {"badge" in plan && plan.badge && (
                 <div className="text-xs font-semibold text-accent uppercase tracking-wider mb-3">
                   {plan.badge}
                 </div>
@@ -212,31 +296,15 @@ export default function Pricing() {
               </div>
               <p className="text-sm text-muted mb-5">{plan.description}</p>
 
-              {plan.unavailable ? (
-                <div className="mb-6">
-                  <button
-                    disabled
-                    className="block w-full text-center py-3 px-5 rounded-xl font-semibold text-sm mb-2 cursor-not-allowed bg-surface-dark text-muted border border-border"
-                  >
-                    Temporarily unavailable
-                  </button>
-                  <p className="text-xs text-muted text-center leading-snug">
-                    Surgical-fix delivery upgrade in progress. Back online shortly.
-                  </p>
-                </div>
-              ) : (
-                <button
-                  onClick={() => handleCheckout(plan.id)}
-                  disabled={loading === plan.id}
-                  className={`block w-full text-center py-3 px-5 rounded-xl font-semibold text-sm transition-all mb-6 cursor-pointer disabled:opacity-50 ${
-                    plan.highlight
-                      ? "btn-primary"
-                      : "btn-secondary"
-                  }`}
-                >
-                  {loading === plan.id ? "Redirecting..." : plan.cta}
-                </button>
-              )}
+              <button
+                onClick={() => handleCheckout(plan.id)}
+                disabled={loading === plan.id}
+                className={`block w-full text-center py-3 px-5 rounded-xl font-semibold text-sm transition-all mb-6 cursor-pointer disabled:opacity-50 ${
+                  plan.highlight ? "btn-primary" : "btn-secondary"
+                }`}
+              >
+                {loading === plan.id ? "Redirecting..." : plan.cta}
+              </button>
 
               <ul className="space-y-2.5 mt-auto">
                 {plan.features.map((feature) => (
@@ -250,23 +318,11 @@ export default function Pricing() {
           ))}
         </div>
 
-        {/* Coming Soon */}
-        <div className="max-w-2xl mx-auto text-center">
-          <h3 className="text-lg font-bold text-foreground mb-4">Coming Soon</h3>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {comingSoon.map((item) => (
-              <div key={item} className="flex items-start gap-2 text-left p-3 rounded-xl border border-dashed border-border bg-white">
-                <span className="text-xs font-medium text-muted bg-surface-dark border border-border rounded-full px-2 py-0.5 shrink-0 mt-0.5">Soon</span>
-                <span className="text-sm text-muted">{item}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* Bottom trust line */}
-        <p className="text-center text-xs text-muted mt-10">
-          All scans include a detailed report and an AI fix PR. Payments processed securely via Stripe.
-          Card hold released immediately if scan cannot complete.
+        <p className="text-center text-xs text-muted mt-4">
+          All scans include a detailed report and an AI fix PR.
+          Continuous plans require the GateTest GitHub App.
+          Payments processed securely via Stripe. Cancel subscriptions any time.
         </p>
       </div>
     </section>

@@ -55,18 +55,57 @@ function assertNonNegative(value, label) {
  * @param {(item: T, state: object) => Promise<R>} fn
  * @returns {Promise<R[]>}
  */
-async function mapWithAdaptiveConcurrency(items, initialLimit, fn) {
+async function mapWithAdaptiveConcurrency(items, initialLimit, fn, opts = {}) {
+  // Ramp-up: after N consecutive successes (no network error / no halt),
+  // raise the ceiling by 1, capped at maxConcurrency. This claws back the
+  // throughput we lost by starting conservatively at 2. Defaults bake in
+  // a "ramp every 4 successes, never above 5" policy that empirically
+  // doubles throughput in the typical happy-path while preserving the
+  // "drop to 1 on EPROTO" safety net.
+  const RAMP_AFTER_SUCCESSES = opts.rampAfterSuccesses ?? 4;
+  const MAX_CONCURRENCY = opts.maxConcurrency ?? 5;
+
   const results = new Array(items.length);
   const state = {
     consecutiveNetworkErrors: 0,
+    consecutiveSuccesses: 0,
     activeConcurrency: initialLimit,
     haltRun: false,
   };
   let cursor = 0;
   let activeWorkers = 0;
+  let pendingSpawn = 0; // workers we've decided to spawn but haven't yet
 
-  async function worker() {
+  // After a worker completes successfully, consider whether to spawn a new
+  // one. This is the upward-adaptation path: if the run is healthy, raise
+  // the ceiling and start an extra worker so the cursor drains faster.
+  // CRITICAL: only ramp up when no network errors have happened in this
+  // run AND when the caller hasn't explicitly dropped activeConcurrency
+  // below the initial limit. The drop-to-1 safety net (used when EPROTO
+  // / TLS pool poisoning is detected) must never be undone by ramp-up,
+  // or we'd cascade-fail right back into the same pool-poisoning state.
+  function maybeRampUp(spawnFn) {
+    if (state.consecutiveNetworkErrors > 0) return;
+    if (state.activeConcurrency < initialLimit) return;
+    if (
+      state.consecutiveSuccesses >= RAMP_AFTER_SUCCESSES &&
+      state.activeConcurrency < MAX_CONCURRENCY &&
+      cursor < items.length &&
+      !state.haltRun
+    ) {
+      state.activeConcurrency += 1;
+      state.consecutiveSuccesses = 0;
+      // Spawn a fresh worker if we're below the new ceiling.
+      if (activeWorkers + pendingSpawn < state.activeConcurrency) {
+        pendingSpawn += 1;
+        spawnFn();
+      }
+    }
+  }
+
+  async function worker(spawnFn) {
     activeWorkers++;
+    if (pendingSpawn > 0) pendingSpawn -= 1;
     assertNonNegative(activeWorkers, 'activeWorkers (post-increment)');
     let exitedEarly = false;
     try {
@@ -88,7 +127,15 @@ async function mapWithAdaptiveConcurrency(items, initialLimit, fn) {
           return;
         }
         const idx = cursor++;
+        const errorsBefore = state.consecutiveNetworkErrors;
         results[idx] = await fn(items[idx], state);
+        // If `fn` didn't bump consecutiveNetworkErrors, count it as a
+        // success — even if `fn` recorded other failure modes (claude-error,
+        // validation-fail), those don't justify dropping concurrency.
+        if (state.consecutiveNetworkErrors === errorsBefore) {
+          state.consecutiveSuccesses += 1;
+          maybeRampUp(spawnFn);
+        }
       }
     } finally {
       if (!exitedEarly) {
@@ -98,9 +145,18 @@ async function mapWithAdaptiveConcurrency(items, initialLimit, fn) {
     }
   }
 
+  const workerPromises = [];
+  function spawnFn() {
+    workerPromises.push(worker(spawnFn));
+  }
   const startCount = Math.min(initialLimit, items.length);
-  const workers = Array.from({ length: startCount }, () => worker());
-  await Promise.all(workers);
+  for (let i = 0; i < startCount; i++) spawnFn();
+  // Drain — Promise.all on a live array doesn't pick up additions after
+  // its initial pass, so loop until the array stops growing.
+  while (workerPromises.length > 0) {
+    const snapshot = workerPromises.splice(0, workerPromises.length);
+    await Promise.all(snapshot);
+  }
   return results;
 }
 

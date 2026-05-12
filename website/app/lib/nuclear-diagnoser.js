@@ -36,13 +36,24 @@
  * Build the prompt for Claude. Exposed for tests so the prompt
  * shape can be asserted.
  */
-function buildDiagnosisPrompt({ finding, hostname, scanContext }) {
+function buildDiagnosisPrompt({ finding, hostname, scanContext, priorArt }) {
   const platformLine = scanContext?.platform
     ? `KNOWN PLATFORM: ${scanContext.platform}`
     : 'KNOWN PLATFORM: not detected — provide platform-agnostic guidance';
 
   const stackLine = scanContext?.stack && scanContext.stack.length > 0
     ? `KNOWN STACK SIGNALS: ${scanContext.stack.join(', ')}`
+    : '';
+
+  // Phase 5.1.3 — prior-art context from the cross-repo intelligence brain.
+  // Optional. Injected by the route handler when the brain has enough
+  // similar past scans to draw conclusions from. Strict shape: a single
+  // multi-line string already rendered by cross-repo-lookup.js. Claude
+  // is told to USE the prior-art for prioritisation but NEVER copy from
+  // it verbatim — the recommendation must still be specific to the
+  // customer's finding.
+  const priorArtBlock = priorArt
+    ? `\n${priorArt}\n\nUse this prior-art ONLY to prioritise + sanity-check your diagnosis. Do not copy from it. Your recommendation must still be specific to the customer's finding above.\n`
     : '';
 
   return `You are the Nuclear-tier diagnosis agent for GateTest. The customer paid $399 for a deep, honest assessment. Do NOT emit category-matched shell-command templates — those are exactly the dishonest pattern this tier replaces.
@@ -52,7 +63,7 @@ Your job: read the SPECIFIC finding, the customer's host, and any platform signa
 HOST: ${hostname}
 ${platformLine}
 ${stackLine}
-
+${priorArtBlock}
 FINDING:
 - module: ${finding.module || '(unknown)'}
 - severity: ${finding.severity || '(unknown)'}
@@ -160,7 +171,7 @@ function parseDiagnosisOutput(raw) {
  * }>}
  */
 async function diagnoseFinding(opts) {
-  const { finding, hostname = 'your-domain.com', scanContext = {}, askClaudeForDiagnosis } = opts || {};
+  const { finding, hostname = 'your-domain.com', scanContext = {}, askClaudeForDiagnosis, priorArt = null } = opts || {};
   if (!finding || typeof finding.detail !== 'string') {
     return { finding: finding || null, ok: false, diagnosis: null, reason: 'malformed finding' };
   }
@@ -171,7 +182,7 @@ async function diagnoseFinding(opts) {
     return { finding, ok: false, diagnosis: null, reason: 'finding detail too short' };
   }
 
-  const prompt = buildDiagnosisPrompt({ finding, hostname, scanContext });
+  const prompt = buildDiagnosisPrompt({ finding, hostname, scanContext, priorArt });
 
   let raw;
   try {
@@ -207,7 +218,7 @@ async function diagnoseFinding(opts) {
  * }>}
  */
 async function diagnoseFindings(opts) {
-  const { findings, hostname, scanContext, askClaudeForDiagnosis, maxFindings = 20 } = opts || {};
+  const { findings, hostname, scanContext, askClaudeForDiagnosis, maxFindings = 20, priorArt = null } = opts || {};
   if (!Array.isArray(findings)) throw new TypeError('findings must be an array');
   if (typeof askClaudeForDiagnosis !== 'function') throw new TypeError('askClaudeForDiagnosis must be a function');
 
@@ -216,7 +227,7 @@ async function diagnoseFindings(opts) {
   const diagnoses = [];
 
   for (const finding of sliced) {
-    const result = await diagnoseFinding({ finding, hostname, scanContext, askClaudeForDiagnosis });
+    const result = await diagnoseFinding({ finding, hostname, scanContext, askClaudeForDiagnosis, priorArt });
     diagnoses.push(result);
   }
 

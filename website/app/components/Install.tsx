@@ -11,15 +11,15 @@ export default function Install() {
             Install GateTest
           </span>
           <h2 className="text-3xl sm:text-4xl font-bold mt-4 mb-4">
-            Two ways to get the gate <span className="gradient-text">on your repo</span>.
+            Three ways to get the gate <span className="gradient-text">on your repo</span>.
           </h2>
           <p className="text-muted text-lg max-w-2xl mx-auto">
-            Pick the install path that fits your stack. Both run the same 90 modules
+            Pick the install path that fits your stack. All three run the same 90 modules
             against every push.
           </p>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-6">
+        <div className="grid lg:grid-cols-3 gap-6">
           {/* Path 1: GitHub App — zero config */}
           <div className="rounded-xl p-7 border border-accent/30 bg-accent/5 flex flex-col">
             <div className="flex items-center gap-3 mb-4">
@@ -66,11 +66,56 @@ export default function Install() {
             </div>
           </div>
 
-          {/* Path 2: CLI — self-hosted CI */}
+          {/* Path 2: Gluecron — native integration */}
           <div className="rounded-xl p-7 border border-border bg-surface flex flex-col">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-lg bg-surface-light border border-border flex items-center justify-center font-[var(--font-mono)] font-bold text-foreground">
                 2
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">Gluecron &mdash; built-in</h3>
+                <p className="text-xs text-muted">Native integration for Gluecron git repos.</p>
+              </div>
+            </div>
+            <p className="text-sm text-muted mb-5">
+              Host your repos on{" "}
+              <a href="https://gluecron.com" target="_blank" rel="noopener noreferrer" className="text-accent-light hover:underline">
+                Gluecron
+              </a>
+              {" "}and GateTest scans automatically on every push via the Signal Bus &mdash;
+              no config files, no tokens to manage, no CI pipeline to wire up.
+            </p>
+            <ul className="text-sm space-y-2 mb-6">
+              <li className="flex items-start gap-2">
+                <span className="text-accent-light mt-0.5">&#10003;</span>
+                <span className="text-foreground">Zero-config &mdash; enabled the moment you push</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-accent-light mt-0.5">&#10003;</span>
+                <span className="text-foreground">Scan results posted back to your Gluecron PR</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-accent-light mt-0.5">&#10003;</span>
+                <span className="text-foreground">Same 90 modules, same Nuclear-tier fixes</span>
+              </li>
+            </ul>
+            <div className="mt-auto flex flex-col sm:flex-row gap-3">
+              <a
+                href="https://gluecron.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-6 py-3 text-sm font-semibold rounded-xl border border-accent/40 text-accent-light hover:border-accent transition-colors text-center"
+              >
+                Get Gluecron &rarr;
+              </a>
+            </div>
+          </div>
+
+          {/* Path 3: CLI — self-hosted CI */}
+          <div className="rounded-xl p-7 border border-border bg-surface flex flex-col">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-surface-light border border-border flex items-center justify-center font-[var(--font-mono)] font-bold text-foreground">
+                3
               </div>
               <div>
                 <h3 className="font-semibold text-lg">CLI in your CI &mdash; one line</h3>
@@ -83,7 +128,7 @@ export default function Install() {
               your existing branch protection blocks the merge.
             </p>
 
-            <div className="rounded-lg bg-black/30 border border-border p-4 mb-5 font-[var(--font-mono)] text-xs overflow-x-auto">
+            <div className="rounded-lg bg-[#0a0a12] border border-white/10 p-4 mb-5 font-[var(--font-mono)] text-xs overflow-x-auto">
               <p className="text-white/40 mb-1"># install</p>
               <p className="text-emerald-400 mb-3">npx gatetest --suite full</p>
               <p className="text-white/40 mb-1"># or pin to your CI runner</p>

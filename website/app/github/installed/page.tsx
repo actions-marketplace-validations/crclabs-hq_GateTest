@@ -61,7 +61,7 @@ export default function Installed() {
 
         {/* Upgrade CTA */}
         <div className="p-6 rounded-xl border border-accent/30 bg-accent/5 max-w-md mx-auto mb-8">
-          <h3 className="font-bold mb-2">Want auto-fixes too?</h3>
+          <h2 className="font-bold mb-2">Want auto-fixes too?</h2>
           <p className="text-sm text-muted mb-4">
             Upgrade to Scan + Fix and GateTest will automatically create PRs
             that fix the issues it finds. From $199 per scan.

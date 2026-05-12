@@ -29,7 +29,7 @@
  * orchestrator's `errors` array so the customer sees the full picture.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const vm = require('node:vm');
 
 /**

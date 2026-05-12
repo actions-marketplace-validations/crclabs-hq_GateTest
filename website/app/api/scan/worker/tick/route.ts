@@ -29,9 +29,9 @@ import { sendGluecronCallback } from "@/app/lib/gluecron-callback";
 import { sendGithubCallback } from "@/app/lib/github-callback";
 
 // CommonJS interop.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const scanWorker = require("@/app/lib/scan-worker");
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const queueStore = require("@/app/lib/scan-queue-store");
 
 interface CallbackArgs {

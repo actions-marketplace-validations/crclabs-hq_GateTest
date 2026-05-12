@@ -2,6 +2,7 @@ import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
 import Problem from "./components/Problem";
 import AiNative from "./components/AiNative";
+import MonsterMoves from "./components/MonsterMoves";
 import HowItWorks from "./components/HowItWorks";
 import Modules from "./components/Modules";
 import Install from "./components/Install";
@@ -21,6 +22,7 @@ export default function Home() {
         <Hero />
         <Problem />
         <AiNative />
+        <MonsterMoves />
         <HowItWorks />
         <Modules />
         <Install />

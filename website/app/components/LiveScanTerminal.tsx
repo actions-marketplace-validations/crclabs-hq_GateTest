@@ -1,6 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import CopyButton from "./CopyButton";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { formatScanTranscript } = require("@/app/lib/copy-formatters.js") as {
+  formatScanTranscript: (opts: { logs: Array<{ type: string; message: string }>; command?: string; prefixFor?: (t: string) => string }) => string;
+};
 
 interface LogEntry {
   time: number;
@@ -166,6 +171,18 @@ export default function LiveScanTerminal({ repoUrl, tier, sessionId, onComplete,
     }
   };
 
+  // Universal copy — flatten the log array into a paste-anywhere
+  // transcript. Backed by the shared formatter so the prefix scheme
+  // matches everywhere and is unit-tested.
+  const transcriptText = formatScanTranscript({
+    logs,
+    command: `gatetest --suite ${tier} --fix ${repoUrl.replace("https://github.com/", "")}`,
+    // getPrefix is typed against LogEntry["type"] but accepts any string
+    // safely (returns the default-prefix on unknowns). Cast widens the
+    // callback to the formatter's signature without changing behaviour.
+    prefixFor: getPrefix as (t: string) => string,
+  });
+
   return (
     <div className="rounded-xl border border-white/10 overflow-hidden bg-[#0a0a12] shadow-2xl">
       {/* Terminal header */}
@@ -176,14 +193,25 @@ export default function LiveScanTerminal({ repoUrl, tier, sessionId, onComplete,
         <span className="ml-3 text-xs text-white/30 font-mono">
           gatetest --suite {tier} --fix {repoUrl.replace("https://github.com/", "")}
         </span>
-        {running && (
-          <span className="ml-auto text-xs text-emerald-400 font-medium tracking-wider animate-pulse">
-            SCANNING
-          </span>
-        )}
-        {!running && (
-          <span className="ml-auto text-xs text-emerald-400 font-medium tracking-wider">
-            COMPLETE
+        {logs.length > 0 && (
+          <span className="ml-auto inline-flex items-center gap-2">
+            <CopyButton
+              text={transcriptText}
+              label={`scan transcript (${logs.length} lines)`}
+              variant="inline"
+              className="!text-white/60 hover:!text-white"
+              title="Copy the full scan transcript"
+            />
+            {running && (
+              <span className="text-xs text-emerald-400 font-medium tracking-wider animate-pulse">
+                SCANNING
+              </span>
+            )}
+            {!running && (
+              <span className="text-xs text-emerald-400 font-medium tracking-wider">
+                COMPLETE
+              </span>
+            )}
           </span>
         )}
       </div>

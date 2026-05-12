@@ -170,21 +170,50 @@ class DataIntegrityModule extends BaseModule {
 
     let piiCount = 0;
     for (const file of jsFiles) {
-      const relPath = path.relative(projectRoot, file);
+      const relPath = path.relative(projectRoot, file).split(path.sep).join('/');
       if (relPath.includes('test') || relPath.includes('.test.')) continue;
+      // Skip detector source files — modules whose JOB is to detect
+      // these patterns contain them as JSDoc and string examples.
+      if (/(?:^|\/)src\/modules\/(?:log-pii|data-integrity|cross-file-taint|cookie-security|tls-security)\.js$/.test(relPath)) {
+        continue;
+      }
 
-      const content = fs.readFileSync(file, 'utf-8');
+      const rawContent = fs.readFileSync(file, 'utf-8');
+      // Strip comments (JSDoc + line comments) — preserves strings so
+      // real PII-in-strings cases still detect.
+      const content = this._stripCommentsOnly(rawContent);
+
+      // Honour `// pii-ok` / `# pii-ok` / `// data-ok` line-level
+      // suppression — for legitimate cases like a login form
+      // serialising the password into a fetch body to the auth endpoint.
+      const rawLines = rawContent.split('\n');
+      const suppressedLines = new Set();
+      for (let i = 0; i < rawLines.length; i++) {
+        if (/(?:\/\/|#)\s*(?:pii-ok|data-ok)\b/.test(rawLines[i])) {
+          suppressedLines.add(i);
+          if (i + 1 < rawLines.length) suppressedLines.add(i + 1);
+        }
+      }
 
       for (const { regex, type } of piiPatterns) {
         regex.lastIndex = 0;
-        if (regex.test(content)) {
+        const lines = content.split('\n');
+        let hit = false;
+        for (let i = 0; i < lines.length; i++) {
+          regex.lastIndex = 0;
+          if (regex.test(lines[i]) && !suppressedLines.has(i)) {
+            hit = true;
+            break;
+          }
+        }
+        if (hit) {
           piiCount++;
           if (piiCount <= 5) {
             result.addCheck(`data:pii:${type}:${relPath}`, false, {
               file: relPath,
               severity: 'error',
               message: `Potential ${type} detected`,
-              suggestion: 'Ensure PII is never logged, serialized unsafely, or stored in localStorage',
+              suggestion: 'Ensure PII is never logged, serialized unsafely, or stored in localStorage. Mark intentional uses with `// pii-ok`.',
             });
           }
         }
@@ -199,6 +228,59 @@ class DataIntegrityModule extends BaseModule {
     } else if (piiCount === 0) {
       result.addCheck('data:pii', true, { severity: 'info', message: 'No PII handling issues detected' });
     }
+  }
+
+  // Newline-preserving comment stripper that LEAVES strings intact —
+  // identical contract to security.js#_stripCommentsOnly so both
+  // modules treat strings the same way (real bugs in strings → flagged,
+  // doc-comments → ignored).
+  _stripCommentsOnly(source) {
+    const lines = source.split('\n');
+    const out = [];
+    let inBlockComment = false;
+    let inString = null;
+    for (const raw of lines) {
+      let line = '';
+      let i = 0;
+      while (i < raw.length) {
+        if (inBlockComment) {
+          if (raw[i] === '*' && raw[i + 1] === '/') {
+            inBlockComment = false;
+            i += 2;
+          } else {
+            i += 1;
+          }
+          continue;
+        }
+        if (inString) {
+          line += raw[i];
+          if (raw[i] === '\\' && i + 1 < raw.length) {
+            line += raw[i + 1];
+            i += 2;
+            continue;
+          }
+          if (raw[i] === inString) inString = null;
+          i += 1;
+          continue;
+        }
+        if (raw[i] === '/' && raw[i + 1] === '*') {
+          inBlockComment = true;
+          i += 2;
+          continue;
+        }
+        if (raw[i] === '/' && raw[i + 1] === '/') break;
+        if (raw[i] === '"' || raw[i] === "'" || raw[i] === '`') {
+          inString = raw[i];
+          line += raw[i];
+          i += 1;
+          continue;
+        }
+        line += raw[i];
+        i += 1;
+      }
+      out.push(line);
+    }
+    return out.join('\n');
   }
 
   _checkDataValidation(projectRoot, result) {
@@ -232,20 +314,53 @@ class DataIntegrityModule extends BaseModule {
   _checkSqlInjection(projectRoot, result) {
     const jsFiles = this._collectFiles(projectRoot, ['.js', '.ts']);
 
+    // Two SQL-context patterns. The second alternative `+ var +` was
+    // previously included as a generic concat detector, but it matched
+    // every JSDoc with `text + var + text` shape and blew out FPs. We
+    // require SQL context (a query/execute/raw call OR a SQL-keyword
+    // string) for both rules now.
+    const sqlInterpolation = /(?:query|execute|raw|prepare|sql|exec)\s*\(\s*[`'"](?:SELECT|INSERT|UPDATE|DELETE|REPLACE|MERGE|CALL)\b[^)]*\$\{/gi;
+    const sqlConcat = /(?:query|execute|raw|prepare|sql|exec)\s*\(\s*['"]\s*(?:SELECT|INSERT|UPDATE|DELETE|REPLACE|MERGE|CALL)\b[^)]*['"]\s*\+\s*\w+/gi;
+
     for (const file of jsFiles) {
-      const relPath = path.relative(projectRoot, file);
+      const relPath = path.relative(projectRoot, file).split(path.sep).join('/');
       if (relPath.includes('test')) continue;
+      // Skip detector source files — modules whose JOB is to detect
+      // these patterns contain the literal regexes + JSDoc examples.
+      if (/(?:^|\/)src\/(?:modules\/(?:data-integrity|cross-file-taint|ssrf|sql-migrations|race-condition|log-pii|hardcoded-url|cron-expression|feature-flag|import-cycle|money-float|pr-size|ci-security|cookie-security|tls-security|redos)|core\/(?:claude-md-generator|gitignore))\.js$/.test(relPath)) {
+        continue;
+      }
 
-      const content = fs.readFileSync(file, 'utf-8');
+      const rawContent = fs.readFileSync(file, 'utf-8');
+      const content = this._stripCommentsOnly(rawContent);
 
-      // String concatenation in SQL queries
-      const sqlConcatPattern = /(?:query|execute|raw)\s*\(\s*[`'"](?:SELECT|INSERT|UPDATE|DELETE).*\$\{|(?:\+\s*\w+\s*\+)/gi;
-      if (sqlConcatPattern.test(content)) {
+      // Honour `// data-ok` / `# data-ok` line-level suppression.
+      const rawLines = rawContent.split('\n');
+      const suppressedLines = new Set();
+      for (let i = 0; i < rawLines.length; i++) {
+        if (/(?:\/\/|#)\s*data-ok\b/.test(rawLines[i])) {
+          suppressedLines.add(i);
+          if (i + 1 < rawLines.length) suppressedLines.add(i + 1);
+        }
+      }
+
+      const lines = content.split('\n');
+      let hit = false;
+      for (let i = 0; i < lines.length; i++) {
+        if (suppressedLines.has(i)) continue;
+        sqlInterpolation.lastIndex = 0;
+        sqlConcat.lastIndex = 0;
+        if (sqlInterpolation.test(lines[i]) || sqlConcat.test(lines[i])) {
+          hit = true;
+          break;
+        }
+      }
+      if (hit) {
         result.addCheck(`data:sql-injection:${relPath}`, false, {
           file: relPath,
           severity: 'error',
           message: 'Possible SQL injection — string concatenation/interpolation in query',
-          suggestion: 'Use parameterized queries or prepared statements',
+          suggestion: 'Use parameterized queries or prepared statements. Mark intentional dynamic SQL with `// data-ok`.',
         });
       }
     }

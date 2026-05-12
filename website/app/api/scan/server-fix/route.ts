@@ -13,7 +13,7 @@ import https from "https";
 
 // Phase 3.5 — executive summary composer. Synthesises diagnoses +
 // chains + scan stats into a single CTO-readable report.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const { composeExecutiveSummary, renderExecutiveSummary } = require("@/app/lib/executive-summary") as {
   composeExecutiveSummary: (opts: {
     scanStats?: { modulesPassed?: number; modulesTotal?: number; errors?: number; warnings?: number; checksPerformed?: number; durationMs?: number };
@@ -39,7 +39,7 @@ const { composeExecutiveSummary, renderExecutiveSummary } = require("@/app/lib/e
 // Phase 3.2 — cross-finding correlator. Identifies attack chains
 // across the full findings set — combinations that are materially
 // worse than the worst individual finding.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const { correlateFindings, renderCorrelationReport } = require("@/app/lib/cross-finding-correlator") as {
   correlateFindings: (opts: {
     findings: Array<{ detail: string; module?: string; severity?: string }>;
@@ -63,7 +63,7 @@ const { correlateFindings, renderCorrelationReport } = require("@/app/lib/cross-
 // Phase 3.1 — Nuclear diagnoser. Replaces the category-matched
 // shell-command templates below with real Claude-driven diagnosis
 // when the caller is on the $399 Nuclear tier.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const { diagnoseFindings, renderDiagnosesReport } = require("@/app/lib/nuclear-diagnoser") as {
   diagnoseFindings: (opts: {
     findings: Array<{ detail: string; module?: string; severity?: string }>;

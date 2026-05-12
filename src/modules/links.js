@@ -92,6 +92,12 @@ class LinksModule extends BaseModule {
 
       // Skip dynamic routes (e.g., /users/[id])
       if (/[\[\]{}$]/.test(href)) continue;
+      // Skip fragment-only anchors (e.g. #pricing, #features) — those
+      // refer to elements with matching `id=`, not to files. They're
+      // valid intra-page navigation, not broken file references.
+      if (href.startsWith('#')) continue;
+      // Skip mailto / tel / javascript / data / blob protocols.
+      if (/^(?:mailto|tel|javascript|data|blob):/i.test(href)) continue;
       // Skip absolute URLs that start with / (these are route paths, not filesystem paths)
       // Only validate relative file references
       if (!href.startsWith('/') && !href.startsWith('http')) {

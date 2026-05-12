@@ -2,12 +2,13 @@
 
 **AI writes fast. GateTest keeps it honest.**
 
-The most advanced QA gate for AI-generated code. 22 test modules scan your entire codebase — security, accessibility, performance, and everything in between. We don't just find bugs. We fix them.
+The most advanced QA gate for AI-generated code. **90 test modules** scan your entire codebase — security, accessibility, performance, AI code review, and everything in between. We don't just find bugs. We fix them.
 
 [![Scanned by GateTest](https://gatetest.ai/api/badge?status=passing)](https://gatetest.ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Modules](https://img.shields.io/badge/modules-22-brightgreen)]()
+[![Modules](https://img.shields.io/badge/modules-90-brightgreen)]()
 [![Node](https://img.shields.io/badge/node-%3E%3D20-green)]()
+[![npm](https://img.shields.io/npm/v/gatetest.svg)](https://www.npmjs.com/package/gatetest)
 
 ---
 
@@ -36,19 +37,63 @@ Plus 12 more modules they don't have: AI code review, **fake-fix detector**, mut
 
 ---
 
+## Install (anywhere)
+
+GateTest is published to multiple channels. Pick what fits your workflow.
+
+### npm (recommended for local + CI)
+
+```bash
+npm install -g gatetest
+# or one-shot, no install:
+npx gatetest --suite quick
+```
+
+### Drop-in CI gate (zero install on your side)
+
+From the root of any git repo, this writes the GitHub Actions workflow + Husky pre-push hook + protection marker:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/ccantynz-alt/gatetest/main/integrations/scripts/install.sh | bash
+git add .github .husky .gatetest.json
+git commit -m "chore: install GateTest quality gate"
+git push
+```
+
+The CI workflow clones GateTest at runtime — nothing to install on your side.
+
+### MCP server (Claude Code / Cursor / Cline / Aider)
+
+```jsonc
+// In your MCP client config
+{
+  "mcpServers": {
+    "gatetest": {
+      "command": "npx",
+      "args": ["-y", "gatetest", "mcp"]
+    }
+  }
+}
+```
+
+Or directly: `npx gatetest-mcp` exposes scan + fix tools to any MCP-aware AI builder.
+
+### Hosted (no install at all)
+
+Visit [gatetest.ai](https://gatetest.ai) and paste a repo URL. Pay-on-completion: card hold released if scan fails.
+
+---
+
 ## Quick Start
 
 ```bash
-# Install globally
-npm install -g gatetest
-
 # Initialize in your project
 gatetest --init
 
 # Run quick checks (syntax, lint, secrets, code quality)
 gatetest --suite quick
 
-# Run all 22 modules
+# Run all 90 modules
 gatetest --suite full
 
 # Run with auto-fix (fixes safe issues automatically)
@@ -56,6 +101,10 @@ gatetest --suite full --fix
 
 # Only scan changed files (instant pre-commit)
 gatetest --diff
+
+# Incremental PR scan — only files changed since the base ref (5x-30x faster)
+gatetest --since main
+gatetest --pr                 # alias for --since origin/main
 
 # Watch mode — re-scan on every file change
 gatetest --watch
@@ -99,7 +148,7 @@ gatetest --module aiReview
 
 ## Features
 
-- **22 test modules** — More coverage than any single competitor
+- **90 test modules** — More coverage than any single competitor
 - **5 report formats** — Console, JSON, HTML, SARIF (GitHub Security), JUnit XML (CI)
 - **Severity levels** — error (blocks gate), warning (reports), info (informational)
 - **Auto-fix engine** — Modules can automatically repair safe issues
@@ -118,10 +167,12 @@ gatetest --module aiReview
 
 ```
 gatetest                          Run standard checks
-gatetest --suite full             Run every module (22 modules)
+gatetest --suite full             Run every module (90 modules)
 gatetest --suite quick            Fast pre-commit checks
 gatetest --module security        Run a single module
 gatetest --diff                   Only scan git-changed files
+gatetest --since <ref>            Incremental scan: only files changed vs <ref>
+gatetest --pr                     Alias for --since origin/main (PR workflow)
 gatetest --fix                    Auto-fix safe issues
 gatetest --watch                  Watch mode — re-scan on changes
 gatetest --sarif                  Output SARIF for GitHub Security tab
@@ -159,9 +210,9 @@ Don't want to run it yourself? We'll scan your repo and deliver a full report.
 | Tier | Price | What You Get |
 |------|-------|-------------|
 | **Quick Scan** | $29 | 4 modules, instant report |
-| **Full Scan** | $99 | All 22 modules, SARIF + JUnit |
-| **Scan + Fix** | $199 | Full scan + auto-fix PR delivered to your repo |
-| **Nuclear** | $399 | Every module + mutation testing + live crawl + chaos |
+| **Full Scan** | $99 | All 90 modules, SARIF + JUnit |
+| **Scan + Fix** | $199 | Full scan + auto-fix PR + pair-review + architecture annotations |
+| **Nuclear** | $399 | Everything + Claude per-finding diagnosis + cross-finding correlation + mutation + chaos + executive summary |
 
 **Pay only when the scan completes.** Card hold released if scan fails. Zero risk.
 

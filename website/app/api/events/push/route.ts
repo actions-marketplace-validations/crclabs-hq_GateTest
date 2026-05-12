@@ -48,9 +48,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/app/lib/db";
 
 // CommonJS interop — the helpers are .js and our lib/* use require-style.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const eventsPush = require("@/app/lib/events-push");
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const queueStore = require("@/app/lib/scan-queue-store");
 
 export async function POST(req: NextRequest) {

@@ -165,7 +165,11 @@ export default function AIBuilderHandoff({
     // claude.ai accepts the new-chat URL; users can paste manually.
     const url = "https://claude.ai/new";
     // Copy first so paste works immediately.
-    if (navigator.clipboard) navigator.clipboard.writeText(rendered.content).catch(() => {});
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(rendered.content).catch((err) => {
+        console.warn("[AIBuilderHandoff] clipboard write failed; user will need to paste manually:", err);
+      });
+    }
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
@@ -300,6 +304,7 @@ export default function AIBuilderHandoff({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search file or message"
+          aria-label="Search findings"
           className="flex-1 min-w-[140px] px-3 py-1.5 rounded-full border border-border bg-white text-xs placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
         />
         {(severity !== "all" || moduleFilter !== "all" || query) && (

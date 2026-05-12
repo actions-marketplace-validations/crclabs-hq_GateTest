@@ -18,7 +18,7 @@ const steps = [
   },
   {
     step: "02",
-    title: "GateTest runs 67 modules",
+    title: "GateTest runs 90 modules",
     description:
       "One command triggers every check — syntax, security, accessibility, supply chain, auth flaws, CI hardening, and 16 more. Every module runs. Every check is recorded.",
     code: `$ gatetest --suite full
@@ -37,7 +37,7 @@ const steps = [
     step: "03",
     title: "Gate decides: PASS or BLOCKED",
     description:
-      "Zero tolerance. One failure in any of the 67 modules blocks the entire pipeline. No overrides. No \"ship it anyway.\" The gate produces a timestamped report with full evidence.",
+      "Zero tolerance. One failure in any of the 90 modules blocks the entire pipeline. No overrides. No \"ship it anyway.\" The gate produces a timestamped report with full evidence.",
     code: `GATE: PASSED
 
 Modules: 67/67 passed

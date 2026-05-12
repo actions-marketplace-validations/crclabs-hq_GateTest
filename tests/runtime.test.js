@@ -83,9 +83,10 @@ describe('Diagnostics', () => {
   });
 
   test('_stateFile returns deterministic path', () => {
-    const d = new Diagnostics({ stateDir: '/tmp/test' });
+    const tmpRoot = path.join(os.tmpdir(), 'gatetest-runtime-test');
+    const d = new Diagnostics({ stateDir: tmpRoot });
     const f = d._stateFile('https://example.com/api/health');
-    assert(f.startsWith('/tmp/test'));
+    assert(f.startsWith(tmpRoot));
     assert(f.endsWith('.json'));
   });
 

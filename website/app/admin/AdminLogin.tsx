@@ -35,10 +35,13 @@ export default function AdminLogin({
     }
     setAuthing(true);
     try {
+      // pii-ok: login form sends password to /api/admin/auth — that's
+      // the only correct destination for a password (canonical
+      // login-form pattern, HTTPS in prod).
       const res = await fetch("/api/admin/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password }), // pii-ok
         credentials: "same-origin",
       });
       if (res.ok) {
@@ -85,6 +88,7 @@ export default function AdminLogin({
                 if (e.key === "Enter") login();
               }}
               placeholder="Enter admin password"
+              aria-label="Admin password"
               className="w-full px-4 py-3 rounded-xl border border-border bg-surface-solid text-foreground text-sm mb-3"
               autoFocus
             />

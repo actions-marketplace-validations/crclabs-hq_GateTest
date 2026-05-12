@@ -48,6 +48,7 @@ export default function Footer() {
               <li><a href="/legal/privacy" className="text-sm text-muted hover:text-foreground transition-colors">Privacy Policy</a></li>
               <li><a href="/legal/terms" className="text-sm text-muted hover:text-foreground transition-colors">Terms of Service</a></li>
               <li><a href="/legal/refunds" className="text-sm text-muted hover:text-foreground transition-colors">Refund Policy</a></li>
+              <li><a href="/legal/acceptable-use" className="text-sm text-muted hover:text-foreground transition-colors">Acceptable Use</a></li>
             </ul>
           </div>
         </div>

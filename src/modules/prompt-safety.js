@@ -38,6 +38,10 @@ const BaseModule = require('./base-module');
 const DEFAULT_EXCLUDES = [
   'node_modules', '.git', 'dist', 'build', 'coverage', '.gatetest',
   '.next', '__pycache__', 'target', 'vendor',
+  // Tooling artifacts — parallel-agent worktrees (separate git checkouts
+  // of the repo); scanning into them produces duplicate findings from
+  // the parent tree.
+  '.claude',
 ];
 
 // Paths that define detection patterns — scanning them would produce FPs

@@ -107,21 +107,45 @@ class SecurityModule extends BaseModule {
     ];
 
     for (const file of files) {
-      const relPath = path.relative(projectRoot, file);
+      const relPath = path.relative(projectRoot, file).split(path.sep).join('/');
       const content = fs.readFileSync(file, 'utf-8');
-      const lines = content.split('\n');
+      const rawLines = content.split('\n');
+      // Strip comments and string literals BEFORE pattern-matching so
+      // JSDoc that documents the patterns + string literals naming them
+      // don't false-positive. Newlines preserved so line numbers stay 1:1
+      // with the original file.
+      const stripped = this._stripCommentsAndStrings(content);
+      const strippedLines = stripped.split('\n');
+
+      // Test paths and detector source files (modules whose JOB is to
+      // detect these patterns) downgrade to info — those calls are
+      // either fixtures or legitimate jitter / sampling code.
+      const isTestFile = /(?:^|\/)tests?\/|\.test\.|\.spec\./i.test(relPath);
+      const isDetectorSource = /(?:^|\/)src\/(?:modules|core)\/|website\/app\/lib\/scan-modules\//i.test(relPath);
 
       for (const pattern of dangerousPatterns) {
-        for (let i = 0; i < lines.length; i++) {
+        for (let i = 0; i < strippedLines.length; i++) {
           pattern.regex.lastIndex = 0;
-          if (pattern.regex.test(lines[i])) {
-            result.addCheck(`security:${pattern.name}:${relPath}:${i + 1}`, false, {
-              file: relPath,
-              line: i + 1,
-              message: `${pattern.severity.toUpperCase()}: ${pattern.name} detected`,
-              suggestion: `Review and replace ${pattern.name} with a safe alternative`,
-            });
+          if (!pattern.regex.test(strippedLines[i])) continue;
+
+          // Honour `// security-ok` suppression on the same or
+          // preceding line — consistent with other modules' marker
+          // convention (cookie-ok / tls-ok / log-safe / etc.).
+          const sameLine = rawLines[i] || '';
+          const prevLine = i > 0 ? rawLines[i - 1] : '';
+          if (/(?:\/\/|#)\s*security-ok\b/.test(sameLine) ||
+              /(?:\/\/|#)\s*security-ok\b/.test(prevLine)) {
+            continue;
           }
+
+          const sev = isTestFile || isDetectorSource ? 'info' : pattern.severity;
+          result.addCheck(`security:${pattern.name}:${relPath}:${i + 1}`, sev === 'info', {
+            file: relPath,
+            line: i + 1,
+            severity: sev === 'info' ? 'info' : (sev === 'moderate' ? 'warning' : 'error'),
+            message: `${pattern.severity.toUpperCase()}: ${pattern.name} detected`,
+            suggestion: `Review and replace ${pattern.name} with a safe alternative`,
+          });
         }
       }
     }
@@ -129,6 +153,115 @@ class SecurityModule extends BaseModule {
     if (files.length > 0) {
       result.addCheck('security:source-scan', true, { message: `Scanned ${files.length} source files` });
     }
+  }
+
+  // Newline-preserving comment stripper that LEAVES strings intact.
+  // Used by the secret-detection pass — real hardcoded secrets live in
+  // strings, so we can't strip them — but JSDoc and inline `//` /
+  // `/* */` comments documenting credential shapes are the FP source.
+  _stripCommentsOnly(source) {
+    const lines = source.split('\n');
+    const out = [];
+    let inBlockComment = false;
+    let inString = null; // null | "'" | '"' | '`'
+    for (const raw of lines) {
+      let line = '';
+      let i = 0;
+      while (i < raw.length) {
+        if (inBlockComment) {
+          if (raw[i] === '*' && raw[i + 1] === '/') {
+            inBlockComment = false;
+            i += 2;
+          } else {
+            i += 1;
+          }
+          continue;
+        }
+        if (inString) {
+          line += raw[i];
+          if (raw[i] === '\\' && i + 1 < raw.length) {
+            line += raw[i + 1];
+            i += 2;
+            continue;
+          }
+          if (raw[i] === inString) inString = null;
+          i += 1;
+          continue;
+        }
+        if (raw[i] === '/' && raw[i + 1] === '*') {
+          inBlockComment = true;
+          i += 2;
+          continue;
+        }
+        if (raw[i] === '/' && raw[i + 1] === '/') break;
+        if (raw[i] === '"' || raw[i] === "'" || raw[i] === '`') {
+          inString = raw[i];
+          line += raw[i];
+          i += 1;
+          continue;
+        }
+        line += raw[i];
+        i += 1;
+      }
+      out.push(line);
+    }
+    return out.join('\n');
+  }
+
+  // Newline-preserving stripper: removes block / line / template / quoted
+  // string contents while keeping the source's line count identical so
+  // line-numbered diagnostics from later passes stay correct.
+  _stripCommentsAndStrings(source) {
+    const lines = source.split('\n');
+    const out = [];
+    let inBlockComment = false;
+    let inTemplate = false;
+    for (const raw of lines) {
+      let line = '';
+      let i = 0;
+      while (i < raw.length) {
+        if (inBlockComment) {
+          if (raw[i] === '*' && raw[i + 1] === '/') {
+            inBlockComment = false;
+            i += 2;
+          } else {
+            i += 1;
+          }
+          continue;
+        }
+        if (inTemplate) {
+          if (raw[i] === '\\') { i += 2; continue; }
+          if (raw[i] === '`') { inTemplate = false; i += 1; continue; }
+          i += 1;
+          continue;
+        }
+        if (raw[i] === '/' && raw[i + 1] === '*') {
+          inBlockComment = true;
+          i += 2;
+          continue;
+        }
+        if (raw[i] === '/' && raw[i + 1] === '/') break;
+        if (raw[i] === '`') {
+          inTemplate = true;
+          i += 1;
+          continue;
+        }
+        if (raw[i] === '"' || raw[i] === "'") {
+          const quote = raw[i];
+          i += 1;
+          while (i < raw.length && raw[i] !== quote) {
+            if (raw[i] === '\\') i += 1;
+            i += 1;
+          }
+          i += 1;
+          continue;
+        }
+        line += raw[i];
+        i += 1;
+      }
+      out.push(line);
+    }
+    return out.join('\n');
   }
 
   _checkFilePermissions(projectRoot, result) {
@@ -248,11 +381,35 @@ class SecurityModule extends BaseModule {
       } catch {
         continue;
       }
-      const lines = content.split('\n');
+      const rawLines = content.split('\n');
+      // Strip comments only (line + block) — preserves string literals
+      // because real hardcoded secrets DO live in strings. JSDoc that
+      // documents credential shapes (`-----BEGIN PRIVATE KEY-----` in a
+      // module's docstring) is the most common FP source.
+      const stripped = this._stripCommentsOnly(content);
+      const lines = stripped.split('\n');
+
+      // Skip detector source files — modules that contain credential
+      // patterns as documentation or as detection regexes themselves.
+      const relPathNorm = relPath.split(path.sep).join('/');
+      if (/(?:^|\/)src\/(?:modules\/(?:security|secret-rotation|cross-file-taint|tls-security|cookie-security)|core\/config)\.js$/.test(relPathNorm)) {
+        continue;
+      }
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmed = line.trim();
+
+        // Honour `// secrets-ok` / `# secrets-ok` suppression on the
+        // raw line (so the marker isn't itself stripped) — for cases
+        // like error messages that legitimately contain a credential
+        // header for user guidance, not a real secret.
+        const rawSame = rawLines[i] || '';
+        const rawPrev = i > 0 ? rawLines[i - 1] : '';
+        if (/(?:\/\/|#)\s*secrets-ok\b/.test(rawSame) ||
+            /(?:\/\/|#)\s*secrets-ok\b/.test(rawPrev)) {
+          continue;
+        }
 
         // Skip comment lines that document patterns rather than containing real secrets
         if (/^\s*(\/\/|#|\/?\*|--|;)\s*(example|e\.g\.|sample|placeholder|dummy|fake|test|TODO|NOTE|regex|pattern)/i.test(trimmed)) {

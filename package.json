@@ -1,12 +1,18 @@
 {
   "name": "gatetest",
-  "version": "1.0.0",
-  "description": "GateTest - Advanced QA gate between Claude and GitHub. Nothing ships unless it's pristine.",
+  "version": "1.0.1",
+  "description": "GateTest — the unified quality gate for AI-generated code. 90 modules: security, accessibility, performance, AI code review, and auto-fix.",
   "main": "src/index.js",
   "bin": {
     "gatetest": "./bin/gatetest.js",
     "gatetest-mcp": "./bin/gatetest-mcp.mjs"
   },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "node --test tests/**/*.test.js",
     "app": "node src/app-server.js",
@@ -23,26 +29,51 @@
     "gatetest:report": "node bin/gatetest.js --report",
     "lint": "eslint src/ --ext .js",
     "precommit": "node src/hooks/pre-commit.js",
-    "prepush": "node src/hooks/pre-push.js"
+    "prepush": "node src/hooks/pre-push.js",
+    "prepare": "git config core.hooksPath .husky 2>/dev/null || true",
+    "prepublishOnly": "node bin/gatetest.js --list && node --test tests/*.test.js"
   },
   "keywords": [
     "testing",
     "qa",
     "quality-assurance",
-    "gatetest",
-    "gatecode",
-    "claude",
-    "ci-cd",
+    "code-quality",
+    "static-analysis",
     "security",
     "accessibility",
     "performance",
     "visual-regression",
-    "seo"
+    "seo",
+    "linter",
+    "auto-fix",
+    "ai-code-review",
+    "claude",
+    "ci-cd",
+    "github-actions",
+    "sarif",
+    "mutation-testing",
+    "chaos-testing",
+    "gatetest"
   ],
-  "author": "GateTest Team",
+  "homepage": "https://gatetest.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ccantynz-alt/gatetest.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ccantynz-alt/gatetest/issues"
+  },
+  "author": {
+    "name": "GateTest",
+    "email": "hello@gatetest.ai",
+    "url": "https://gatetest.ai"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"

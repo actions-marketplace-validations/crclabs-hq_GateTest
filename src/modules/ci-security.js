@@ -175,9 +175,24 @@ class CiSecurityModule extends BaseModule {
 
       // continue-on-error: true on the gate step
       if (/^\s*continue-on-error\s*:\s*true\b/i.test(line)) {
-        // Look back a handful of lines for a gatetest reference (name or run)
-        const lookback = lines.slice(Math.max(0, i - 8), i).join('\n');
-        if (/gatetest/i.test(lookback)) {
+        // Walk back to the start of THIS step (most recent line beginning
+        // with "-" at the step indent), capped at 30 lines for a bounded
+        // scan. Then look for gatetest *as an executable* — name: or run:
+        // lines referring to the GateTest CLI. Path references inside
+        // `with:`/`sarif_file:` (e.g. `.gatetest/reports/`) are not the
+        // gate itself, just an output directory, and must not trigger.
+        let stepStart = i;
+        for (let j = i - 1; j >= Math.max(0, i - 30); j -= 1) {
+          if (/^\s*-\s/.test(lines[j])) {
+            stepStart = j;
+            break;
+          }
+        }
+        const stepBody = lines.slice(stepStart, i);
+        const runsGate = stepBody.some((l) =>
+          /^\s*(?:-\s*)?(?:name|run|uses)\s*:\s*[^\n]*\bgatetest\b/i.test(l)
+        );
+        if (runsGate) {
           issues += this._flag(result, `ci-security:soft-fail-gate:${rel}:${i + 1}`, {
             severity: 'error',
             file: rel,

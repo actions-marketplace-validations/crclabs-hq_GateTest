@@ -7,6 +7,10 @@
     {
       "path": "/api/scan/worker/tick",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/admin/learning/cron",
+      "schedule": "0 6 * * 1"
     }
   ],
   "functions": {
@@ -14,6 +18,7 @@
     "app/api/scan/fix/route.ts": { "maxDuration": 300 },
     "app/api/scan/nuclear/route.ts": { "maxDuration": 300 },
     "app/api/scan/worker/tick/route.ts": { "maxDuration": 60 },
-    "app/api/watches/tick/route.ts": { "maxDuration": 60 }
+    "app/api/watches/tick/route.ts": { "maxDuration": 60 },
+    "app/api/admin/learning/cron/route.ts": { "maxDuration": 60 }
   }
 }

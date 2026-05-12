@@ -89,17 +89,18 @@ class AccessibilityModule extends BaseModule {
   }
 
   _checkFormLabels(relPath, content, result) {
-    // Find <input> without associated <label> or aria-label
-    const inputRegex = /<input\b([^>]*?)>/gi;
-    let match;
-    while ((match = inputRegex.exec(content)) !== null) {
-      const attrs = match[1];
+    // Find every <input ... /> tag, brace-aware so JSX expressions like
+    // `onChange={(e) => setX(e.target.value)}` (which contain `>` inside
+    // an arrow) don't truncate the attribute capture and silently miss
+    // the `aria-label` declared after them.
+    const inputs = this._extractJsxTags(content, 'input');
+    for (const attrs of inputs) {
       const type = (attrs.match(/type\s*=\s*["'](\w+)["']/i) || [])[1] || 'text';
       if (['hidden', 'submit', 'button', 'reset'].includes(type)) continue;
 
       const hasLabel = /aria-label\s*=/i.test(attrs) ||
                        /aria-labelledby\s*=/i.test(attrs) ||
-                       /id\s*=/i.test(attrs); // Simplified check
+                       /\bid\s*=/i.test(attrs);
 
       if (!hasLabel) {
         result.addCheck(`a11y:input-label:${relPath}`, false, {
@@ -109,6 +110,57 @@ class AccessibilityModule extends BaseModule {
         });
       }
     }
+  }
+
+  // Brace-balanced JSX-tag attribute extractor. Walks the source looking
+  // for `<tagName` openings, then advances character-by-character tracking
+  // brace depth (`{...}` JSX expression containers) and string-literal
+  // state until it finds the closing `>` at depth 0. This gets around
+  // the classic regex bug where a non-greedy `[^>]*?` cuts off at the
+  // first `>` inside an arrow function (`(e) =>`).
+  _extractJsxTags(source, tagName) {
+    const out = [];
+    const opener = `<${tagName}`;
+    let i = 0;
+    while (i < source.length) {
+      const idx = source.indexOf(opener, i);
+      if (idx < 0) break;
+      // Must be a real tag boundary — next char is whitespace, '/', '>',
+      // or end of identifier (not e.g. `<inputs`).
+      const after = source.charCodeAt(idx + opener.length);
+      const isBoundary = isNaN(after) || after === 32 || after === 9 ||
+                         after === 10 || after === 13 || after === 47 /* / */ ||
+                         after === 62 /* > */;
+      if (!isBoundary) { i = idx + opener.length; continue; }
+
+      let j = idx + opener.length;
+      let braceDepth = 0;
+      let inString = null; // null | "'" | '"' | '`'
+      while (j < source.length) {
+        const ch = source[j];
+        if (inString) {
+          if (ch === '\\') { j += 2; continue; }
+          if (ch === inString) inString = null;
+          j += 1;
+          continue;
+        }
+        if (ch === '"' || ch === "'" || ch === '`') {
+          inString = ch;
+          j += 1;
+          continue;
+        }
+        if (ch === '{') { braceDepth += 1; j += 1; continue; }
+        if (ch === '}') { braceDepth -= 1; j += 1; continue; }
+        if (braceDepth === 0 && ch === '>') {
+          out.push(source.slice(idx + opener.length, j));
+          j += 1;
+          break;
+        }
+        j += 1;
+      }
+      i = j;
+    }
+    return out;
   }
 
   _checkHeadingHierarchy(relPath, content, result) {

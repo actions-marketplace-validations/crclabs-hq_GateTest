@@ -19,11 +19,15 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+const { classifyAnthropicError, formatAnthropicError } = require("@/app/lib/anthropic-error") as {
+  classifyAnthropicError: (status: number, body?: string) => { kind: string; status: number; message: string; action: string | null; raw: string };
+  formatAnthropicError: (c: { message: string; action: string | null }) => string;
+};
 import {
   createBranch,
   fetchBlob,
   fetchFileSha,
-
+  fetchTree,
   openPullRequest,
   postPrComment,
   resolveBaseBranchSha,
@@ -41,7 +45,7 @@ import { runTier } from "@/app/lib/scan-modules";
 // per-file) and produces a "design observations" report — layering
 // violations, duplicated logic, god objects, refactoring opportunities.
 // REPORTED only, never auto-refactored. Posts as a PR comment.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const { annotateArchitecture, renderArchitectureComment } = require("@/app/lib/architecture-annotator") as {
   annotateArchitecture: (opts: {
     fileContents: Array<{ path: string; content: string }>;
@@ -68,7 +72,7 @@ const { annotateArchitecture, renderArchitectureComment } = require("@/app/lib/a
 // Phase 2.1 — pair-review agent. Second Claude critiques each fix on a
 // 4-axis rubric (correctness / completeness / readability / testCoverage),
 // posts result as a PR comment.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const { runPairReview, renderReviewComment } = require("@/app/lib/pair-review") as {
   runPairReview: (opts: {
     fixes: Array<{ file: string; original: string; fixed: string; issues: string[] }>;
@@ -91,7 +95,7 @@ const { runPairReview, renderReviewComment } = require("@/app/lib/pair-review") 
 // from every artifact this route collects (fixes, errors, attempt
 // history, gate results, before/after findings, regression tests).
 // Pure string composition.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const { composePrBody } = require("@/app/lib/pr-composer") as {
   composePrBody: (opts: {
     fixes?: Array<{ file: string; original: string; fixed: string; issues: string[] }>;
@@ -107,7 +111,7 @@ const { composePrBody } = require("@/app/lib/pr-composer") as {
 };
 
 // Phase 1.3 — test generation per fix.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const { generateTestsForFixes } = require("@/app/lib/test-generator") as {
   generateTestsForFixes: (opts: {
     fixes: Array<{ file: string; fixed: string; original: string; issues: string[] }>;
@@ -119,7 +123,7 @@ const { generateTestsForFixes } = require("@/app/lib/test-generator") as {
     summary: string;
   }>;
 };
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const { validateFixesAgainstScanner } = require("@/app/lib/cross-fix-scanner-gate") as {
   validateFixesAgainstScanner: (opts: {
     fixes: Array<{ file: string; fixed: string; original: string; issues: string[] }>;
@@ -141,7 +145,7 @@ const { validateFixesAgainstScanner } = require("@/app/lib/cross-fix-scanner-gat
 // Phase 1.2a — cross-fix syntax-validation gate. Sits between the
 // per-file iterative loop and PR creation. Catches Claude output that
 // passes shape + pattern checks but doesn't actually parse.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const { validateFixesSyntax, summariseSyntaxGate } = require("@/app/lib/cross-fix-syntax-gate") as {
   validateFixesSyntax: (opts: {
     fixes: Array<{ file: string; fixed: string; original: string; issues: string[] }>;
@@ -206,13 +210,80 @@ const { attemptFixWithRetries, summariseAttempts } = require("@/app/lib/fix-atte
   }>;
   summariseAttempts: (attempts: Array<{ outcome: string; durationMs: number }>) => string;
 };
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
+const { tryRuleBasedFix } = require("@/app/lib/rule-based-fixer") as {
+  tryRuleBasedFix: (content: string, filePath: string, issues: string[]) => string | null;
+};
+
+const { tryAstFix } = require("@/app/lib/ast-fixer") as {
+  tryAstFix: (content: string, filePath: string, issues: string[]) => string | null;
+};
+
+const { recordSuccessfulFixes, tryRecipeFix: tryRecipeFixDb } = require("@/app/lib/fix-recipe-store") as {
+  recordSuccessfulFixes: (
+    sql: unknown,
+    fixes: Array<{ file: string; original: string; fixed: string; issues: string[] }>,
+    moduleHint?: string
+  ) => Promise<void>;
+  tryRecipeFix: (opts: {
+    sql: unknown;
+    content: string;
+    filePath: string;
+    issueObjects: Array<{ module: string; issue: string }>;
+  }) => Promise<string | null>;
+};
+
+const { enrichFixContext } = require("@/app/lib/fix-context-enricher") as {
+  enrichFixContext: (opts: {
+    filePath: string;
+    fileContents: string;
+    allFiles: string[];
+    fetchFile: (path: string) => Promise<string | null>;
+  }) => Promise<{ consumers: string[]; dependencies: string[]; stackHints: string[]; summary: string }>;
+};
+
 const { mapWithAdaptiveConcurrency } = require("@/app/lib/adaptive-concurrency") as {
   mapWithAdaptiveConcurrency: <T, R>(
     items: T[],
     initialLimit: number,
     fn: (item: T, state: AdaptiveState) => Promise<R>,
+    opts?: { rampAfterSuccesses?: number; maxConcurrency?: number },
   ) => Promise<R[]>;
+};
+
+// Phase 5.1.3 brain wire-up — every fix prompt enriched with cross-repo
+// prior-art ("X% of similar-stack repos had this finding; pattern Y worked
+// Z%"). Was Nuclear-tier-only at landing; now flows into the regular fix
+// loop so $99/$199 customers also benefit.
+const fingerprintLib = require("@/app/lib/scan-fingerprint") as {
+  extractFingerprint: (opts: {
+    modules?: unknown[];
+    dependencies?: Record<string, unknown>;
+    files?: string[];
+    fixes?: unknown[];
+    fixErrors?: string[];
+    tier?: string;
+    durationMs?: number | null;
+  }) => { fingerprintSignature: string; frameworkVersions: Record<string, string> };
+};
+const fingerprintStore = require("@/app/lib/scan-fingerprint-store") as {
+  hashRepoUrl: (repoUrl: string) => string;
+  findSimilarFingerprints: (opts: {
+    sql: unknown;
+    fingerprintSignature: string;
+    frameworkVersions?: Record<string, string>;
+    excludeRepoUrlHash?: string | null;
+    limit?: number;
+  }) => Promise<unknown[]>;
+};
+const crossRepoLookup = require("@/app/lib/cross-repo-lookup") as {
+  fetchPriorArt: (opts: {
+    fingerprint: { fingerprintSignature: string; frameworkVersions?: Record<string, string> };
+    repoUrlHash: string;
+    findSimilarFingerprints: unknown;
+    sql: unknown;
+    limit?: number;
+  }) => Promise<{ context: string; sampleSize: number } | null>;
 };
 
 // Default attempt ceiling — set higher than the old hardcoded "1+1 retry"
@@ -265,10 +336,9 @@ function isRetryableNetworkError(err: unknown): boolean {
 
 async function anthropicCall(body: string): Promise<{ status: number; data: Record<string, unknown> }> {
   const controller = new AbortController();
-  // Anthropic max_tokens=8192 at sonnet speeds rarely exceeds 30s. 45s is a
-  // safe per-request ceiling that leaves room for retries inside the 300s
-  // function budget and won't let a single stuck request monopolise.
-  const timer = setTimeout(() => controller.abort(), 45_000);
+  // Opus 4.7 + adaptive thinking + effort:xhigh regularly takes 60-90s for
+  // complex files. 120s ceiling leaves room for retries inside the 300s budget.
+  const timer = setTimeout(() => controller.abort(), 120_000);
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -335,7 +405,7 @@ async function anthropicCallWithRetry(body: string, maxAttempts = 6): Promise<{ 
     : new Error(`Anthropic API unreachable after ${maxAttempts} attempts`);
 }
 
-async function askClaude(fileContent: string, filePath: string, issues: string[]): Promise<string> {
+async function askClaude(fileContent: string, filePath: string, issues: string[], priorArtContext: string | null = null, contextSummary?: string): Promise<string> {
   // Enrich broken-link issues with context about what actually exists
   const enrichedIssues = await Promise.all(issues.map(async (issue) => {
     const brokenMatch = issue.match(/BROKEN LINK \(404\):\s*(https:\/\/github\.com\/([^/]+)\/([^/]+)\/([^\s]+))/i);
@@ -362,18 +432,14 @@ async function askClaude(fileContent: string, filePath: string, issues: string[]
     return issue;
   }));
 
-  const prompt = `You are an expert code fixer for GateTest, an AI-powered QA platform with 90 scanning modules.
+  const contextBlock = contextSummary ? `\nCODEBASE CONTEXT (architecture — use to understand how this file fits the broader project; do not copy patterns verbatim):\n${contextSummary}\n` : "";
+  const priorArtBlock = priorArtContext ? `\nCROSS-REPO CONTEXT (informational only — do not copy patterns; use to prioritise + sanity-check your fix):\n${priorArtContext}\n` : "";
 
-Fix ALL of the following issues in this file. Every fix must pass GateTest's re-scan.
+  // Stable system instructions are cached — saves ~80% on input tokens across
+  // the multi-file fix loop. User message carries the per-file variable content.
+  const systemPrompt = `You are an expert code fixer for GateTest, an AI-powered QA platform with 90 scanning modules.
 
-FILE: ${filePath}
-ISSUES TO FIX:
-${enrichedIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}
-
-CURRENT CODE:
-\`\`\`
-${fileContent}
-\`\`\`
+Fix ALL issues given to you in each file. Every fix must pass GateTest's re-scan.
 
 CRITICAL RULES — violations will cause re-scan failure:
 - Return ONLY the complete fixed file content. No explanations. No markdown code fences.
@@ -392,22 +458,37 @@ CRITICAL RULES — violations will cause re-scan failure:
 - If a fix would require context you don't have, output the UNCHANGED original file verbatim.
 - The fixed code will be automatically re-scanned. If it fails, the fix is rejected.`;
 
+  const userPrompt = `FILE: ${filePath}
+ISSUES TO FIX:
+${enrichedIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}
+${priorArtBlock}${contextBlock}
+CURRENT CODE:
+\`\`\`
+${fileContent}
+\`\`\``;
+
   const body = JSON.stringify({
-    model: "claude-sonnet-4-6",
-    max_tokens: 8192,
-    messages: [{ role: "user", content: prompt }],
+    model: "claude-opus-4-7",
+    max_tokens: 16000,
+    system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort: "xhigh" },
+    messages: [{ role: "user", content: userPrompt }],
   });
 
   const res = await anthropicCallWithRetry(body);
   if (res.status === 200) {
-    const content = res.data.content as Array<{ type: string; text: string }>;
-    let fixedCode = content?.[0]?.text || "";
+    const content = res.data.content as Array<{ type: string; text?: string; thinking?: string }>;
+    // When thinking is enabled the content array is [thinking-block, text-block].
+    // Always find by type — never assume index 0 is the text.
+    const textBlock = content?.find(b => b.type === "text");
+    let fixedCode = textBlock?.text || "";
     // Strip markdown code fences if Claude added them despite instructions
     fixedCode = fixedCode.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "");
     return fixedCode;
   }
   const errSnippet = JSON.stringify(res.data).slice(0, 200);
-  throw new Error(`Claude API error ${res.status}: ${errSnippet}`);
+  throw new Error(formatAnthropicError(classifyAnthropicError(res.status, errSnippet)));
 }
 
 /**
@@ -488,12 +569,22 @@ function verifyFixQuality(fixed: string, filePath: string): { clean: boolean; ne
 }
 
 // Concurrency cap for parallel file fixing — balances Vercel time budget vs API rate.
-// Dropped from 4 → 2 after prod hit cascading EPROTO / TLS alert 80 failures under
-// heavy undici keep-alive pressure. Two parallel requests + keepalive:false on each
-// keeps fresh sockets without pool-poisoning a whole batch when one goes bad.
-const FIX_CONCURRENCY = 2;
-// Max file size we'll send to Claude (bigger risks output truncation at 8192 tokens).
-const MAX_FILE_BYTES = 400 * 1024;
+// History: 4 → 2 (2026-04, EPROTO/TLS-alert cascading failures), then back up to
+// 4 (2026-05, after the adaptive ramp-up safety net landed in fa2f7ed). The
+// adaptive helper ramps 4 → 8 on sustained success and drops to 1 on network
+// errors, so we get the throughput when prod is healthy + safety when it's not.
+const FIX_CONCURRENCY = 4;
+const FIX_CONCURRENCY_MAX = 8;
+const FIX_RAMP_AFTER_SUCCESSES = 3;
+// Max file size we'll send to Claude. Sized against the 32K-token output
+// budget: at ~0.4 tokens/char of source, 32K tokens ≈ 80KB of output.
+// 600KB input gives the model headroom for files where the fixed version
+// shrinks (removed lines, refactored extracts). Larger inputs WILL get
+// truncated; the validateFix() truncation detector + retry loop catch
+// those, so this cap is "we'll TRY up to 600KB" not "we GUARANTEE 600KB".
+// Files reliably bigger than this need the Phase 5.4 multi-file refactor
+// pipeline (chunks the file, fixes per-chunk, stitches back).
+const MAX_FILE_BYTES = 600 * 1024;
 
 /**
  * Ask Claude to generate a NEW file (when it doesn't exist yet).
@@ -507,17 +598,20 @@ const MAX_FILE_BYTES = 400 * 1024;
  */
 async function askClaudeForTest(prompt: string): Promise<string> {
   const body = JSON.stringify({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    model: "claude-opus-4-7",
+    max_tokens: 8192,
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort: "high" },
     messages: [{ role: "user", content: prompt }],
   });
   const res = await anthropicCallWithRetry(body);
   if (res.status !== 200) {
     const errSnippet = JSON.stringify(res.data).slice(0, 200);
-    throw new Error(`Claude API error ${res.status}: ${errSnippet}`);
+    throw new Error(formatAnthropicError(classifyAnthropicError(res.status, errSnippet)));
   }
-  const content = res.data.content as Array<{ type: string; text: string }>;
-  return content?.[0]?.text || "";
+  const content = res.data.content as Array<{ type: string; text?: string; thinking?: string }>;
+  const textBlock = content?.find(b => b.type === "text");
+  return textBlock?.text || "";
 }
 
 async function askClaudeCreate(filePath: string, context: string[]): Promise<string> {
@@ -537,8 +631,10 @@ Rules:
 - Follow whatever format the file extension implies.`;
 
   const body = JSON.stringify({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    model: "claude-opus-4-7",
+    max_tokens: 8192,
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort: "high" },
     messages: [{ role: "user", content: prompt }],
   });
 
@@ -546,11 +642,12 @@ Rules:
 
   if (res.status !== 200) {
     const errSnippet = JSON.stringify(res.data).slice(0, 200);
-    throw new Error(`Claude API error ${res.status}: ${errSnippet}`);
+    throw new Error(formatAnthropicError(classifyAnthropicError(res.status, errSnippet)));
   }
 
-  const content = res.data.content as Array<{ type: string; text: string }>;
-  let newFile = content?.[0]?.text || "";
+  const content = res.data.content as Array<{ type: string; text?: string; thinking?: string }>;
+  const textBlock = content?.find(b => b.type === "text");
+  let newFile = textBlock?.text || "";
   newFile = newFile.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "");
   return newFile;
 }
@@ -673,6 +770,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No fixable issues (issues must have file paths)" }, { status: 400 });
   }
 
+  // Contextual fix intelligence — fetch the repo's full file tree once so the
+  // per-file enricher can find consumers and dependencies without re-listing.
+  // Best-effort: tree fetch failure falls through with an empty list and the
+  // enricher degrades gracefully to no context.
+  let repoAllFiles: string[] = [];
+  try {
+    repoAllFiles = await fetchTree(owner, repo, "HEAD", token);
+  } catch {
+    // best-effort: context enrichment will degrade gracefully
+  }
+
   type Fix = { file: string; original: string; fixed: string; issues: string[] };
   const fixes: Fix[] = [];
   const errors: string[] = [];
@@ -701,6 +809,16 @@ export async function POST(req: NextRequest) {
   // surfaces these as a "Retry Failed" list since they're usually transient and
   // re-running the same payload works without re-running the whole scan.
   const failedFiles: Array<{ file: string; issues: string[]; reason: string }> = [];
+
+  // Build a map from filePath → [{module, issue}] for recipe DB lookup. Used by
+  // the zero-API fast path 3 inside the per-file askClaude wrapper below.
+  const fileIssueObjectsMap = new Map<string, Array<{ module: string; issue: string }>>();
+  for (const iss of workingIssues) {
+    if (!iss.file) continue;
+    const existing = fileIssueObjectsMap.get(iss.file) || [];
+    existing.push({ module: iss.module || "unknown", issue: iss.issue });
+    fileIssueObjectsMap.set(iss.file, existing);
+  }
 
   // Process files in parallel (capped concurrency) — major UX win over sequential
   const fileEntries = Array.from(issuesByFile.entries());
@@ -735,7 +853,20 @@ export async function POST(req: NextRequest) {
       const originalContent = await fetchBlob(owner, repo, filePath, "", token);
 
       if (!originalContent) {
-        errors.push(`Could not read ${filePath}`);
+        // Probe why — a quick HEAD/GET gives us an HTTP status for the error message
+        // so operators can see 403 (token scope) vs 404 (path wrong) vs other.
+        let reason = "file not found or empty";
+        try {
+          const probe = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
+            { method: "HEAD", headers: { Authorization: `Bearer ${token}`, "User-Agent": "GateTest" } }
+          );
+          if (probe.status === 403) reason = "token lacks read access (403 — check GITHUB_TOKEN scope)";
+          else if (probe.status === 404) reason = "path not found (404 — file may have been renamed or is in a different location)";
+          else if (probe.status === 401) reason = "token invalid or expired (401)";
+          else if (!probe.ok) reason = `HTTP ${probe.status}`;
+        } catch { /* probe failed — use default reason */ }
+        errors.push(`Could not read ${filePath}: ${reason}`);
         return;
       }
 
@@ -853,7 +984,25 @@ export async function POST(req: NextRequest) {
       // existing iterative loop, BUT the result is now run through the
       // mutation guard before being accepted.
       const loopResult = await attemptFixWithRetries({
-        askClaude: (currentIssues: string[]) => askClaude(originalContent, filePath, currentIssues),
+        askClaude: async (currentIssues: string[]) => {
+          // Zero-API fast path 1: deterministic regex rules (handles Python + simple JS).
+          const ruleFixed = tryRuleBasedFix(originalContent, filePath, currentIssues);
+          if (ruleFixed !== null) return ruleFixed;
+          // Zero-API fast path 2: AST transforms (JS/TS, handles multiline & nested).
+          const astFixed = tryAstFix(originalContent, filePath, currentIssues);
+          if (astFixed !== null) return astFixed;
+          // Zero-API fast path 3: recipe DB (learned from prior gate-passing Claude fixes).
+          try {
+            const { getDb: getRecipeDb } = require("@/app/lib/db") as { getDb: () => unknown };
+            const recipeSql = getRecipeDb();
+            const issueObjects = fileIssueObjectsMap.get(filePath) || [];
+            if (issueObjects.length > 0) {
+              const recipeFixed = await tryRecipeFixDb({ sql: recipeSql, content: originalContent, filePath, issueObjects });
+              if (recipeFixed !== null) return recipeFixed;
+            }
+          } catch { /* recipe DB unavailable — fall through to Claude */ }
+          return askClaude(originalContent, filePath, currentIssues, fixContextSummary);
+        },
         validateFix,
         verifyFixQuality,
         originalContent,
@@ -913,7 +1062,7 @@ export async function POST(req: NextRequest) {
         errors.push(`Failed to fix ${filePath}: ${raw}`);
       }
     }
-  });
+  }, { rampAfterSuccesses: FIX_RAMP_AFTER_SUCCESSES, maxConcurrency: FIX_CONCURRENCY_MAX });
 
   if (skippedForBudget > 0) {
     errors.push(`Skipped ${skippedForBudget} file${skippedForBudget > 1 ? "s" : ""} — function time budget exhausted. Re-run fix to process the remainder.`);
@@ -964,22 +1113,34 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Phase 1.2b — cross-file scanner re-validation. Only runs when the
-  // caller supplied the original workspace + findings. Without that
-  // baseline we can't tell which findings are NEW vs pre-existing, so
-  // skip silently — per-file iterative loop + syntax gate still ran.
+  // Phase 1.2b — cross-file scanner re-validation. Now self-populates
+  // originalFileContents from the fix loop's captured pre-fix content when
+  // the caller didn't pass it explicitly. The fix loop already fetched each
+  // file's original content (stored in fix.original), so we reuse that
+  // rather than making a second round-trip. This activates the gate for
+  // ALL tiers that have successful fixes, not just callers that pre-fetch
+  // the whole workspace. Coverage is limited to fixed files only (cross-file
+  // regressions involving unfixed files won't be caught), but that's
+  // far better than the prior state of always skipping the gate.
+  const effectiveOriginalFileContents =
+    Array.isArray(input.originalFileContents) && input.originalFileContents.length > 0
+      ? input.originalFileContents
+      : fixes
+          .filter((f) => typeof f.original === "string" && f.original.length > 0)
+          .map((f) => ({ path: f.file, content: f.original }));
+
   let scannerGateSummary: string | undefined;
   let scannerGateRolledBack: Array<{ file: string; reason: string; newFindings: string[] }> = [];
   let postFixFindingsByModule: Record<string, string[]> | undefined;
   if (
-    Array.isArray(input.originalFileContents) &&
-    input.originalFileContents.length > 0 &&
+    effectiveOriginalFileContents.length > 0 &&
     input.originalFindingsByModule &&
-    typeof input.originalFindingsByModule === "object"
+    typeof input.originalFindingsByModule === "object" &&
+    Object.keys(input.originalFindingsByModule).length > 0
   ) {
     const scannerGate = await validateFixesAgainstScanner({
       fixes,
-      originalFileContents: input.originalFileContents,
+      originalFileContents: effectiveOriginalFileContents,
       originalFindingsByModule: input.originalFindingsByModule,
       runTier,
       owner,
@@ -997,6 +1158,58 @@ export async function POST(req: NextRequest) {
         reason: rb.reason,
         newFindings: rb.newFindings,
       }));
+      // Phase 5.2.1 — record FIX_REJECTED dissent for every rolled-back
+      // fix so the FP scorer (5.2.2) sees the signal. Best-effort:
+      // failures here never block the PR. Each unattributed finding
+      // also surfaces as a module-level dissent so we capture
+      // module-wide noise patterns even when we can't tie a new finding
+      // to a specific fixer's input.
+      try {
+        // Lazy import to avoid pulling the store into the hot path of
+        // routes that never roll anything back.
+         
+        const dissentStore = require("@/app/lib/dissent-store.js") as {
+          DISSENT_KINDS: Record<string, string>;
+          ensureDissentTable: (sql: unknown) => Promise<void>;
+          recordDissent: (opts: {
+            sql: unknown;
+            repoUrl: string;
+            module: string;
+            kind: string;
+            patternHash?: string | null;
+            notes?: string | null;
+            fixPrNumber?: number | null;
+          }) => Promise<{ id: number | null }>;
+        };
+         
+        const { getDb } = require("@/app/lib/db") as { getDb: () => unknown };
+        const sql = getDb();
+        await dissentStore.ensureDissentTable(sql);
+        for (const rb of scannerGate.rolledBack) {
+          // Map each rolled-back fix to one or more dissent rows. The
+          // module is unknown at this layer (the original issue list
+          // didn't preserve it), so we use the scanner-gate's reason
+          // string as the module signal, prefixed so the operator
+          // dashboard can tell rollback dissent apart from explicit FP.
+          await dissentStore
+            .recordDissent({
+              sql,
+              repoUrl,
+              module: `scanner-gate:${(rb.reason || "regression").slice(0, 32)}`,
+              kind: dissentStore.DISSENT_KINDS.FIX_REJECTED,
+              notes: `${rb.file} — ${(rb.newFindings || []).slice(0, 3).join("; ")}`.slice(0, 500),
+            })
+            .catch((err: unknown) => {
+              console.error(
+                "[scan/fix] dissent recording failed (rollback still applied):",
+                err instanceof Error ? err.message : String(err),
+              );
+              return null;
+            });
+        }
+      } catch {
+        // Brain unavailable — never block fix flow.
+      }
       // Replace fix list with scanner-validated subset.
       fixes.length = 0;
       for (const a of scannerGate.accepted) {
@@ -1017,6 +1230,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Fix recipe recording — learn from every gated fix so future scans
+  // of the same pattern can bypass Claude entirely. Best-effort: any
+  // DB failure must not block the PR from being created.
+  try {
+    const { getDb: getRecipeDb } = require("@/app/lib/db") as { getDb: () => unknown };
+    const recipeSql = getRecipeDb();
+    recordSuccessfulFixes(recipeSql, fixes, input.tier || "full").catch(() => {}); // error-ok — best-effort recipe recording; DB outage must never block the PR
+  } catch { /* brain unavailable — never block fix flow */ }
+
   // Phase 1.3 — test generation per fix. For every successful,
   // gate-passed fix, ask Claude to write a regression test that
   // would have failed against the original code. Tests are added
@@ -1034,6 +1256,54 @@ export async function POST(req: NextRequest) {
     errors.push(`Test generation failed (no regression tests added): ${message}`);
     return { tests: [] as Array<{ path: string; content: string; sourceFile: string }>, skipped: [] as Array<{ sourceFile: string; reason: string }>, summary: `test generation: failed (${message})` };
   });
+
+  // Phase 6.2.8 — mutation-driven test strengthening. Runs ONLY on the
+  // Nuclear tier ($399). Generates mutation candidates against each
+  // fixed source, asks Claude to strengthen the regression test so it
+  // catches every mutation. Replaces the weak test with the strong one
+  // BEFORE the test gets appended to the fixes array. Non-blocking:
+  // any failure leaves the original test intact.
+  let strengthenSummary: string | undefined;
+  let strengthenedCount = 0;
+  if (input.tier === "nuclear" && testGen.tests.length > 0) {
+    try {
+       
+      const { strengthenRegressionTests } = require("@/app/lib/mutation-driven-test-strengthener.js") as {
+        strengthenRegressionTests: (opts: {
+          fixes: Array<{ file: string; fixed: string; original: string; issues: string[] }>;
+          regressionTests: Array<{ path: string; content: string; sourceFile: string }>;
+          askClaudeForStrengthen: (prompt: string) => Promise<string>;
+        }) => Promise<{
+          strengthened: Array<{ path: string; content: string; sourceFile: string; mutationsChecked: number }>;
+          skipped: Array<{ sourceFile: string; testPath: string; reason: string; mutationsChecked?: number }>;
+          summary: string;
+        }>;
+      };
+      const strengthenResult = await strengthenRegressionTests({
+        fixes,
+        regressionTests: testGen.tests,
+        askClaudeForStrengthen: askClaudeForTest, // same Claude wrapper, different prompt
+      });
+      // Replace the strengthened tests in-place so the appendix loop
+      // below picks up the strong version, not the weak one.
+      const strongByPath = new Map(strengthenResult.strengthened.map((s) => [s.path, s]));
+      for (const t of testGen.tests) {
+        const strong = strongByPath.get(t.path);
+        if (strong) {
+          t.content = strong.content;
+          strengthenedCount += 1;
+        }
+      }
+      for (const s of strengthenResult.skipped) {
+        errors.push(`(info) Mutation-strengthen skipped ${s.testPath}: ${s.reason}`);
+      }
+      strengthenSummary = strengthenResult.summary;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "mutation strengthening failed";
+      errors.push(`Mutation-driven test strengthening failed: ${message}`);
+      strengthenSummary = `mutation-strengthen: failed (${message})`;
+    }
+  }
   for (const t of testGen.tests) {
     fixes.push({ file: t.path, original: "", fixed: t.content, issues: [`Regression test for ${t.sourceFile}`] });
   }
@@ -1041,6 +1311,155 @@ export async function POST(req: NextRequest) {
     errors.push(`No regression test for ${s.sourceFile}: ${s.reason}`);
   }
   const testGenSummary = testGen.summary;
+
+  // Phase 6.2.7 — property-based test generation per fix. Runs ONLY
+  // on the Nuclear tier ($399) so $99/$199 customers don't pay for
+  // the extra Claude calls. Property tests sit alongside the
+  // regression tests we already write — fuzzers that exercise
+  // invariants under random inputs (idempotency, type-shape, edge
+  // cases). Non-blocking: any failure here logs into errors[] and
+  // ships the fix anyway. This is the differentiator nobody else
+  // ships at fix-time.
+  let propTestSummary: string | undefined;
+  let propTestsWritten = 0;
+  if (input.tier === "nuclear") {
+    try {
+       
+      const { generatePropTestsForFixes } = require("@/app/lib/property-test-generator.js") as {
+        generatePropTestsForFixes: (opts: {
+          fixes: Array<{ file: string; fixed: string; original: string; issues: string[] }>;
+          askClaudeForTest: (prompt: string) => Promise<string>;
+          maxFixes?: number;
+        }) => Promise<{
+          tests: Array<{ path: string; content: string; sourceFile: string; language: string }>;
+          skipped: Array<{ sourceFile: string; reason: string }>;
+          summary: string;
+        }>;
+      };
+      // Only generate prop tests for the ORIGINAL fixes, not the
+      // regression-test files we just appended (those start with
+      // tests/auto-generated/). Filter by source extension.
+      const sourceFixes = fixes.filter((f) => !f.file.startsWith("tests/auto-generated/"));
+      const propResult = await generatePropTestsForFixes({
+        fixes: sourceFixes,
+        askClaudeForTest,
+      });
+      for (const t of propResult.tests) {
+        fixes.push({
+          file: t.path,
+          original: "",
+          fixed: t.content,
+          issues: [`Property test for ${t.sourceFile}`],
+        });
+      }
+      for (const s of propResult.skipped) {
+        // Property tests are bonus — skip-reasons go in errors as
+        // info, not as a "this thing broke" signal.
+        errors.push(`(info) No property test for ${s.sourceFile}: ${s.reason}`);
+      }
+      propTestsWritten = propResult.tests.length;
+      propTestSummary = propResult.summary;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "property test generation failed";
+      errors.push(`Property test generation failed (no property tests added): ${message}`);
+      propTestSummary = `property test generation: failed (${message})`;
+    }
+  }
+
+  // Phase 6.2.10 — performance benchmark before/after on hot-path fixes.
+  // Nuclear-tier only ($399). Generates a tinybench file per fix that
+  // touches a hot path (loops / await / fetch / regex / DB calls). The
+  // file inlines BOTH original and fixed implementations as
+  // originalFn / fixedFn so customers run it locally and paste the
+  // numbers into the PR. Non-blocking: failures log + ship the fix.
+  let benchSummary: string | undefined;
+  let benchmarksWritten = 0;
+  if (input.tier === "nuclear") {
+    try {
+       
+      const { generateBenchmarksForFixes } = require("@/app/lib/perf-benchmark-generator.js") as {
+        generateBenchmarksForFixes: (opts: {
+          fixes: Array<{ file: string; fixed: string; original: string; issues: string[] }>;
+          askClaudeForBench: (prompt: string) => Promise<string>;
+          maxFixes?: number;
+        }) => Promise<{
+          benchmarks: Array<{ path: string; content: string; sourceFile: string }>;
+          skipped: Array<{ sourceFile: string | null; reason: string }>;
+          summary: string;
+        }>;
+      };
+      // Source fixes only — exclude the regression-test, property-test,
+      // and any other tests/auto-generated/ entries we just appended.
+      const sourceFixes = fixes.filter((f) => !f.file.startsWith("tests/auto-generated/"));
+      const benchResult = await generateBenchmarksForFixes({
+        fixes: sourceFixes,
+        askClaudeForBench: askClaudeForTest, // same Claude wrapper, different prompt
+      });
+      for (const b of benchResult.benchmarks) {
+        fixes.push({
+          file: b.path,
+          original: "",
+          fixed: b.content,
+          issues: [`Performance benchmark for ${b.sourceFile}`],
+        });
+      }
+      for (const s of benchResult.skipped) {
+        errors.push(`(info) No benchmark for ${s.sourceFile || "(unknown)"}: ${s.reason}`);
+      }
+      benchmarksWritten = benchResult.benchmarks.length;
+      benchSummary = benchResult.summary;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "benchmark generation failed";
+      errors.push(`Benchmark generation failed: ${message}`);
+      benchSummary = `benchmark generation: failed (${message})`;
+    }
+  }
+
+  // Phase 6.2.9 — chaos-test generation. Nuclear-tier only ($399).
+  // Generates a node:test file per resilience-relevant fix that mocks
+  // fetch / setTimeout / fs to inject failures (slow network, dropped
+  // responses, timeouts) and asserts the fix degrades gracefully.
+  // Non-blocking: failures log + ship the fix.
+  let chaosSummary: string | undefined;
+  let chaosTestsWritten = 0;
+  if (input.tier === "nuclear") {
+    try {
+       
+      const { generateChaosTestsForFixes } = require("@/app/lib/chaos-test-generator.js") as {
+        generateChaosTestsForFixes: (opts: {
+          fixes: Array<{ file: string; fixed: string; original: string; issues: string[] }>;
+          askClaudeForChaos: (prompt: string) => Promise<string>;
+          maxFixes?: number;
+        }) => Promise<{
+          tests: Array<{ path: string; content: string; sourceFile: string }>;
+          skipped: Array<{ sourceFile: string | null; reason: string }>;
+          summary: string;
+        }>;
+      };
+      const sourceFixes = fixes.filter((f) => !f.file.startsWith("tests/auto-generated/"));
+      const chaosResult = await generateChaosTestsForFixes({
+        fixes: sourceFixes,
+        askClaudeForChaos: askClaudeForTest,
+      });
+      for (const t of chaosResult.tests) {
+        fixes.push({
+          file: t.path,
+          original: "",
+          fixed: t.content,
+          issues: [`Chaos / resilience test for ${t.sourceFile}`],
+        });
+      }
+      for (const s of chaosResult.skipped) {
+        errors.push(`(info) No chaos test for ${s.sourceFile || "(unknown)"}: ${s.reason}`);
+      }
+      chaosTestsWritten = chaosResult.tests.length;
+      chaosSummary = chaosResult.summary;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "chaos test generation failed";
+      errors.push(`Chaos test generation failed: ${message}`);
+      chaosSummary = `chaos test generation: failed (${message})`;
+    }
+  }
 
   // Create a branch, commit fixes, open PR
   try {
@@ -1131,6 +1550,32 @@ export async function POST(req: NextRequest) {
     const prNumber = prRes.data.number as number;
     const prUrl = (prRes.data.html_url as string) || "";
 
+    // Phase 6.1.10 — log to public "Fixed by GateTest" registry. Non-blocking;
+    // failure never prevents the PR response from returning to the customer.
+    void (async () => {
+      try {
+        const base = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+        const token = process.env.GATETEST_INTERNAL_TOKEN || process.env.GATETEST_ADMIN_PASSWORD || "";
+        const errCount = fixes.reduce((n, f) => n + (f.issues?.filter((i: string) => /error|critical/i.test(i)).length || 0), 0);
+        const warnCount = fixes.reduce((n, f) => n + (f.issues?.filter((i: string) => !/error|critical/i.test(i)).length || 0), 0);
+        const modulesSet = new Set<string>();
+        input.issues?.forEach((i: { module?: string }) => { if (i.module) modulesSet.add(i.module); });
+        await fetch(`${base}/api/fixes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({
+            repoName: `${owner}/${repo}`,
+            prUrl,
+            tier: input.tier || "full",
+            errorsFixed: errCount,
+            warningsFixed: warnCount,
+            modulesFired: [...modulesSet],
+            message: `Fixed ${fixes.length} file${fixes.length !== 1 ? "s" : ""}, ${totalIssuesFixed} issue${totalIssuesFixed !== 1 ? "s" : ""}`,
+          }),
+        });
+      } catch { /* registry failure is non-critical */ }
+    })();
+
     // Post verification comment on the PR
     try {
       const remainingIssues: string[] = [];
@@ -1217,21 +1662,50 @@ export async function POST(req: NextRequest) {
       branch: branchName,
       filesFixed: fixes.length,
       issuesFixed: totalIssuesFixed,
-      fixes: fixes.map((f) => ({ file: f.file, issues: f.issues })),
+      // Phase 6.1.3 — include before/after content + a precomputed
+      // unified-diff string per fix so the customer-facing UI can
+      // render inline diffs WITHOUT re-fetching files. Capped at 200KB
+      // per file each side to keep the response under Vercel's 4.5MB
+      // ceiling even with large fix batches. Anything bigger renders
+      // as the "open the PR for the full patch" fallback in DiffViewer.
+      fixes: fixes.map((f) => {
+        const MAX_BYTES_PER_SIDE = 200 * 1024;
+        const before = (f.original || "").slice(0, MAX_BYTES_PER_SIDE);
+        const after = (f.fixed || "").slice(0, MAX_BYTES_PER_SIDE);
+        return { file: f.file, issues: f.issues, before, after };
+      }),
       authSource,
       errors,
       failedFiles,
       syntaxGate: { accepted: syntaxGate.accepted.length, rejected: syntaxGate.rejected.length, summary: syntaxGateSummary },
       scannerGate: scannerGateSummary
         ? { rolledBack: scannerGateRolledBack, summary: scannerGateSummary }
-        : { skipped: true, reason: "caller did not pass originalFileContents + originalFindingsByModule" },
+        : { skipped: true, reason: "no successful fixes with original content, or originalFindingsByModule not provided" },
       testGeneration: { testsWritten: testGen.tests.length, skipped: testGen.skipped, summary: testGenSummary },
+      propertyTestGeneration: propTestSummary
+        ? { testsWritten: propTestsWritten, summary: propTestSummary }
+        : { skipped: true, reason: "tier is not nuclear — property tests are a $399-tier value-add" },
+      mutationStrengthening: strengthenSummary
+        ? { testsStrengthened: strengthenedCount, summary: strengthenSummary }
+        : { skipped: true, reason: "tier is not nuclear or no regression tests — mutation strengthening is a $399-tier value-add" },
+      perfBenchmarks: benchSummary
+        ? { benchmarksWritten, summary: benchSummary }
+        : { skipped: true, reason: "tier is not nuclear — perf benchmarks are a $399-tier value-add" },
+      chaosTests: chaosSummary
+        ? { testsWritten: chaosTestsWritten, summary: chaosSummary }
+        : { skipped: true, reason: "tier is not nuclear — chaos tests are a $399-tier value-add" },
       pairReview: pairReviewSummary
         ? { summary: pairReviewSummary }
         : { skipped: true, reason: "tier is not scan_fix — pair review is a $199-tier value-add" },
       architecture: architectureSummary
         ? { summary: architectureSummary }
         : { skipped: true, reason: "tier is not scan_fix or originalFileContents not supplied — architecture annotation is a $199-tier value-add" },
+      nuclearEnrichment: nuclearEnrichmentSummary
+        ? { summary: nuclearEnrichmentSummary }
+        : { skipped: true, reason: "tier is not nuclear — enrichment is a $399-tier value-add" },
+      brain: priorArtContext
+        ? { used: true, sampleSize: brainSampleSize, summary: `Fix prompts enriched with cross-repo intelligence from ${brainSampleSize} similar-stack scans.` }
+        : { used: false, reason: "no similar-stack scans available yet (brain populates as more customers run scans)" },
       attemptHistory: attemptHistoryByFile,
     });
   } catch (err) {

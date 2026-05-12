@@ -21,6 +21,13 @@ class SeoModule extends BaseModule {
       const relPath = path.relative(projectRoot, file);
       const content = fs.readFileSync(file, 'utf-8');
 
+      // Skip pages explicitly excluded from search-engine indexing —
+      // OG/Twitter/canonical/structured-data don't apply when the page
+      // declares `<meta name="robots" content="noindex">` or similar.
+      if (/<meta[^>]+name\s*=\s*["']robots["'][^>]+content\s*=\s*["'][^"']*noindex/i.test(content)) {
+        continue;
+      }
+
       this._checkTitle(relPath, content, seoConfig, result);
       this._checkMetaDescription(relPath, content, seoConfig, result);
       this._checkOpenGraph(relPath, content, result);
@@ -171,13 +178,25 @@ class SeoModule extends BaseModule {
   }
 
   _checkSitemap(projectRoot, result) {
-    const sitemapPaths = ['sitemap.xml', 'public/sitemap.xml', 'static/sitemap.xml'];
+    // Static file conventions + framework-generated conventions:
+    // - Plain XML in repo / public/ / static/
+    // - Next.js App Router: app/sitemap.{ts,js} or app/sitemap.xml/route.{ts,js}
+    // - Next.js Pages Router or any framework dropping into public/
+    // - website/ + frontend/ + apps/web/ subdir conventions
+    const sitemapPaths = [
+      'sitemap.xml', 'public/sitemap.xml', 'static/sitemap.xml',
+      'website/public/sitemap.xml', 'website/sitemap.xml',
+      'app/sitemap.ts', 'app/sitemap.js', 'app/sitemap.tsx', 'app/sitemap.jsx',
+      'website/app/sitemap.ts', 'website/app/sitemap.js',
+      'src/app/sitemap.ts', 'src/app/sitemap.js',
+      'frontend/app/sitemap.ts', 'apps/web/app/sitemap.ts',
+    ];
     const found = sitemapPaths.some(p => fs.existsSync(path.join(projectRoot, p)));
 
     if (!found) {
       result.addCheck('seo:sitemap', false, {
-        message: 'No sitemap.xml found',
-        suggestion: 'Generate a sitemap.xml for search engine discovery',
+        message: 'No sitemap.xml or framework sitemap route found',
+        suggestion: 'Generate a sitemap.xml (or app/sitemap.ts for Next.js App Router) for search engine discovery',
       });
     } else {
       result.addCheck('seo:sitemap', true);
@@ -185,7 +204,15 @@ class SeoModule extends BaseModule {
   }
 
   _checkRobotsTxt(projectRoot, result) {
-    const robotsPaths = ['robots.txt', 'public/robots.txt', 'static/robots.txt'];
+    // Same dual-convention check as sitemap above.
+    const robotsPaths = [
+      'robots.txt', 'public/robots.txt', 'static/robots.txt',
+      'website/public/robots.txt', 'website/robots.txt',
+      'app/robots.ts', 'app/robots.js', 'app/robots.txt/route.ts',
+      'website/app/robots.ts', 'website/app/robots.js',
+      'src/app/robots.ts', 'src/app/robots.js',
+      'frontend/app/robots.ts', 'apps/web/app/robots.ts',
+    ];
     const found = robotsPaths.some(p => fs.existsSync(path.join(projectRoot, p)));
 
     if (!found) {

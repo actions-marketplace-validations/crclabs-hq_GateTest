@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
   let Client: new () => any;
   try {
     const modName = "ssh2";
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+     
     Client = require(modName).Client;
   } catch {
     return NextResponse.json({

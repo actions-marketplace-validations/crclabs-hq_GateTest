@@ -15,6 +15,22 @@
  *   gatetest --init             Initialize GateTest in a project
  */
 
+// ---- Node version guard (Phase 6 launch hardening, item 4) ----
+// engines.node in package.json is advisory; npm warns but doesn't block.
+// A user on Node 18 hitting an `??` or top-level await would get a cryptic
+// SyntaxError far from the call site. Surface a clean message instead.
+const REQUIRED_MAJOR = 20;
+const currentMajor = parseInt(process.versions.node.split('.')[0], 10);
+if (Number.isFinite(currentMajor) && currentMajor < REQUIRED_MAJOR) {
+  process.stderr.write(
+    `\nGateTest requires Node.js ${REQUIRED_MAJOR}+ (found ${process.versions.node}).\n\n` +
+    `  Fix:\n` +
+    `    nvm install ${REQUIRED_MAJOR} && nvm use ${REQUIRED_MAJOR}\n` +
+    `    or download Node ${REQUIRED_MAJOR}+ from https://nodejs.org\n\n`
+  );
+  process.exit(1);
+}
+
 const path = require('path');
 const fs = require('fs');
 const { GateTest } = require('../src/index');
@@ -33,10 +49,16 @@ const HELP = `
     --report           Display the latest test report
     --list             List all available test modules
     --init             Initialize GateTest in the current project
+    --setup [ides]     Auto-configure MCP server for AI editors (cursor,windsurf,claude,cline,zed,vscode)
+    --all              With --setup: configure all known IDEs, not just detected ones
+    --dry              With --setup: preview what would be configured without writing
     --parallel         Run modules in parallel
     --stop-first       Stop on first module failure
     --fix              Auto-fix safe issues (formatting, imports, etc.)
     --diff             Only scan git-changed files (fast pre-commit mode)
+    --since <ref>      Incremental scan: only files changed since <ref>
+                       (e.g. main, origin/main, HEAD~5). 5x-30x faster on PRs.
+    --pr               Alias for --since origin/main (typical PR workflow)
     --watch            Watch for file changes and re-scan continuously
     --sarif            Output results in SARIF format (for GitHub Security)
     --junit            Output results in JUnit XML format (for CI)
@@ -57,12 +79,25 @@ const HELP = `
     --monitor-heal     Auto-apply safe fixes (cache flush) when issues detected
     --flush <url>      Flush CDN cache: tries Vercel, Cloudflare, custom webhook, then gives manual steps
 
+    --repair <url>     Self-sufficient repair: clone → scan → patch → verify → push (no external API needed)
+    --repair-token <t> Git credential for clone + push (PAT, deploy token, etc.)
+    --repair-dry-run   Show what would be fixed without writing or pushing
+    --repair-suite <s> Which scan suite to run during repair (default: full)
+
+    --prune-prs <owner/repo>  Delete stale GateTest/Claude branches + close abandoned PRs
+    --prune-pattern <prefix>  Branch prefix to match (default: "gatetest/,claude/")
+    --prune-dry-run           Show what would be deleted without actually deleting
+    --prune-stale-days <n>    Age threshold in days before a branch is considered stale (default: 7)
+
   EXAMPLES
     gatetest                          Run standard checks
     gatetest --suite full             Run every single check
     gatetest --module security        Security scan only
     gatetest --module visual          Visual regression only
     gatetest --suite quick            Fast pre-commit checks
+    gatetest --pr                     Incremental: scan files changed vs origin/main
+    gatetest --since main             Incremental: scan files changed vs main
+    gatetest --since HEAD~3           Incremental: scan files changed in last 3 commits
     gatetest --server https://gatetest.ai    Scan server SSL, headers, DNS
     gatetest --crawl https://zoobicon.com   Crawl and test live site
     gatetest --diagnose https://mysite.com  Full real-time diagnosis + action plan
@@ -109,6 +144,41 @@ async function main() {
 
   if (args.init) {
     initProject(projectRoot);
+    return;
+  }
+
+  // IDE auto-setup — configures MCP server for all detected AI editors
+  if (args.setup) {
+    const { setupIdes, detectInstalledIDEs } = require('../src/core/ide-setup');
+    const specificIdes = typeof args.setup === 'string' ? args.setup.split(',').map(s => s.trim()) : null;
+    const dryRun = !!args.dry;
+
+    console.log('\n[GateTest] IDE MCP Server Setup\n');
+    if (dryRun) console.log('  (dry run — no files will be written)\n');
+
+    const detected = detectInstalledIDEs();
+    console.log(`  Detected IDEs: ${detected.length > 0 ? detected.join(', ') : 'none found'}`);
+    console.log('');
+
+    const { results, mcpBin } = setupIdes({ ides: specificIdes, all: !!args.all, dry: dryRun });
+    for (const r of results) {
+      if (dryRun) {
+        console.log(`  ${r.installed ? '●' : '○'} ${r.ide.padEnd(12)} ${r.installed ? '(installed, would configure)' : '(not detected, skipping)'}`);
+      } else if (r.ok) {
+        console.log(`  ✓ ${r.ide.padEnd(12)} → ${r.path}`);
+      } else {
+        console.log(`  ✗ ${r.ide.padEnd(12)} ${r.error || 'not detected'}`);
+      }
+    }
+
+    const configured = results.filter(r => r.ok).length;
+    console.log(`\n  MCP binary:    ${mcpBin}`);
+    if (!dryRun) {
+      console.log(`  Configured:    ${configured}/${results.length} IDE(s)`);
+      if (configured > 0) {
+        console.log('\n  Restart your AI editor(s) to activate GateTest MCP tools.\n');
+      }
+    }
     return;
   }
 
@@ -168,11 +238,15 @@ async function main() {
     return;
   }
 
+  // --pr is sugar for --since origin/main. Explicit --since wins if both are set.
+  const incrementalSince = args.since || (args.pr ? 'origin/main' : null);
+
   const gatetest = new GateTest(projectRoot, {
     parallel: args.parallel || false,
     stopOnFirstFailure: args['stop-first'] || false,
     autoFix: args.fix || false,
     diffOnly: args.diff || false,
+    incrementalSince,
     sarif: args.sarif || false,
     junit: args.junit || false,
   });
@@ -264,6 +338,103 @@ async function main() {
     }
   }
 
+  // Direct repair — self-sufficient clone → scan → patch → push
+  // PR + branch pruner
+  if (args.prunePrs) {
+    const { PrPruner } = require('../src/core/pr-pruner');
+    const [owner, repo] = args.prunePrs.includes('/') ? args.prunePrs.split('/') : [args.prunePrs, null];
+    if (!owner || !repo) {
+      console.error('  Usage: gatetest --prune-prs <owner/repo>');
+      process.exit(1);
+    }
+    const patterns = args.prunePattern ? args.prunePattern.split(',') : ['gatetest/', 'claude/'];
+    const pruner = new PrPruner({
+      token: process.env.GATETEST_GITHUB_TOKEN || process.env.GITHUB_TOKEN,
+      patterns,
+      dryRun: args.pruneDryRun || false,
+      staleDays: args.pruneStale || 7,
+    });
+
+    console.log(`\n  GATETEST — PR + Branch Pruner`);
+    console.log(`  Repository : ${owner}/${repo}`);
+    console.log(`  Patterns   : ${patterns.join(', ')}`);
+    console.log(`  Stale days : ${args.pruneStale || 7}`);
+    console.log(`  Dry run    : ${args.pruneDryRun ? 'yes (nothing will be deleted)' : 'no'}\n`);
+
+    const report = await pruner.prune(owner, repo);
+
+    console.log(`  Scanned    : ${report.scanned} matching branches`);
+    if (report.closedPRs.length > 0) {
+      console.log(`  Closed PRs : ${report.closedPRs.map(p => `#${p.number}${p.dryRun ? ' (dry)' : ''}`).join(', ')}`);
+    }
+    if (report.deletedBranches.length > 0) {
+      console.log(`  Deleted    : ${report.deletedBranches.length} branches`);
+      for (const b of report.deletedBranches) {
+        console.log(`    ${b.dryRun ? '[dry] ' : ''}${b.branch}  (${b.reason})`);
+      }
+    }
+    if (report.skipped.length > 0) {
+      console.log(`  Skipped    : ${report.skipped.length} (too new or active)`);
+    }
+    if (report.errors.length > 0) {
+      console.log(`  Errors     :`);
+      for (const e of report.errors) console.log(`    ${e.branch}: ${e.error}`);
+    }
+    if (report.deletedBranches.length === 0 && report.closedPRs.length === 0) {
+      console.log(`  Nothing to clean up.`);
+    }
+    console.log();
+    process.exit(report.errors.length > 0 ? 1 : 0);
+  }
+
+  if (args.repair) {
+    const { DirectRepair } = require('../src/core/direct-repair');
+    const repoUrl = args.repair.startsWith('http') || args.repair.startsWith('git@')
+      ? args.repair : `https://github.com/${args.repair}`;
+    const token = args.repairToken || process.env.GATETEST_GITHUB_TOKEN || process.env.GLUECRON_API_TOKEN || '';
+    const engine = new DirectRepair({
+      dryRun: args.repairDryRun || false,
+      claudeFn: process.env.ANTHROPIC_API_KEY ? async (prompt) => {
+        const Anthropic = require('@anthropic-ai/sdk');
+        const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const msg = await client.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 8192,
+          messages: [{ role: 'user', content: prompt }],
+        });
+        return msg.content[0]?.text || null;
+      } : null,
+    });
+
+    console.log(`\n  GATETEST — Direct Repair`);
+    console.log(`  Repository : ${repoUrl}`);
+    console.log(`  Suite      : ${args.repairSuite || 'full'}`);
+    console.log(`  Dry run    : ${args.repairDryRun ? 'yes' : 'no'}`);
+    console.log(`  Claude     : ${process.env.ANTHROPIC_API_KEY ? 'available (novel patterns)' : 'not configured (builtin + cache only)'}\n`);
+
+    const report = await engine.repair(repoUrl, token, { suite: args.repairSuite || 'full' });
+
+    if (report.error) {
+      console.error(`  ERROR: ${report.error}`);
+      process.exit(1);
+    }
+
+    console.log(`  Findings   : ${report.findings.length}`);
+    console.log(`  Fixed      : ${report.fixes.length} (${report.cacheHits} cache hits, ${report.claudeCalls} Claude calls)`);
+    console.log(`  Skipped    : ${report.skipped.length}`);
+    if (report.committed) console.log(`  Committed  : ${report.commitSha} on branch ${report.branch}`);
+    if (report.pushed)    console.log(`  Pushed     : yes`);
+    console.log(`  Duration   : ${report.duration}s\n`);
+
+    if (report.fixes.length > 0) {
+      console.log('  Fixed issues:');
+      for (const f of report.fixes) {
+        console.log(`    [${f.strategy}] ${f.finding.module}: ${f.finding.detail.slice(0, 70)}`);
+      }
+    }
+    process.exit(report.fixes.length > 0 ? 0 : 1);
+  }
+
   // Continuous monitoring
   if (args.monitor) {
     const Monitor = require('../src/runtime/monitor');
@@ -348,12 +519,17 @@ function parseArgs(argv) {
     else if (arg === '--list') args.list = true;
     else if (arg === '--report') args.report = true;
     else if (arg === '--init') args.init = true;
+    else if (arg === '--setup') args.setup = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : true;
+    else if (arg === '--all') args.all = true;
+    else if (arg === '--dry') args.dry = true;
     else if (arg === '--init-claude-md') args.initClaudeMd = true;
     else if (arg === '--health') args.health = true;
     else if (arg === '--parallel') args.parallel = true;
     else if (arg === '--stop-first') args['stop-first'] = true;
     else if (arg === '--fix') args.fix = true;
     else if (arg === '--diff') args.diff = true;
+    else if (arg === '--since' && argv[i + 1]) args.since = argv[++i];
+    else if (arg === '--pr') args.pr = true;
     else if (arg === '--watch') args.watch = true;
     else if (arg === '--sarif') args.sarif = true;
     else if (arg === '--junit') args.junit = true;
@@ -370,6 +546,14 @@ function parseArgs(argv) {
     else if (arg === '--monitor' && argv[i + 1]) args.monitor = argv[++i];
     else if (arg === '--monitor-interval' && argv[i + 1]) args.monitorInterval = parseInt(argv[++i]);
     else if (arg === '--monitor-heal') args.monitorHeal = true;
+    else if (arg === '--repair' && argv[i + 1]) args.repair = argv[++i];
+    else if (arg === '--repair-token' && argv[i + 1]) args.repairToken = argv[++i];
+    else if (arg === '--repair-dry-run') args.repairDryRun = true;
+    else if (arg === '--repair-suite' && argv[i + 1]) args.repairSuite = argv[++i];
+    else if (arg === '--prune-prs' && argv[i + 1]) args.prunePrs = argv[++i];
+    else if (arg === '--prune-pattern' && argv[i + 1]) args.prunePattern = argv[++i];
+    else if (arg === '--prune-dry-run') args.pruneDryRun = true;
+    else if (arg === '--prune-stale-days' && argv[i + 1]) args.pruneStale = parseInt(argv[++i]);
     else if (arg === '--flush' && argv[i + 1]) args.flush = argv[++i];
   }
   return args;

@@ -36,7 +36,7 @@
  *   - Malformed body → 400
  */
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const crypto = require('crypto');
 
 const QUEUE_FULL_THRESHOLD = 500;

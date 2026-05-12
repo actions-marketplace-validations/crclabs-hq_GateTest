@@ -1,0 +1,157 @@
+{
+  "name": "gatetest",
+  "displayName": "GateTest — AI Code Quality Gate",
+  "description": "90-module AI code scanner powered by Claude Opus 4.7. Finds security holes, money-float bugs, import cycles, PII leaks, attack chains, and more. Auto-fixes with a PR. Pay only when delivered.",
+  "version": "1.0.1",
+  "publisher": "GateTestHQ",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Linters", "Other", "Testing"],
+  "keywords": ["security", "code quality", "AI", "claude", "scan", "fix", "sonarqube", "snyk"],
+  "icon": "images/icon.png",
+  "galleryBanner": { "color": "#0a0a0a", "theme": "dark" },
+  "repository": { "type": "git", "url": "https://github.com/ccantynz-alt/gatetest" },
+  "homepage": "https://gatetest.ai",
+  "bugs": { "url": "https://github.com/ccantynz-alt/gatetest/issues" },
+  "license": "MIT",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gatetest.scanWorkspace",
+        "title": "GateTest: Scan Workspace (Quick)",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "gatetest.scanFull",
+        "title": "GateTest: Scan Workspace (Full — 90 modules)",
+        "icon": "$(verified)"
+      },
+      {
+        "command": "gatetest.scanFile",
+        "title": "GateTest: Scan This File",
+        "icon": "$(search)"
+      },
+      {
+        "command": "gatetest.fixIssues",
+        "title": "GateTest: Fix Issues with Claude",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "gatetest.showPanel",
+        "title": "GateTest: Show Issues Panel",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "gatetest.setupMcp",
+        "title": "GateTest: Configure MCP Server for this IDE"
+      },
+      {
+        "command": "gatetest.openDashboard",
+        "title": "GateTest: Open Online Dashboard"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "gatetest.scanFile",
+          "group": "navigation",
+          "when": "resourceLangId =~ /typescript|javascript|python|go|rust/"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "gatetest.scanWorkspace",
+          "group": "gatetest"
+        }
+      ],
+      "commandPalette": [
+        { "command": "gatetest.scanWorkspace" },
+        { "command": "gatetest.scanFull" },
+        { "command": "gatetest.scanFile" },
+        { "command": "gatetest.fixIssues" },
+        { "command": "gatetest.showPanel" },
+        { "command": "gatetest.setupMcp" },
+        { "command": "gatetest.openDashboard" }
+      ]
+    },
+    "configuration": {
+      "title": "GateTest",
+      "properties": {
+        "gatetest.suite": {
+          "type": "string",
+          "default": "quick",
+          "enum": ["quick", "full", "nuclear"],
+          "description": "Default scan suite. quick=4 modules, full=90 modules, nuclear=90+mutation+chaos."
+        },
+        "gatetest.autoScanOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run a quick scan automatically when you save a file."
+        },
+        "gatetest.showInlineHints": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show GateTest findings as inline diagnostics in the editor."
+        },
+        "gatetest.gatePath": {
+          "type": "string",
+          "default": "gatetest",
+          "description": "Path to gatetest binary. Defaults to 'gatetest' (assumes it's in PATH)."
+        },
+        "gatetest.apiBaseUrl": {
+          "type": "string",
+          "default": "https://gatetest.ai",
+          "description": "GateTest API base URL (leave as default unless self-hosting)."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gatetest",
+          "title": "GateTest",
+          "icon": "$(shield)"
+        }
+      ]
+    },
+    "views": {
+      "gatetest": [
+        {
+          "id": "gatetest.issuesView",
+          "name": "Issues",
+          "icon": "$(shield)",
+          "contextualTitle": "GateTest Issues"
+        },
+        {
+          "id": "gatetest.modulesView",
+          "name": "Modules",
+          "contextualTitle": "GateTest Modules"
+        }
+      ]
+    },
+    "statusBar": [
+      {
+        "id": "gatetest.status",
+        "name": "GateTest Status",
+        "alignment": "right",
+        "priority": 100
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.0.0"
+  }
+}

@@ -290,3 +290,55 @@ test('initialLimit of 1 — sequential processing', async () => {
   assert.deepEqual(results, [1, 2, 3, 4, 5]);
   assert.equal(maxActive, 1);
 });
+
+test('ramp-up: healthy run scales concurrency above initialLimit', async () => {
+  // 50 items, initial 2, max 5, ramp every 4 successes — by the end
+  // we should observe more than 2 in-flight workers at some point.
+  const items = Array.from({ length: 50 }, (_, i) => i);
+  let active = 0;
+  let peak = 0;
+
+  await mapWithAdaptiveConcurrency(items, 2, async (item) => {
+    active++;
+    if (active > peak) peak = active;
+    await tick();
+    await tick();
+    active--;
+    return item;
+  });
+
+  assert(peak > 2, `peak concurrency should exceed initial 2 after healthy run; got ${peak}`);
+  assert(peak <= 5, `peak should not exceed max of 5; got ${peak}`);
+});
+
+test('ramp-up: a network-error run is NEVER ramped up after the drop', async () => {
+  // Even after many post-drop successes, concurrency must stay where
+  // the caller put it (1). This is the regression guard: ramp-up must
+  // not undo the drop-to-1 safety net.
+  const items = Array.from({ length: 80 }, (_, i) => i);
+  let active = 0;
+  let peakAfterDrop = 0;
+  let dropped = false;
+
+  await mapWithAdaptiveConcurrency(items, 2, async (item, state) => {
+    active++;
+    try {
+      if (item === 5 && !dropped) {
+        // Simulate the EPROTO trip: caller drops to 1 + flags errors
+        state.consecutiveNetworkErrors = 3;
+        state.activeConcurrency = 1;
+        dropped = true;
+      }
+      await tick();
+      if (dropped && item > 5 && active > peakAfterDrop) {
+        peakAfterDrop = active;
+      }
+      return item;
+    } finally {
+      active--;
+    }
+  });
+
+  assert(dropped, 'drop must have fired');
+  assert.equal(peakAfterDrop, 1, `peak post-drop concurrency must be 1; got ${peakAfterDrop}`);
+});

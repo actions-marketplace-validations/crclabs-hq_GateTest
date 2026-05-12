@@ -151,8 +151,9 @@ class PerformanceModule extends BaseModule {
     const webpFiles = this._collectFiles(projectRoot, ['.webp', '.avif']);
     if (imageFiles.length > 0 && webpFiles.length === 0) {
       result.addCheck('perf:modern-images', false, {
-        message: 'No WebP/AVIF images found — using only legacy formats',
-        suggestion: 'Convert images to WebP/AVIF with fallbacks for better performance',
+        severity: 'warning',
+        message: `No WebP/AVIF images found among ${imageFiles.length} legacy-format images — performance hint, not a bug`,
+        suggestion: 'Convert large images to WebP/AVIF with PNG/JPG fallbacks to cut bytes-on-the-wire. Skip for small icons (< 50KB).',
       });
     }
   }
@@ -180,8 +181,17 @@ class PerformanceModule extends BaseModule {
   _checkMemoryLeakPatterns(projectRoot, result) {
     const jsFiles = this._collectFiles(projectRoot, ['.js', '.ts', '.jsx', '.tsx']);
     for (const file of jsFiles) {
-      const relPath = path.relative(projectRoot, file);
-      const content = fs.readFileSync(file, 'utf-8');
+      const relPath = path.relative(projectRoot, file).split(path.sep).join('/');
+      // Skip test files and detector source files — both legitimately
+      // mention setInterval / addEventListener as string literals for
+      // matching, fixtures, or examples in JSDoc.
+      if (/(?:^|\/)tests?\/|\.test\.|\.spec\./i.test(relPath)) continue;
+      if (/(?:^|\/)src\/modules\/(?:performance|flaky-tests|resource-leak)\.js$/.test(relPath)) continue;
+
+      const rawContent = fs.readFileSync(file, 'utf-8');
+      // Strip strings + comments so string-literal mentions of these
+      // APIs (e.g. inside docs, test fixtures, page copy) don't FP.
+      const content = this._stripCommentsAndStrings(rawContent);
 
       // Check for addEventListener without removeEventListener
       const addCount = (content.match(/addEventListener\s*\(/g) || []).length;
@@ -223,6 +233,56 @@ class PerformanceModule extends BaseModule {
     result.addCheck('perf:lighthouse-available', true, {
       message: 'Lighthouse available — run against live URL for full audit',
     });
+  }
+
+  // Newline-preserving stripper: removes block / line / template /
+  // quoted strings while keeping line numbers stable. Same shape as
+  // the helpers in security.js / data-integrity.js — kills the FP
+  // class where a string literal mentions an API name we're scanning
+  // for (e.g. `"setInterval(..., 30_000)"` in a docs/code-example).
+  _stripCommentsAndStrings(source) {
+    const lines = source.split('\n');
+    const out = [];
+    let inBlockComment = false;
+    let inTemplate = false;
+    for (const raw of lines) {
+      let line = '';
+      let i = 0;
+      while (i < raw.length) {
+        if (inBlockComment) {
+          if (raw[i] === '*' && raw[i + 1] === '/') {
+            inBlockComment = false;
+            i += 2;
+          } else {
+            i += 1;
+          }
+          continue;
+        }
+        if (inTemplate) {
+          if (raw[i] === '\\') { i += 2; continue; }
+          if (raw[i] === '`') { inTemplate = false; i += 1; continue; }
+          i += 1;
+          continue;
+        }
+        if (raw[i] === '/' && raw[i + 1] === '*') { inBlockComment = true; i += 2; continue; }
+        if (raw[i] === '/' && raw[i + 1] === '/') break;
+        if (raw[i] === '`') { inTemplate = true; i += 1; continue; }
+        if (raw[i] === '"' || raw[i] === "'") {
+          const quote = raw[i];
+          i += 1;
+          while (i < raw.length && raw[i] !== quote) {
+            if (raw[i] === '\\') i += 1;
+            i += 1;
+          }
+          i += 1;
+          continue;
+        }
+        line += raw[i];
+        i += 1;
+      }
+      out.push(line);
+    }
+    return out.join('\n');
   }
 }
 

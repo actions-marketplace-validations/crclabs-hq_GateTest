@@ -288,6 +288,34 @@ describe('CiSecurityModule — permissions + soft-fail', () => {
     const r = await run(tmp);
     assert.strictEqual(r.checks.find((c) => c.name.startsWith('ci-security:soft-fail-gate:')), undefined);
   });
+
+  it('does NOT flag continue-on-error on a SARIF-upload step that follows a gate step (regression)', async () => {
+    // Real-world false-positive: the SARIF upload step references
+    // `.gatetest/reports/` and uses `continue-on-error: true` legitimately
+    // (so a transient upload failure doesn't fail the build). The lookback
+    // must stop at the previous step boundary so it doesn't bleed into
+    // the prior `gatetest` mention.
+    writeWorkflow(tmp, 'ci.yml', [
+      'name: ci',
+      'permissions: { contents: read, security-events: write }',
+      'on: push',
+      'jobs:',
+      '  gate:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - name: Run GateTest',
+      '        run: node bin/gatetest.js --suite quick --sarif --junit',
+      '      - name: Upload SARIF to GitHub Security',
+      '        if: always()',
+      '        uses: github/codeql-action/upload-sarif@v3',
+      '        with:',
+      '          sarif_file: .gatetest/reports/',
+      '        continue-on-error: true',
+      '',
+    ].join('\n'));
+    const r = await run(tmp);
+    assert.strictEqual(r.checks.find((c) => c.name.startsWith('ci-security:soft-fail-gate:')), undefined);
+  });
 });
 
 describe('CiSecurityModule — summary', () => {

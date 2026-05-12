@@ -1,6 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import CopyButton from "./CopyButton";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { formatFindingsAsMarkdown, formatFindingAsLine } = require("@/app/lib/copy-formatters.js") as {
+  formatFindingsAsMarkdown: (opts: { findings: unknown[]; totalCount?: number; repoUrl?: string }) => string;
+  formatFindingAsLine: (f: { severity: string; module: string; file?: string | null; line?: number | null; message?: string }) => string;
+};
 
 interface ModuleResult {
   name: string;
@@ -125,12 +131,6 @@ const SEV_BAR: Record<Finding["severity"], string> = {
   info: "border-l-slate-400",
 };
 
-function copyToClipboard(text: string): void {
-  if (typeof navigator !== "undefined" && navigator.clipboard) {
-    navigator.clipboard.writeText(text).catch(() => {}); // error-ok — clipboard write failure is non-fatal; user can copy manually
-  }
-}
-
 interface Props {
   modules: ModuleResult[];
   repoUrl?: string;
@@ -141,7 +141,10 @@ export default function FindingsPanel({ modules, repoUrl }: Props) {
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [moduleFilter, setModuleFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Phase 5.2.1 — dissent state. Tracked per-finding-id so the panel
+  // can show a "thanks, recorded" indicator and prevent double-submits.
+  const [dissentedIds, setDissentedIds] = useState<Set<string>>(() => new Set());
+  const [pendingDissentId, setPendingDissentId] = useState<string | null>(null);
 
   const counts = useMemo(() => {
     const c = { error: 0, warning: 0, info: 0, total: findings.length };
@@ -174,11 +177,54 @@ export default function FindingsPanel({ modules, repoUrl }: Props) {
     return m ? `https://github.com/${m[1]}/blob/HEAD` : null;
   }, [repoUrl]);
 
-  function handleCopy(id: string, text: string) {
-    copyToClipboard(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId((curr) => (curr === id ? null : curr)), 1400);
+  // Phase 5.2.1 — dissent thumbs-down. Records a FALSE_POSITIVE dissent
+  // so the 5.2.2 FP scorer can downgrade noisy modules. State is local
+  // (per-finding) so the button shows immediate feedback without
+  // re-fetching. Failures fall silent so a brain outage doesn't break
+  // the panel.
+  async function handleDissent(f: Finding) {
+    if (dissentedIds.has(f.id) || pendingDissentId === f.id) return;
+    setPendingDissentId(f.id);
+    try {
+      const res = await fetch("/api/dissent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repoUrl: repoUrl || "",
+          module: f.module,
+          // The findings panel doesn't have the (module, ruleId, ext)
+          // pattern hash on hand — use the finding's stable id as a
+          // fallback signature. The 5.2.2 scorer treats null
+          // patternHash as "module-level" and aggregates accordingly.
+          patternHash: null,
+          kind: "false_positive",
+          notes: f.message?.slice(0, 200),
+        }),
+      });
+      if (res.ok) {
+        setDissentedIds((s) => {
+          const next = new Set(s);
+          next.add(f.id);
+          return next;
+        });
+      }
+    } catch {
+      // Brain unavailable — never block the panel.
+    } finally {
+      setPendingDissentId(null);
+    }
   }
+
+  // Universal-copy helper — formats the currently-filtered findings as a
+  // markdown checklist the customer can paste into any AI builder /
+  // ticket / Slack thread. Backed by the shared formatter so the same
+  // shape ships across panels and is unit-tested separately. Hook MUST
+  // live before any conditional return — Rules of Hooks require a stable
+  // call order across renders.
+  const bulkCopyText = useMemo(
+    () => formatFindingsAsMarkdown({ findings: filtered, totalCount: counts.total, repoUrl }),
+    [filtered, counts.total, repoUrl]
+  );
 
   if (findings.length === 0) {
     return (
@@ -206,6 +252,14 @@ export default function FindingsPanel({ modules, repoUrl }: Props) {
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs">
+            {filtered.length > 0 && (
+              <CopyButton
+                text={bulkCopyText}
+                label={`${filtered.length} findings as markdown`}
+                variant="label"
+                title={`Copy all ${filtered.length} shown findings as a markdown checklist`}
+              />
+            )}
             <SevPill
               label="Errors"
               count={counts.error}
@@ -238,6 +292,7 @@ export default function FindingsPanel({ modules, repoUrl }: Props) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search file or message"
+              aria-label="Search findings"
               className="w-full px-3 py-2 pl-8 rounded-lg border border-border bg-white text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
             />
             <svg
@@ -334,45 +389,61 @@ export default function FindingsPanel({ modules, repoUrl }: Props) {
                           ) : (
                             fileLine
                           )}
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(f.id, fileLine)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted hover:text-accent"
-                            aria-label="Copy file and line"
-                            title="Copy"
-                          >
-                            {copiedId === f.id ? (
-                              <svg
-                                className="w-3 h-3"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                                aria-hidden
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M16.7 5.3a1 1 0 010 1.4l-8 8a1 1 0 01-1.4 0l-4-4a1 1 0 111.4-1.4L8 12.6l7.3-7.3a1 1 0 011.4 0z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            ) : (
-                              <svg
-                                className="w-3 h-3"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                                aria-hidden
-                              >
-                                <path d="M7 3a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2H7zm0 2h8v10H7V5z" />
-                                <path d="M3 7v10a2 2 0 002 2h8v-2H5V7H3z" />
-                              </svg>
-                            )}
-                          </button>
+                          <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <CopyButton
+                              text={fileLine}
+                              label={`file path ${fileLine}`}
+                              variant="icon"
+                            />
+                          </span>
                         </span>
                       )}
+                      {/* Per-row Copy-as-finding-text — always visible at edge */}
+                      <span className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                        <CopyButton
+                          text={formatFindingAsLine(f)}
+                          label="finding"
+                          variant="icon"
+                          title="Copy this finding as text"
+                        />
+                      </span>
                     </div>
                     <p className="text-sm text-foreground leading-snug break-words">
                       {f.message}
                     </p>
                   </div>
+                  {/* Phase 5.2.1 — false-positive thumbs-down. Records a dissent
+                      signal that flows into the per-module FP scorer in 5.2.2 */}
+                  <button
+                    type="button"
+                    onClick={() => handleDissent(f)}
+                    disabled={dissentedIds.has(f.id) || pendingDissentId === f.id}
+                    className={`shrink-0 self-start mt-1 ml-2 inline-flex items-center justify-center w-6 h-6 rounded-md border text-xs transition-colors ${
+                      dissentedIds.has(f.id)
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-700 cursor-default"
+                        : pendingDissentId === f.id
+                          ? "bg-background-alt border-border text-muted cursor-wait"
+                          : "bg-white border-border text-muted hover:border-amber-300 hover:text-amber-700 hover:bg-amber-50"
+                    }`}
+                    title={
+                      dissentedIds.has(f.id)
+                        ? "Recorded as false positive — thanks, this signal feeds the brain"
+                        : pendingDissentId === f.id
+                          ? "Recording…"
+                          : "This is a false positive — flag for the brain"
+                    }
+                    aria-label="Mark as false positive"
+                  >
+                    {dissentedIds.has(f.id) ? (
+                      <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                        <path fillRule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-8 8a1 1 0 01-1.4 0l-4-4a1 1 0 111.4-1.4L8 12.6l7.3-7.3a1 1 0 011.4 0z" clipRule="evenodd" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
+                      </svg>
+                    )}
+                  </button>
                 </div>
               </li>
             );

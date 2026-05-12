@@ -7,7 +7,11 @@ const { runLanguageChecks } = require('../core/universal-checker');
 
 class CSharpModule extends BaseModule {
   constructor() { super('csharp', 'C# Checks — Console.WriteLine, empty catches'); }
-  async run(result, config) { runLanguageChecks('csharp', config.projectRoot, result); }
+  async run(result, config) {
+    runLanguageChecks('csharp', config.projectRoot, result, {
+      incrementalFiles: config._incrementalFiles,
+    });
+  }
 }
 
 module.exports = CSharpModule;

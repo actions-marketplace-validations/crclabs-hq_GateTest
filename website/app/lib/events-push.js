@@ -28,7 +28,7 @@
  *   503 { error: 'secret not set' }     — env misconfigured
  */
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const crypto = require('crypto');
 
 // Backpressure threshold. Above this queue depth we 429.

@@ -112,7 +112,10 @@ export default function AdminPanel({ adminLogin }: AdminPanelProps) {
   const [error, setError] = useState("");
   const [fixing, setFixing] = useState(false);
   const [fixResult, setFixResult] = useState<FixResult | null>(null);
-  const [fileProgress, setFileProgress] = useState<FileProgress[]>([]);
+  // Per-file progress is tracked for the in-flight fix loop and consumed
+  // by callbacks that mutate the queue; the value isn't rendered yet.
+  // Underscore-prefix marks intentional read-not-yet-wired.
+  const [, setFileProgress] = useState<FileProgress[]>([]);
   // Findings whose file location couldn't be parsed — surfaced to the operator
   // instead of being silently dropped by the auto-fixer.
   const [unparseableIssues, setUnparseableIssues] = useState<UnparseableIssue[]>([]);
@@ -583,6 +586,7 @@ export default function AdminPanel({ adminLogin }: AdminPanelProps) {
                   value={repoUrl}
                   onChange={(e) => setRepoUrl(e.target.value)}
                   placeholder="https://github.com/owner/repo"
+                  aria-label="Repository URL"
                   className="px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 text-sm w-full"
                 />
                 <select
@@ -1001,6 +1005,7 @@ export default function AdminPanel({ adminLogin }: AdminPanelProps) {
                     setWatchTarget(v);
                   }}
                   placeholder={watchType === "repo" ? "owner/repo or paste GitHub URL" : "https://example.com"}
+                  aria-label={watchType === "repo" ? "Repository owner/repo" : "URL to watch"}
                   className="px-4 py-2.5 rounded-lg border border-white/10 bg-white/5 text-white placeholder:text-white/30 text-sm focus:border-emerald-500/50 focus:outline-none"
                 />
                 <div className="flex items-center gap-2">
@@ -1009,6 +1014,7 @@ export default function AdminPanel({ adminLogin }: AdminPanelProps) {
                     value={watchInterval}
                     onChange={(e) => setWatchInterval(Number(e.target.value))}
                     min={5} max={1440}
+                    aria-label="Watch interval (minutes)"
                     className="w-20 px-3 py-2.5 rounded-lg border border-white/10 bg-white/5 text-white text-sm focus:border-emerald-500/50 focus:outline-none text-center"
                   />
                   <span className="text-white/40 text-xs whitespace-nowrap">min</span>
@@ -1018,6 +1024,7 @@ export default function AdminPanel({ adminLogin }: AdminPanelProps) {
                     type="checkbox"
                     checked={watchAutoFix}
                     onChange={(e) => setWatchAutoFix(e.target.checked)}
+                    aria-label="Auto-fix when issues found"
                     className="w-4 h-4 accent-emerald-500"
                   />
                   Auto-fix
@@ -1238,6 +1245,7 @@ export default function AdminPanel({ adminLogin }: AdminPanelProps) {
                   value={keyName}
                   onChange={(e) => setKeyName(e.target.value)}
                   placeholder="Key name (e.g. Platform A prod)"
+                  aria-label="API key name"
                   className="px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 text-sm"
                 />
                 <input
@@ -1245,6 +1253,7 @@ export default function AdminPanel({ adminLogin }: AdminPanelProps) {
                   value={keyCustomer}
                   onChange={(e) => setKeyCustomer(e.target.value)}
                   placeholder="customer@example.com (optional)"
+                  aria-label="Customer email (optional)"
                   className="px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 text-sm"
                 />
                 <select
@@ -1260,6 +1269,7 @@ export default function AdminPanel({ adminLogin }: AdminPanelProps) {
                   value={keyRate}
                   onChange={(e) => setKeyRate(Math.max(1, Number(e.target.value) || 60))}
                   placeholder="60"
+                  aria-label="Rate limit (requests per minute)"
                   className="px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 text-sm w-24"
                 />
                 <button onClick={createKey} className="btn-primary px-6 py-3 text-sm">
@@ -1425,6 +1435,7 @@ interface RepoScanState {
   status: "idle" | "scanning" | "fixing" | "done" | "error";
   prUrl?: string;
   error?: string;
+  errorDetails?: string[];
   issues?: number;
 }
 
@@ -1496,6 +1507,7 @@ function WatchdogPanel() {
           issues,
           prUrl: fixData.prUrl,
           error: fixData.prUrl ? undefined : (fixData.error || fixData.message),
+          errorDetails: fixData.prUrl ? undefined : (fixData.errors as string[] | undefined),
         },
       }));
     } catch (err) {
@@ -1699,7 +1711,15 @@ function WatchdogPanel() {
                   <span className="text-xs text-emerald-600 font-medium">✓ No issues found</span>
                 )}
                 {state?.status === "done" && !state.prUrl && (state.issues || 0) > 0 && (
-                  <span className="text-xs text-gray-400">{state.error || "No auto-fixable issues"}</span>
+                  <span className="text-xs text-gray-400 max-w-xs">
+                    {state.error || "No auto-fixable issues"}
+                    {state.errorDetails && state.errorDetails.length > 0 && (
+                      <span className="block text-red-500 truncate" title={state.errorDetails.join("\n")}>
+                        {state.errorDetails[0]}
+                        {state.errorDetails.length > 1 && ` (+${state.errorDetails.length - 1} more)`}
+                      </span>
+                    )}
+                  </span>
                 )}
                 {state?.status === "error" && (
                   <span className="text-xs text-red-600">{state.error}</span>
@@ -1797,6 +1817,7 @@ function ServerScanPanel() {
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") runServerScan(); }}
             placeholder="https://example.com"
+            aria-label="Server URL to scan"
             className="flex-1 px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 text-sm"
           />
           <button onClick={runServerScan} disabled={scanning} className="btn-primary px-6 py-3 text-sm disabled:opacity-50">
@@ -2108,6 +2129,7 @@ function NuclearScanPanel() {
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") runNuclear(); }}
             placeholder="https://crontech.ai"
+            aria-label="URL for Nuclear-tier scan"
             className="flex-1 px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 text-sm"
           />
           <button

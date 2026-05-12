@@ -33,8 +33,8 @@ const https = require('https');
 // Pure helpers — also used by the website route. Live in website/ for path-alias
 // reasons; CLI imports via relative path because the gate workflow clones the
 // whole repo and both directories are present at runtime.
-const surgicalFix  = require('../../website/app/lib/surgical-fix');
-const mutationGuard = require('../../website/app/lib/whole-file-mutation-guard');
+const surgicalFix  = require('../../lib/surgical-fix');
+const mutationGuard = require('../../lib/whole-file-mutation-guard');
 
 const ANTHROPIC_HOST   = 'api.anthropic.com';
 const MODEL_FAST       = 'claude-haiku-4-5-20251001';   // small/simple fixes

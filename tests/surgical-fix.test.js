@@ -13,7 +13,7 @@ const {
   parseReplacementBlock,
   spliceReplacement,
   validateSurgicalFix,
-} = require("../website/app/lib/surgical-fix.js");
+} = require("../lib/surgical-fix.js");
 
 function makeFile(n, ending = "\n") {
   const lines = [];

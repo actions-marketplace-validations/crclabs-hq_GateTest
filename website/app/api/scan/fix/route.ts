@@ -155,7 +155,7 @@ const { validateFixesSyntax, summariseSyntaxGate } = require("@/app/lib/cross-fi
 // context, gets back a replacement block, splices into the original. Bytes
 // outside the splice are byte-identical because we never sent them.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const surgicalFix = require("@/app/lib/surgical-fix") as {
+const surgicalFix = require("@lib/surgical-fix") as {
   extractIssueContext: (fileContent: string, lineNumber: number, contextLines?: number) => {
     slice: string; startLine: number; endLine: number; totalLines: number; lineEnding: string;
   };
@@ -171,7 +171,7 @@ const surgicalFix = require("@/app/lib/surgical-fix") as {
 // has no parseable line number. Computes a line-level diff and rejects fixes
 // that change far more lines than the issue count justifies.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const mutationGuard = require("@/app/lib/whole-file-mutation-guard") as {
+const mutationGuard = require("@lib/whole-file-mutation-guard") as {
   evaluateMutation: (opts: {
     original: string; fixed: string; issueCount: number;
     maxChangePerIssue?: number; maxAbsoluteChange?: number; maxPercentChange?: number;

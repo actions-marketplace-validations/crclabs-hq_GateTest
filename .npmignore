@@ -1,0 +1,51 @@
+# Belt-and-braces — package.json `files` is the source of truth, but anything
+# missed by that allowlist still gets excluded here.
+#
+# Anything not in this list is ALREADY excluded by the `files` allowlist
+# in package.json. The patterns below cover the case where someone removes
+# the allowlist without realising it gates publish bloat.
+
+website/
+docs/
+tests/
+integrations/
+.github/
+.husky/
+.claude/
+.next/
+.gatetest/
+node_modules/
+
+# Source-control + IDE
+.git/
+.gitignore
+.gitattributes
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# CI + tooling configs not needed at runtime
+.eslintrc*
+.prettierrc*
+.editorconfig
+vercel.json
+playwright.config.*
+e2e/
+
+# Build artifacts + caches
+dist/
+build/
+out/
+coverage/
+.cache/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Repo-internal docs + planning
+CLAUDE.md
+MARKETING.md
+ROADMAP.md
+*.draft.md

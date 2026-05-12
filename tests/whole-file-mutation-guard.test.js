@@ -14,7 +14,7 @@ const {
   computeLineDiff,
   evaluateMutation,
   summariseMutation,
-} = require('../website/app/lib/whole-file-mutation-guard.js');
+} = require('../lib/whole-file-mutation-guard.js');
 
 // ---------- computeLineDiff ----------
 

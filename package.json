@@ -1,11 +1,26 @@
 {
   "name": "gatetest",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "GateTest - Advanced QA gate between Claude and GitHub. Nothing ships unless it's pristine.",
   "main": "src/index.js",
   "bin": {
     "gatetest": "./bin/gatetest.js",
     "gatetest-mcp": "./bin/gatetest-mcp.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
+  "homepage": "https://gatetest.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ccantynz-alt/gatetest.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ccantynz-alt/gatetest/issues"
   },
   "scripts": {
     "test": "node --test tests/**/*.test.js",

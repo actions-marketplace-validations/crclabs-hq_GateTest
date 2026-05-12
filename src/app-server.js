@@ -144,12 +144,25 @@ async function getInstallationToken(installationId) {
 // ============================================================
 
 function verifySignature(payload, signature) {
-  if (!WEBHOOK_SECRET) return true; // Skip if no secret configured
+  // FAIL CLOSED — if WEBHOOK_SECRET is unset, refuse the event. Accepting
+  // unverified webhooks = attacker can spoof push events, trigger unlimited
+  // clones, exhaust the server, and inject arbitrary repo URLs into the
+  // scan pipeline. Bible Forbidden #15 + Known Issue #13 parity (the
+  // Vercel-side stripe-webhook + GitHub webhook routes were fixed for this
+  // in April 2026; the standalone app-server kept the old fail-open default
+  // until pre-HN-launch audit caught it).
+  if (!WEBHOOK_SECRET) return false;
+  if (!signature) return false;
   const expected = 'sha256=' + crypto
     .createHmac('sha256', WEBHOOK_SECRET)
     .update(payload)
     .digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature || ''));
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  } catch {
+    // Buffers of different lengths throw — treat as mismatch.
+    return false;
+  }
 }
 
 // ============================================================

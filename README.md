@@ -152,6 +152,27 @@ Results appear as commit status checks and detailed PR comments.
 
 ---
 
+## Turn on auto-fix (one secret, every repo)
+
+The gate **finds** issues by default. To also **fix** them automatically and
+open a PR with the fixes, set ONE secret:
+
+1. Go to `https://github.com/organizations/<your-org>/settings/secrets/actions`
+2. Click **New organization secret**
+3. Name: `ANTHROPIC_API_KEY` — Value: your Anthropic API key (`sk-ant-…`)
+4. Repository access: **All repositories**
+5. Save
+
+That's it. Every failing gate run in your org now opens a
+`gatetest/auto-repair-<run-id>` PR with surgical-diff fixes. The fixer never
+touches code outside the issue's exact line range — bytes outside the
+splice are byte-identical to the original by construction.
+
+Disable per-repo: Settings → Secrets and variables → Actions → Variables →
+`GATETEST_AUTOFIX = off`.
+
+---
+
 ## Paid Scans
 
 Don't want to run it yourself? We'll scan your repo and deliver a full report.

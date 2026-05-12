@@ -43,6 +43,33 @@ That installs three things:
 
 ---
 
+## Turn ON auto-fix (one secret, every repo, forever)
+
+The gate **finds** issues out of the box. To also **fix** them automatically,
+set ONE Anthropic API key as a GitHub organization secret and every repo in
+your org starts opening surgical-fix PRs the moment a scan fails:
+
+1. Go to `https://github.com/organizations/<your-org>/settings/secrets/actions`
+2. Click **New organization secret**
+3. Name: `ANTHROPIC_API_KEY`
+4. Value: your Anthropic API key (`sk-ant-…`)
+5. Repository access: **All repositories** (or **Selected**)
+6. Save
+
+That's it. The next failed gate run on any repo in your org will:
+- Run `gatetest --suite quick --fix` (surgical-diff mode — never mutates
+  unrelated code)
+- Open a `gatetest/auto-repair-<run-id>` branch with the fixes
+- Open a PR for review — original failing PR stays untouched
+
+To **disable** auto-fix on a specific repo: Settings → Secrets and variables
+→ Actions → Variables tab → New repository variable → `GATETEST_AUTOFIX = off`.
+
+When the key is **missing**, the workflow prints a one-shot setup hint at
+the end of every failed run so a new dev can self-serve the activation.
+
+---
+
 ## Architecture — why GateTest stays standalone
 
 ```

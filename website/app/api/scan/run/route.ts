@@ -179,7 +179,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const { sessionId, repoUrl, tier, source, sha, ref } = input;
+  const { sessionId, repoUrl, source, sha, ref } = input;
+  // Tier from URL/body is UNTRUSTED — a customer can edit the URL to claim
+  // a higher tier than they paid for. The authoritative tier is the one
+  // stamped on the Stripe payment intent at checkout. We override `tier`
+  // below once we've fetched the PI metadata. Admin and non-Stripe paths
+  // continue to honour the input tier as before.
+  let tier = input.tier;
 
   if (!repoUrl) {
     return NextResponse.json({ error: "Missing repo URL" }, { status: 400 });
@@ -201,13 +207,19 @@ export async function POST(req: NextRequest) {
   // Stripe interaction entirely. Admin scans never create or capture charges.
   const isAdmin = isAdminRequest(req);
 
-  // ── Idempotency guard ─────────────────────────────────────────────
+  // ── Idempotency guard + authoritative tier resolution ────────────
   // /api/scan/run can be invoked multiple times for the same session
   // (browser refresh, back-button, network retry, client re-render,
   // or a concurrent stripe-webhook after() invocation). Without this
   // check a second call would re-run the scan AND re-capture — in
   // the worst case double-charging or overwriting a valid result.
   // The Stripe metadata's `scan_status` is the canonical replay marker.
+  //
+  // We ALSO use this PI-fetch to resolve the authoritative tier. The URL
+  // `tier` param is untrusted (customer can edit it); the PI metadata's
+  // `tier` was stamped at checkout creation and cannot be tampered with.
+  // If the URL claims a different tier than the customer paid for, we
+  // log the attempt and silently honour the paid tier.
   if (!isAdmin && sessionId && STRIPE_SECRET_KEY) {
     try {
       const existing = (await stripeApi(
@@ -219,6 +231,16 @@ export async function POST(req: NextRequest) {
           "GET",
           `/v1/payment_intents/${existing.payment_intent}`
         )) as { metadata?: Record<string, string>; status?: string };
+
+        // Authoritative tier override — silently corrects URL manipulation.
+        const paidTier = pi.metadata?.tier;
+        if (paidTier && paidTier !== tier) {
+          console.warn(
+            `[GateTest] Tier mismatch on session ${sessionId.slice(0, 12)}... — URL claimed ${tier || "<none>"}, paid ${paidTier}. Using paid tier.`
+          );
+          tier = paidTier;
+        }
+
         const prevStatus = pi.metadata?.scan_status;
         if (prevStatus === "complete" || prevStatus === "failed") {
           // Already processed — return the cached state derived from

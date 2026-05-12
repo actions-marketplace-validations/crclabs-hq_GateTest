@@ -560,6 +560,56 @@ Plus 12 more modules they don't have: AI code review, **fake-fix detector (catch
 
 ---
 
+## HYPER-AGGRESSIVE PRODUCT EVOLUTION ROADMAP (READ THIS EVERY SESSION)
+
+**Authorization:** Craig 2026-05-12 — handed over a 20-item product evolution list and instructed: ship the 5 "Ship Now" items. The rest is recorded here so future sessions don't re-litigate it. Boss Rule items in this list ALWAYS require Craig's explicit go before any code lands.
+
+### Tier 1 — SHIP NOW (revenue-moving, low-risk, pre-authorised)
+
+1. **Contextual Grounding** — inject the customer's README + AGENTS.md + ARCHITECTURE.md (first ~2K chars each) into every fix prompt as a "PROJECT CONVENTIONS" header. Kills "Claude suggested Mongo when we use Postgres" failures. Applies to both `website/app/api/scan/fix/route.ts` and `src/core/ai-fix-engine.js`. Pure helper goes in `lib/contextual-grounding.js`.
+
+2. **Shadow Scan Previews + Tiered Feature Redaction** (one feature, two angles) — the $29 customer's response shows COUNTS of issues found in the 86 modules they didn't pay for, with module names but redacted details. Upsell line: "12 of 43 issues hidden — upgrade to see and fix." Implemented as `lib/scan-redaction.js` consumed by `website/app/api/scan/run/route.ts`. No extra Claude cost — modules outside Quick's 4-tier still don't run for $29 customers; the COUNT comes from a lightweight non-AI scan pass.
+
+3. **CVE-to-Fix Pipeline** — when `security` or `dependencies` modules emit a CVE-shaped finding (`CVE-YYYY-NNNNN` or `GHSA-…`), the fix path generates a `package.json` (or pip/Cargo/etc.) version-bump patch automatically. Headlines vs. Dependabot which only opens advisory PRs. Helper in `lib/cve-to-fix.js`.
+
+4. **Confidence-Aware Reporting** — aggregate Claude's per-finding confidence (where available — pair-review 4-axis rubric, aiReview score) into a single number; only mark gate-blocking when ≥ threshold (configurable per tier, default 0.85). Helper in `lib/confidence-gate.js`.
+
+5. **(Item 4 of the roadmap rolls into Item 2 here)** — Tiered Feature Redaction is the Shadow Preview's machinery.
+
+### Tier 2 — REQUIRES CRAIG'S EXPLICIT OK (Boss Rule)
+
+| Item | Why blocked |
+| --- | --- |
+| Memory-as-a-Service (central DB for Nuclear users' MemoryStore) | New user-data store + retention policy — Boss Rule #9 |
+| SOC2 / HIPAA "always-audit-ready" dashboard | Compliance comms + sales positioning — Boss Rule #9 |
+| Multi-Agent Consensus (Claude + GPT-4o cross-check) | Adding OpenAI as a second external API — Boss Rule #7 |
+| Agentic Self-Healing (auto-fix without dev seeing the failure first) | Modifies customer code before review — trust contract change, Boss Rule #9 |
+
+### Tier 3 — PUSHED BACK (cost > benefit until $5K-$10K MRR)
+
+- **Shadow Infrastructure Scans** — spinning up isolated envs per PR is expensive compute; would erode margins
+- **eBPF Runtime Truth** — Linux-only, ops-heavy, customers aren't asking for it
+- **Formal Verification / Z3** — academic-grade, audience of ~5 customers worldwide
+- **GNN Taint Analysis** — research-stage, ~12+ months from productisable
+- **Vector-Based Fingerprinting** — heavy infra lift, real moat but only after revenue justifies it
+
+### Tier 4 — DEFERRED (sequenced behind earlier work)
+
+- **Architectural Decision Memory** — depends on centralised Memory (Tier 2)
+- **Automated Post-Mortems** — needs log-ingestion infra; later product
+- **Interactive Fix Terminal** — UX upgrade; ship after auto-PR has 100 real-customer PRs of trust
+- **WASM Sandboxing for deps** — ~2 weeks of focused work; valuable but not blocking
+- **Differential Fuzzing** — pairs with mutation testing; ~1 week to ship
+
+### Operating rules
+
+1. **No new Tier 1 work begins until the previous one is committed + pushed + tested.**
+2. **Tier 2 items NEVER get auto-started.** Craig must say "do X" explicitly.
+3. **Tier 3 items stay parked until MRR justifies the cost.** Revisit at $5K MRR.
+4. **This roadmap is the source of truth.** Any session adding a new feature first checks: is it on this list? What tier? If not on the list and it's significant, ask Craig before building.
+
+---
+
 ## PROJECT ARCHITECTURE (BUILT — DO NOT RECREATE)
 
 ```

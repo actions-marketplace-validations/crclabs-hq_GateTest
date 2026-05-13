@@ -283,6 +283,25 @@ export const maxDuration = 300;
 export const runtime = "nodejs";
 const TIME_BUDGET_MS = 240_000;
 
+// Per-scan Anthropic spend cap. Tracker lives in AsyncLocalStorage so deep
+// call stacks (pair-review, architecture-annotator, nuclear-diagnoser) see
+// the same budget without explicit threading.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const budgetTracker = require("@/app/lib/budget-tracker") as {
+  createBudgetTracker: (opts?: { maxTokens?: number; maxUsd?: number; label?: string }) =>
+    BudgetTrackerInstance;
+  runWithTracker: <T>(tracker: BudgetTrackerInstance, fn: () => T) => T;
+  getCurrentTracker: () => BudgetTrackerInstance | null;
+};
+
+type BudgetTrackerInstance = {
+  preflight: () => void;
+  record: (body: string, response: unknown) => void;
+  snapshot: () => Record<string, unknown>;
+  aborted: boolean;
+  abortReason: string | null;
+};
+
 // Max attempts for the per-finding iterative fix loop. Overridable via the
 // GATETEST_FIX_MAX_ATTEMPTS env var if a deployment wants tighter cost
 // control or more aggressive recovery.
@@ -317,6 +336,9 @@ function isRetryableNetworkError(err: unknown): boolean {
 }
 
 async function anthropicCall(body: string): Promise<{ status: number; data: Record<string, unknown> }> {
+  // Preflight: throw BUDGET_EXCEEDED if a prior call already crossed the cap.
+  // No tracker = no cap (e.g. tests that don't wrap in runWithTracker).
+  budgetTracker.getCurrentTracker()?.preflight();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45_000);
   try {
@@ -335,7 +357,11 @@ async function anthropicCall(body: string): Promise<{ status: number; data: Reco
     const text = await res.text();
     let data: Record<string, unknown>;
     try { data = JSON.parse(text); } catch { data = { raw: text }; }
-    return { status: res.status, data };
+    const result = { status: res.status, data };
+    // Record AFTER fetch so we account for actual output tokens. Tracker uses
+    // data.usage when present, falls back to char-estimate otherwise.
+    budgetTracker.getCurrentTracker()?.record(body, result);
+    return result;
   } finally {
     clearTimeout(timer);
   }
@@ -587,6 +613,17 @@ interface OriginalFileInput {
 }
 
 export async function POST(req: NextRequest) {
+  // Per-request budget tracker — caps Anthropic spend at GATETEST_MAX_USD_PER_SCAN
+  // (default $12) and GATETEST_MAX_TOKENS_PER_SCAN (default 1.5M). Lives in
+  // AsyncLocalStorage so deep call stacks (pair-review, architecture-annotator,
+  // nuclear-diagnoser) see the same budget without explicit threading. Once a
+  // cap is breached, the NEXT anthropicCall throws BUDGET_EXCEEDED which the
+  // outer catch turns into a clean 402.
+  const tracker = budgetTracker.createBudgetTracker({ label: "scan-fix" });
+  return budgetTracker.runWithTracker(tracker, () => _doPost(req, tracker));
+}
+
+async function _doPost(req: NextRequest, tracker: BudgetTrackerInstance) {
   const startTime = Date.now();
   let input: {
     repoUrl?: string;
@@ -1418,6 +1455,21 @@ export async function POST(req: NextRequest) {
   }
 
   } catch (outerErr) { // error-ok — outer guard: catches auth / file-fetch / gate throws that bypassed inner handler
+    // Budget-exceeded is a customer-visible quota event, not a server crash.
+    // Return 402 (Payment Required) with the tracker snapshot so support can
+    // see exactly which scan hit the cap and how much it had spent.
+    if ((outerErr as { code?: string })?.code === "BUDGET_EXCEEDED") {
+      const snap = (outerErr as { tracker?: Record<string, unknown> }).tracker || tracker.snapshot();
+      console.warn("[GateTest] scan/fix budget exhausted:", JSON.stringify(snap));
+      return NextResponse.json(
+        {
+          status: "error",
+          error: "Scan exceeded its AI spend budget. The work completed up to the cap is preserved; please retry with a smaller issue set or contact support.",
+          budget: snap,
+        },
+        { status: 402 }
+      );
+    }
     const msg = outerErr instanceof Error ? outerErr.message : "Unexpected fix-route error";
     console.error("[GateTest] scan/fix route crashed:", msg);
     return NextResponse.json(

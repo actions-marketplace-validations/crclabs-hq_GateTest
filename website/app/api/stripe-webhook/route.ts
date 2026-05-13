@@ -234,14 +234,10 @@ export async function POST(req: NextRequest) {
       });
       if (outcome.skipped) {
         // code-quality-ok — operational status log inside webhook after() handler
-        console.log(
-          `[GateTest] Scan job ${jobId} skipped: ${outcome.reason}`
-        );
+        console.log(`[GateTest] Scan job ${jobId} skipped: ${outcome.reason}`);
       } else {
         // code-quality-ok — operational status log inside webhook after() handler
-        console.log(
-          `[GateTest] Scan job ${jobId} finished: ${outcome.result?.status}`
-        );
+        console.log(`[GateTest] Scan job ${jobId} finished: ${outcome.result?.status}`);
       }
     } catch (err) {
       // Green ecosystem mandate: never leave a capture hanging. If the

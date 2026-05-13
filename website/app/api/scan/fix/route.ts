@@ -1,3 +1,23 @@
+/**
+ * Auto-Fix Agent — Claude reads scan issues, generates fixes, creates a PR.
+ *
+ * POST /api/scan/fix
+ * Body: { repoUrl, issues: [{ file, issue, module }] }
+ *
+ * Flow:
+ * 1. Reads each file from GitHub API
+ * 2. Sends file + issue to Claude with "fix this" prompt
+ * 3. Gets back corrected code
+ * 4. Creates a new branch on the repo
+ * 5. Commits all fixed files
+ * 6. Opens a pull request
+ * 7. Returns the PR URL
+ *
+ * Requires: ANTHROPIC_API_KEY, GitHub auth (either GITHUB_TOKEN PAT, or
+ *           GATETEST_APP_ID + GATETEST_PRIVATE_KEY GitHub App — App is preferred
+ *           because it's already what the webhook uses for commit statuses.)
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminRequest } from "@/app/lib/admin-auth";
 import {
@@ -279,33 +299,22 @@ const { extractConventions, formatGroundingHeader, summariseGrounding } = requir
   }) => string;
 };
 
-export const maxDuration = 300;
-export const runtime = "nodejs";
-const TIME_BUDGET_MS = 240_000;
-
-// Per-scan Anthropic spend cap. Tracker lives in AsyncLocalStorage so deep
-// call stacks (pair-review, architecture-annotator, nuclear-diagnoser) see
-// the same budget without explicit threading.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const budgetTracker = require("@/app/lib/budget-tracker") as {
-  createBudgetTracker: (opts?: { maxTokens?: number; maxUsd?: number; label?: string }) =>
-    BudgetTrackerInstance;
-  runWithTracker: <T>(tracker: BudgetTrackerInstance, fn: () => T) => T;
-  getCurrentTracker: () => BudgetTrackerInstance | null;
-};
-
-type BudgetTrackerInstance = {
-  preflight: () => void;
-  record: (body: string, response: unknown) => void;
-  snapshot: () => Record<string, unknown>;
-  aborted: boolean;
-  abortReason: string | null;
-};
-
-// Max attempts for the per-finding iterative fix loop. Overridable via the
+// Default attempt ceiling — set higher than the old hardcoded "1+1 retry"
+// so the loop has room to learn from its own mistakes. Configurable via
 // GATETEST_FIX_MAX_ATTEMPTS env var if a deployment wants tighter cost
 // control or more aggressive recovery.
 const DEFAULT_MAX_ATTEMPTS = Number(process.env.GATETEST_FIX_MAX_ATTEMPTS) || 3;
+
+// Vercel Pro allows up to 300s. Fix runs 44 issues across ~10 files, each file
+// needs a Claude call + GitHub read + commit. 300s gives headroom for retries
+// without pushing browser into connection-reset territory.
+export const maxDuration = 300;
+export const runtime = "nodejs";
+
+// Hard time budget (ms). We STOP accepting new files at 80% of maxDuration so
+// commits + PR creation have time to run. Worst case we ship a partial fix PR
+// with what we managed to complete.
+const TIME_BUDGET_MS = 240_000;
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 
@@ -321,6 +330,8 @@ function isRetryableNetworkError(err: unknown): boolean {
   const code = (err as { code?: string; cause?: { code?: string } }).code
     || (err as { cause?: { code?: string } }).cause?.code
     || "";
+  // AbortError from our 45s timeout — the file may be large or Anthropic slow;
+  // treat as transient so it goes into the retry queue rather than hard-failing.
   if (name === "AbortError" || /aborted|abort/i.test(msg)) return true;
   const retryableCodes = [
     "EPROTO", "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT",
@@ -329,6 +340,7 @@ function isRetryableNetworkError(err: unknown): boolean {
     "UND_ERR_BODY_TIMEOUT", "UND_ERR_RESPONSE_STATUS_CODE",
   ];
   if (retryableCodes.includes(code)) return true;
+  // Match text shapes too — undici sometimes surfaces them in the message
   if (/EPROTO|ECONNRESET|ETIMEDOUT|ssl.*alert|handshake|fetch failed|socket hang up|TLS/i.test(msg)) {
     return true;
   }
@@ -336,10 +348,10 @@ function isRetryableNetworkError(err: unknown): boolean {
 }
 
 async function anthropicCall(body: string): Promise<{ status: number; data: Record<string, unknown> }> {
-  // Preflight: throw BUDGET_EXCEEDED if a prior call already crossed the cap.
-  // No tracker = no cap (e.g. tests that don't wrap in runWithTracker).
-  budgetTracker.getCurrentTracker()?.preflight();
   const controller = new AbortController();
+  // Anthropic max_tokens=8192 at sonnet speeds rarely exceeds 30s. 45s is a
+  // safe per-request ceiling that leaves room for retries inside the 300s
+  // function budget and won't let a single stuck request monopolise.
   const timer = setTimeout(() => controller.abort(), 45_000);
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -352,16 +364,14 @@ async function anthropicCall(body: string): Promise<{ status: number; data: Reco
       },
       body,
       signal: controller.signal,
+      // Don't reuse stale keep-alive sockets from the undici pool — one bad
+      // TLS socket poisons every parallel request otherwise.
       keepalive: false,
     });
     const text = await res.text();
     let data: Record<string, unknown>;
     try { data = JSON.parse(text); } catch { data = { raw: text }; }
-    const result = { status: res.status, data };
-    // Record AFTER fetch so we account for actual output tokens. Tracker uses
-    // data.usage when present, falls back to char-estimate otherwise.
-    budgetTracker.getCurrentTracker()?.record(body, result);
-    return result;
+    return { status: res.status, data };
   } finally {
     clearTimeout(timer);
   }
@@ -370,25 +380,33 @@ async function anthropicCall(body: string): Promise<{ status: number; data: Reco
 // Retry wrapper — handles both HTTP-status retries (429/5xx) and raw network
 // errors (EPROTO, ECONNRESET, TLS handshake). Jittered exponential backoff so
 // parallel retries don't synchronise and re-overwhelm the remote.
+//
+// 6 attempts with backoff 1s, 2s, 4s, 8s, 16s (+jitter) — total ceiling ~32s
+// per file. Bumped from 3 after prod observed cascading SSL alert 80 failures
+// where Anthropic needed more time than 1.5s of retries allowed.
 async function anthropicCallWithRetry(body: string, maxAttempts = 6): Promise<{ status: number; data: Record<string, unknown> }> {
   let lastError: unknown = null;
   let lastResponse: { status: number; data: Record<string, unknown> } | null = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) {
-      const base = 1000 * Math.pow(2, attempt - 1);
+      const base = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s, 8s, 16s
       const jitter = Math.floor(Math.random() * 500);
       await new Promise((r) => setTimeout(r, base + jitter));
     }
     try {
       const res = await anthropicCall(body);
+      // Success
       if (res.status === 200) return res;
+      // Non-retryable client error — stop immediately
       if (res.status !== 429 && res.status < 500) {
         return res;
       }
+      // Retryable HTTP status (429 / 5xx) — continue loop
       lastResponse = res;
     } catch (err) {
       if (!isRetryableNetworkError(err)) {
+        // Unknown non-transient error — don't burn all retries on it
         throw err;
       }
       lastError = err;
@@ -402,12 +420,14 @@ async function anthropicCallWithRetry(body: string, maxAttempts = 6): Promise<{ 
 }
 
 async function askClaude(fileContent: string, filePath: string, issues: string[], conventionsHeader = ""): Promise<string> {
+  // Enrich broken-link issues with context about what actually exists
   const enrichedIssues = await Promise.all(issues.map(async (issue) => {
     const brokenMatch = issue.match(/BROKEN LINK \(404\):\s*(https:\/\/github\.com\/([^/]+)\/([^/]+)\/([^\s]+))/i);
     if (brokenMatch) {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const [, _fullUrl, owner, repo, _path] = brokenMatch;
       try {
+        // Check what releases actually exist
         const relRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases`, {
           headers: { "User-Agent": "GateTest", "Accept": "application/vnd.github.v3+json" },
         });
@@ -466,6 +486,7 @@ CRITICAL RULES — violations will cause re-scan failure:
   if (res.status === 200) {
     const content = res.data.content as Array<{ type: string; text: string }>;
     let fixedCode = content?.[0]?.text || "";
+    // Strip markdown code fences if Claude added them despite instructions
     fixedCode = fixedCode.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "");
     return fixedCode;
   }
@@ -473,6 +494,10 @@ CRITICAL RULES — violations will cause re-scan failure:
   throw new Error(`Claude API error ${res.status}: ${errSnippet}`);
 }
 
+/**
+ * Validate Claude's fix output before we commit it.
+ * Catches truncation (max_tokens hit), refusals, and obvious garbage.
+ */
 function validateFix(original: string, fixed: string): { ok: boolean; reason?: string } {
   if (!fixed || fixed.trim().length === 0) {
     return { ok: false, reason: "empty output" };
@@ -491,6 +516,10 @@ function validateFix(original: string, fixed: string): { ok: boolean; reason?: s
   return { ok: true };
 }
 
+/**
+ * Verify that fixed code doesn't introduce NEW issues that GateTest would catch.
+ * Runs the same pattern checks our scan modules use.
+ */
 function verifyFixQuality(fixed: string, filePath: string): { clean: boolean; newIssues: string[] } {
   const issues: string[] = [];
   const lines = fixed.split("\n");
@@ -502,25 +531,38 @@ function verifyFixQuality(fixed: string, filePath: string): { clean: boolean; ne
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
+
+    // Skip comments and strings for some checks
     if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
 
+    // console.log/debug/info in non-test files
     if (!filePath.includes(".test.") && !filePath.includes(".spec.") && !filePath.includes("__test")) {
       if (/\bconsole\.(log|debug|info)\s*\(/.test(line)) {
         issues.push(`Line ${i + 1}: console.log/debug/info introduced`);
       }
     }
+
+    // debugger statements
     if (/^\s*debugger\s*;?\s*$/.test(line)) {
       issues.push(`Line ${i + 1}: debugger statement introduced`);
     }
+
+    // TODO/FIXME/HACK/XXX
     if (/\/\/\s*(TODO|FIXME|HACK|XXX)\b/i.test(line)) {
       issues.push(`Line ${i + 1}: TODO/FIXME comment introduced`);
     }
+
+    // eval()
     if (/\beval\s*\(/.test(line) && !trimmed.startsWith("//")) {
       issues.push(`Line ${i + 1}: eval() introduced`);
     }
+
+    // var declarations
     if (/^\s*var\s+\w/.test(line)) {
       issues.push(`Line ${i + 1}: var declaration introduced (use const/let)`);
     }
+
+    // Empty catch blocks
     if (/catch\s*\([^)]*\)\s*\{\s*\}/.test(line)) {
       issues.push(`Line ${i + 1}: empty catch block introduced`);
     }
@@ -529,9 +571,24 @@ function verifyFixQuality(fixed: string, filePath: string): { clean: boolean; ne
   return { clean: issues.length === 0, newIssues: issues };
 }
 
+// Concurrency cap for parallel file fixing — balances Vercel time budget vs API rate.
+// Dropped from 4 → 2 after prod hit cascading EPROTO / TLS alert 80 failures under
+// heavy undici keep-alive pressure. Two parallel requests + keepalive:false on each
+// keeps fresh sockets without pool-poisoning a whole batch when one goes bad.
 const FIX_CONCURRENCY = 2;
+// Max file size we'll send to Claude (bigger risks output truncation at 8192 tokens).
 const MAX_FILE_BYTES = 400 * 1024;
 
+/**
+ * Ask Claude to generate a NEW file (when it doesn't exist yet).
+ * Used when the issue is "Missing X" and we need to create X.
+ */
+/**
+ * Phase 1.3 — thin wrapper around anthropicCallWithRetry shaped for
+ * the test-generator's askClaudeForTest contract: takes a prompt,
+ * returns the raw text. Same model + retry behaviour as the main
+ * fix path.
+ */
 async function askClaudeForTest(prompt: string): Promise<string> {
   const body = JSON.stringify({
     model: "claude-sonnet-4-6",
@@ -600,31 +657,40 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+// Shared mutable state for adaptive concurrency — when Anthropic starts rejecting
+// with SSL alerts, parallel requests just poison each other. Drop to serial and
+// let the retry backoff do the work, rather than burning the whole budget in
+// parallel failures.
+//
+// `mapWithAdaptiveConcurrency` is implemented in
+// `website/app/lib/adaptive-concurrency.js` (pure JS for testability).
+interface AdaptiveState {
+  consecutiveNetworkErrors: number;
+  activeConcurrency: number;
+  haltRun: boolean;
+}
+
 interface IssueInput {
   file: string;
   issue: string;
   module: string;
+  // Day-2: when the extractor parsed a line number out of the finding, it's
+  // forwarded here. Issues with `line` go through surgical-fix mode; issues
+  // without fall back to whole-file mode with the mutation guard.
   line?: number;
 }
 
+// Phase 1.2b — optional callers can pass the pre-fix workspace and the
+// pre-fix module findings so the scanner re-validation gate has a
+// baseline to diff against. When absent, the gate is skipped (the
+// per-file iterative loop + syntax gate still run; only cross-file
+// regression detection is missing).
 interface OriginalFileInput {
   path: string;
   content: string;
 }
 
 export async function POST(req: NextRequest) {
-  // Per-request budget tracker — caps Anthropic spend at GATETEST_MAX_USD_PER_SCAN
-  // (default $12) and GATETEST_MAX_TOKENS_PER_SCAN (default 1.5M). Lives in
-  // AsyncLocalStorage so deep call stacks (pair-review, architecture-annotator,
-  // nuclear-diagnoser) see the same budget without explicit threading. Once a
-  // cap is breached, the NEXT anthropicCall throws BUDGET_EXCEEDED which the
-  // outer catch turns into a clean 402.
-  const tracker = budgetTracker.createBudgetTracker({ label: "scan-fix" });
-  return budgetTracker.runWithTracker(tracker, () => _doPost(req, tracker));
-}
-
-async function _doPost(req: NextRequest, tracker: BudgetTrackerInstance) {
-  const startTime = Date.now();
   let input: {
     repoUrl?: string;
     issues?: IssueInput[];
@@ -1564,3 +1630,4 @@ async function _doPost(req: NextRequest, tracker: BudgetTrackerInstance) {
     );
   }
 }
+

@@ -194,22 +194,88 @@ async function scanRepo(owner: string, repo: string, tier: string): Promise<Scan
   });
   const fileContents: RepoFile[] = (await Promise.all(readPromises)).filter((f): f is RepoFile => f !== null);
 
-  // Run the (shadow-resolved) tier through the unified module registry —
-  // every module does real work. For quick-tier paid customers, this is
-  // quick_shadow (full static scan minus Anthropic-cost modules); the
-  // raw result is then redacted in the response builder below.
-  const { modules, totalIssues } = await runTier(shadowTier, {
-    owner,
-    repo,
-    files,
-    fileContents,
-    token,
-    deadlineMs: deadline,
-  });
+  // Engine selection — closes the 91-vs-22 module honesty gap.
+  //
+  // Full / Scan+Fix / Nuclear tiers run the full CLI engine (94 modules)
+  // via cli-engine-runner.js — materialises fileContents to /tmp, runs
+  // the same engine the CLI binary runs, translates the summary back.
+  //
+  // Quick tier and quick_shadow stay on the in-memory runTier path because
+  // (a) Quick is the free funnel where we want 4-module sub-second response,
+  // and (b) quick_shadow's whole point is the redacted upsell preview which
+  // is wired against runTier's MODULES map.
+  //
+  // Env override `GATETEST_DISABLE_CLI_ENGINE=1` falls back to runTier for
+  // every tier — emergency lever if the CLI engine misbehaves on a specific
+  // customer's repo. Per-scan fallback also lives inside the function: if
+  // the CLI run errors, we re-run with runTier as a safety net.
+  const cliEngineEnabled =
+    process.env.GATETEST_DISABLE_CLI_ENGINE !== "1" &&
+    ["full", "scan_fix", "nuclear"].includes(shadowTier);
+
+  let modules: ScanRepoResult["modules"];
+  let totalIssues: number;
+  let engineUsed: "cli" | "runTier" = "runTier";
+
+  if (cliEngineEnabled) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { runFullEngine } = require("@lib/cli-engine-runner") as {
+        runFullEngine: (opts: {
+          fileContents: Array<{ path: string; content: string }>;
+          suite: string;
+          deadlineMs?: number;
+        }) => Promise<{
+          modules: ScanRepoResult["modules"];
+          totalIssues: number;
+          duration: number;
+          engine: string;
+          engineMeta?: Record<string, unknown>;
+        }>;
+      };
+      const cliResult = await runFullEngine({
+        fileContents,
+        suite: shadowTier,
+        deadlineMs: deadline,
+      });
+      // Empty result from the CLI engine = workspace materialisation failed.
+      // Fall back to runTier so the customer at least gets the 22-module
+      // result rather than an empty scan.
+      if (cliResult.modules.length === 0) {
+        console.warn(
+          "[scan/run] CLI engine returned 0 modules — falling back to runTier",
+          cliResult.engineMeta || {}
+        );
+      } else {
+        modules = cliResult.modules;
+        totalIssues = cliResult.totalIssues;
+        engineUsed = "cli";
+      }
+    } catch (err) {
+      // CLI engine crashed — fall through to runTier rather than fail the
+      // whole scan. The customer gets honest partial coverage; we log the
+      // crash so engineering can chase the root cause.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[scan/run] CLI engine crashed, falling back to runTier:", msg);
+    }
+  }
+
+  if (engineUsed === "runTier") {
+    const fallback = await runTier(shadowTier, {
+      owner,
+      repo,
+      files,
+      fileContents,
+      token,
+      deadlineMs: deadline,
+    });
+    modules = fallback.modules;
+    totalIssues = fallback.totalIssues;
+  }
 
   return {
-    modules,
-    totalIssues,
+    modules: modules!,
+    totalIssues: totalIssues!,
     duration: Date.now() - startTime,
     authSource: auth.source,
   };

@@ -68,6 +68,7 @@ const DEFAULT_CONFIG = {
       'homoglyph',
       'openapiDrift',
       'prSize',
+      'prQuality',
       'redos',
       'cronExpression',
       'datetimeBug',
@@ -113,6 +114,7 @@ const DEFAULT_CONFIG = {
       'homoglyph',
       'openapiDrift',
       'prSize',
+      'prQuality',
       'redos',
       'cronExpression',
       'datetimeBug',
@@ -168,6 +170,7 @@ const DEFAULT_CONFIG = {
       'homoglyph',
       'openapiDrift',
       'prSize',
+      'prQuality',
       'redos',
       'cronExpression',
       'datetimeBug',
@@ -240,6 +243,7 @@ const DEFAULT_CONFIG = {
       'homoglyph',
       'openapiDrift',
       'prSize',
+      'prQuality',
       'redos',
       'cronExpression',
       'datetimeBug',
@@ -377,6 +381,13 @@ const DEFAULT_CONFIG = {
       maxLinesPerFileError: 500,
       maxTopLevelDirs: 3,
       excludePatterns: [],
+    },
+    prQuality: {
+      // `against`: optional git ref — module falls back to origin/main → main → HEAD~1
+      against: null,
+      minSubjectLength: 8,
+      maxSourceTestRatio: 5,
+      minSourceFilesForTestCheck: 3,
     },
     codeQuality: {
       forbiddenPatterns: [

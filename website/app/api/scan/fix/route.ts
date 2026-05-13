@@ -1345,6 +1345,25 @@ async function _doPost(req: NextRequest, tracker: BudgetTrackerInstance) {
     const prNumber = prRes.data.number as number;
     const prUrl = (prRes.data.html_url as string) || "";
 
+    // Audit-log the PR-open event. Fire-and-forget. Includes the budget
+    // snapshot so finance / support can reconcile spend against the scan.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { recordEventIfConfigured } = require("@lib/audit-log-store");
+    void recordEventIfConfigured({
+      actor: input.tier ? `tier:${input.tier}` : "anonymous",
+      action: "fix.pr_opened",
+      resourceType: "pr",
+      resourceId: prUrl || `${owner}/${repo}#${prNumber}`,
+      metadata: {
+        repo: `${owner}/${repo}`,
+        prNumber,
+        tier: input.tier || "full",
+        issuesFixed: totalIssuesFixed,
+        filesFixed: fixes.length,
+        budget: tracker.snapshot(),
+      },
+    });
+
     // Post verification comment on the PR
     try {
       const remainingIssues: string[] = [];
@@ -1518,6 +1537,16 @@ async function _doPost(req: NextRequest, tracker: BudgetTrackerInstance) {
     if ((outerErr as { code?: string })?.code === "BUDGET_EXCEEDED") {
       const snap = (outerErr as { tracker?: Record<string, unknown> }).tracker || tracker.snapshot();
       console.warn("[GateTest] scan/fix budget exhausted:", JSON.stringify(snap));
+      // Audit-log the budget exhaustion — high-value finance signal.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { recordEventIfConfigured } = require("@lib/audit-log-store");
+      void recordEventIfConfigured({
+        actor: "scan_fix",
+        action: "fix.budget_exceeded",
+        resourceType: "scan",
+        resourceId: typeof snap === "object" && snap && "label" in snap ? String((snap as { label?: string }).label || "scan-fix") : "scan-fix",
+        metadata: snap as Record<string, unknown>,
+      });
       return NextResponse.json(
         {
           status: "error",

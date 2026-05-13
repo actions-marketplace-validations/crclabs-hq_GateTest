@@ -771,9 +771,38 @@ async function _doPost(req: NextRequest, tracker: BudgetTrackerInstance) {
   }
   const stack = detectStack({ projectRoot: "/", fileContents: stackFileContents });
   const stackHeader = formatStackHeader(stack);
-  // STACK comes before PROJECT CONVENTIONS so Claude reads "what tools" before
-  // "what conventions for those tools."
-  const conventionsHeader = stackHeader + formatGroundingHeader(groundingExtract.found);
+
+  // Prior-art recall — surfaces the customer's own .gatetest/memory/fix-patterns.json
+  // (when committed) so Claude sees "you fixed this kind of issue 4 times before,
+  // here's how" before generating the new fix. Per-customer compounding moat;
+  // central cross-customer brain is the Boss-Rule Tier 2 unlock.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { buildPriorArtHeader, summarisePriorArt } = require("@lib/fix-pattern-recall") as {
+    buildPriorArtHeader: (opts: {
+      fileContents: Array<{ path: string; content: string }>;
+      findings: string[];
+      maxPatterns?: number;
+      maxExamplesPerPattern?: number;
+    }) => string;
+    summarisePriorArt: (opts: {
+      fileContents: Array<{ path: string; content: string }>;
+      findings: string[];
+    }) => { available: boolean; reason?: string; totalPatternsInStore?: number; matchedThisScan?: number; matchedKeys?: string[] };
+  };
+  const priorArtHeader = buildPriorArtHeader({
+    fileContents: input.originalFileContents || [],
+    findings: (input.issues || []).map((i) => `${i.module}: ${i.issue}`),
+  });
+  const priorArtSummary = summarisePriorArt({
+    fileContents: input.originalFileContents || [],
+    findings: (input.issues || []).map((i) => `${i.module}: ${i.issue}`),
+  });
+
+  // Order in the conventionsHeader passed to Claude:
+  //   1. STACK — what tools the customer uses
+  //   2. PROJECT CONVENTIONS — how they configure those tools (README/AGENTS/ARCHITECTURE)
+  //   3. PRIOR FIXES — how they've fixed similar issues before
+  const conventionsHeader = stackHeader + formatGroundingHeader(groundingExtract.found) + priorArtHeader;
   const groundingSummary  = summariseGrounding(groundingExtract);
 
   // Time budget — start the clock so per-file workers can bail early if the

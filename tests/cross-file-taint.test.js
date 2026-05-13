@@ -482,7 +482,7 @@ describe('CrossFileTaintModule — summary', () => {
     const result = await run({
       'app.js': `
 const x = 1;
-// [GateTest-Mute] // [GateTest-Mute] console.log(x);
+console.log(x);
 `,
     });
     const summary = result.checks.find(c => c.rule === 'cross-file-taint:summary');

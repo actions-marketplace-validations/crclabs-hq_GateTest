@@ -356,11 +356,41 @@ async function _postImpl(req: NextRequest): Promise<ReturnType<typeof NextRespon
   } catch (err) { // error-ok — top-level scan crash guard; preserves Stripe hold for customer retry
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[GateTest] scanRepo crashed unexpectedly:", msg);
+    // Fire-and-forget audit write for the crash. Failure to write the audit
+    // entry must never block the response.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { recordEventIfConfigured } = require("@lib/audit-log-store");
+    void recordEventIfConfigured({
+      actor: isAdmin ? "admin" : (sessionId || "anonymous"),
+      action: "scan.crashed",
+      resourceType: "scan",
+      resourceId: `${owner}/${repo}`,
+      metadata: { tier: tier || "quick", source: source || "web", error: msg.slice(0, 200) },
+    });
     return NextResponse.json(
       { status: "failed", error: "Scan failed — please try again or contact support." },
       { status: 500 }
     );
   }
+
+  // Audit-log the scan outcome (completion or in-band failure). Fire-and-
+  // forget — never blocks the customer's response.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { recordEventIfConfigured } = require("@lib/audit-log-store");
+  void recordEventIfConfigured({
+    actor: isAdmin ? "admin" : (sessionId || "anonymous"),
+    action: result.error ? "scan.failed" : "scan.completed",
+    resourceType: "scan",
+    resourceId: `${owner}/${repo}`,
+    metadata: {
+      tier: tier || "quick",
+      source: source || "web",
+      sha: sha || null,
+      totalIssues: result.totalIssues,
+      moduleCount: result.modules?.length || 0,
+      error: result.error ? String(result.error).slice(0, 200) : null,
+    },
+  });
 
   // If we have a session ID AND this is NOT an admin request, update Stripe
   // and capture payment. Admins never touch billing.

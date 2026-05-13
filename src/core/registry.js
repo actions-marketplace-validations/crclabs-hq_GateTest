@@ -64,6 +64,7 @@ const BUILT_IN_MODULES = {
   homoglyph: '../modules/homoglyph.js',
   openapiDrift: '../modules/openapi-drift.js',
   prSize: '../modules/pr-size.js',
+  prQuality: '../modules/pr-quality.js',
   redos: '../modules/redos.js',
   cronExpression: '../modules/cron-expression.js',
   datetimeBug: '../modules/datetime-bug.js',

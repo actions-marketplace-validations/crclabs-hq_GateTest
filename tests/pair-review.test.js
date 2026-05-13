@@ -192,7 +192,7 @@ test('reviewSingleFix — passes test content into prompt', async () => {
   let promptSeen = '';
   await reviewSingleFix({
     fix: okFix,
-    testContent: '// [GateTest-Mute] // [GateTest-Mute] console.log("the test");',
+    testContent: 'console.log("the test");',
     askClaudeForReview: async (p) => { promptSeen = p; return validReview; },
   });
   assert.match(promptSeen, /the test/);

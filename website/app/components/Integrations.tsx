@@ -48,7 +48,7 @@ const aiTools = [
 export default function Integrations() {
   return (
     <section id="integrations" className="py-24 px-6 border-t border-border/30 grid-bg relative">
-      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent/5 rounded-full blur-[100px] pointer-events-none" />
+      <div className="hidden md:block absolute bottom-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent/5 rounded-full blur-[100px] pointer-events-none" />
 
       <div className="relative z-10 mx-auto max-w-6xl">
         <div className="text-center mb-16">

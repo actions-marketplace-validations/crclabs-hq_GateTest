@@ -162,7 +162,7 @@ export default function SnykPage() {
               "N+1: await db.find() inside a .map() loop",
               "Race condition: fs.exists() then fs.unlink()",
               "TLS bypass: rejectUnauthorized: false left in production",
-              "PII leak: // [GateTest-Mute] // [GateTest-Mute] console.log(user) in your auth handler",
+              "PII leak: console.log(user) in your auth handler",
               "Prompt injection: template.replace('{input}', userMessage)",
               "Cookie vuln: httpOnly: false on session cookies",
               "ReDoS: (a+)+ regex exposed to user input",

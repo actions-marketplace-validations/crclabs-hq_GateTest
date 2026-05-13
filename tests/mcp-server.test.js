@@ -82,20 +82,27 @@ function callMcp(method, params = {}, timeoutMs = 60000) {
 // ---------------------------------------------------------------------------
 
 describe('MCP server — tools/list', () => {
-  it('returns exactly 4 tools', async () => {
+  it('returns exactly 9 tools', async () => {
     const res = await callMcp('tools/list', {});
     assert.ok(res.result, `expected result, got: ${JSON.stringify(res).slice(0, 200)}`);
     assert.ok(Array.isArray(res.result.tools), 'tools should be an array');
-    assert.strictEqual(res.result.tools.length, 4);
+    assert.strictEqual(res.result.tools.length, 9);
   });
 
-  it('includes scan_local, run_module, list_modules, check_health', async () => {
+  it('includes the original 4 + the 5 added in the autopilot push', async () => {
     const res = await callMcp('tools/list', {});
     const names = res.result.tools.map(t => t.name);
+    // Original 4
     assert.ok(names.includes('scan_local'),    'missing scan_local');
     assert.ok(names.includes('run_module'),    'missing run_module');
     assert.ok(names.includes('list_modules'),  'missing list_modules');
     assert.ok(names.includes('check_health'),  'missing check_health');
+    // Added: fix_issue, compose_pr, explain_finding, audit_log, compare_repos
+    assert.ok(names.includes('fix_issue'),       'missing fix_issue');
+    assert.ok(names.includes('compose_pr'),      'missing compose_pr');
+    assert.ok(names.includes('explain_finding'), 'missing explain_finding');
+    assert.ok(names.includes('audit_log'),       'missing audit_log');
+    assert.ok(names.includes('compare_repos'),   'missing compare_repos');
   });
 
   it('each tool has name, description, and inputSchema', async () => {

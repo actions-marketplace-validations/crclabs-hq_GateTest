@@ -275,7 +275,7 @@ class ClaudeMdGenerator {
     if (s.eslint) lines.push(`- [ ] \`${runner} run lint\` — zero ESLint errors`);
     if (s.buildCmd) lines.push(`- [ ] \`${s.buildCmd}\` — build succeeds`);
     if (s.testCmd) lines.push(`- [ ] \`${s.testCmd}\` — all tests pass`);
-    lines.push('- [ ] No // [GateTest-Mute] // [GateTest-Mute] console.log or debugger statements in production code');
+    lines.push('- [ ] No console.log or debugger statements in production code');
     lines.push('- [ ] No hardcoded secrets or API keys');
     lines.push('- [ ] No unused imports or variables');
     if (s.nextjs || s.react) {
@@ -293,7 +293,7 @@ class ClaudeMdGenerator {
     lines.push('| syntax | JS/TS/JSON parse errors, TypeScript strict |');
     lines.push('| lint | ESLint, Stylelint errors |');
     lines.push('| secrets | API keys, tokens, passwords in code |');
-    lines.push('| codeQuality | // [GateTest-Mute] // [GateTest-Mute] console.logs, long functions, unused imports, TODOs |');
+    lines.push('| codeQuality | Console.logs, long functions, unused imports, TODOs |');
     lines.push('| security | eval(), innerHTML, Math.random for crypto, dependency CVEs |');
     lines.push('| accessibility | Alt text, form labels, ARIA, keyboard navigation |');
     lines.push('| visual | Layout shifts, broken images, font loading |');
@@ -371,7 +371,7 @@ const GATETEST_DIR = ${JSON.stringify(path.resolve(__dirname, '..'))};
 const PROJECT_DIR = __dirname;
 ${this.siteUrl ? `const SITE_URL = ${JSON.stringify(this.siteUrl)};` : ''}
 
-// [GateTest-Mute] // [GateTest-Mute] console.log('[GateTest] Scanning ${this.projectName}...\\n');
+console.log('[GateTest] Scanning ${this.projectName}...\\n');
 
 // Run code scan
 try {

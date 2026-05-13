@@ -198,6 +198,14 @@ const { attemptFixWithRetries, summariseAttempts } = require("@/app/lib/fix-atte
   }>;
   summariseAttempts: (attempts: Array<{ outcome: string; durationMs: number }>) => string;
 };
+// Shape of the shared adaptive-concurrency state object. Mirrors the JS
+// source at website/app/lib/adaptive-concurrency.js — workers may mutate
+// `activeConcurrency` (throttle) or `haltRun` (abort) and the pool reacts.
+type AdaptiveState = {
+  consecutiveNetworkErrors: number;
+  activeConcurrency: number;
+  haltRun: boolean;
+};
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { mapWithAdaptiveConcurrency } = require("@/app/lib/adaptive-concurrency") as {
   mapWithAdaptiveConcurrency: <T, R>(
@@ -272,10 +280,358 @@ const { extractConventions, formatGroundingHeader, summariseGrounding } = requir
 };
 
 export const maxDuration = 300;
+export const runtime = "nodejs";
 const TIME_BUDGET_MS = 240_000;
 
+// Per-scan Anthropic spend cap. Tracker lives in AsyncLocalStorage so deep
+// call stacks (pair-review, architecture-annotator, nuclear-diagnoser) see
+// the same budget without explicit threading.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const budgetTracker = require("@/app/lib/budget-tracker") as {
+  createBudgetTracker: (opts?: { maxTokens?: number; maxUsd?: number; label?: string }) =>
+    BudgetTrackerInstance;
+  runWithTracker: <T>(tracker: BudgetTrackerInstance, fn: () => T) => T;
+  getCurrentTracker: () => BudgetTrackerInstance | null;
+};
+
+type BudgetTrackerInstance = {
+  preflight: () => void;
+  record: (body: string, response: unknown) => void;
+  snapshot: () => Record<string, unknown>;
+  aborted: boolean;
+  abortReason: string | null;
+};
+
+// Max attempts for the per-finding iterative fix loop. Overridable via the
+// GATETEST_FIX_MAX_ATTEMPTS env var if a deployment wants tighter cost
+// control or more aggressive recovery.
+const DEFAULT_MAX_ATTEMPTS = Number(process.env.GATETEST_FIX_MAX_ATTEMPTS) || 3;
+
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
+
+// Retryable network error shapes — the TLS / connection-level failures that
+// throw BEFORE an HTTP response is ever produced. Notably includes EPROTO
+// "SSL alert number 80" which hits hard when undici's keep-alive pool gets
+// poisoned by a single bad socket and subsequent parallel writes inherit the
+// failure. Retry with a fresh request (and jitter) to sidestep the pool.
+function isRetryableNetworkError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = err instanceof Error ? err.message : String(err);
+  const name = err instanceof Error ? err.name : "";
+  const code = (err as { code?: string; cause?: { code?: string } }).code
+    || (err as { cause?: { code?: string } }).cause?.code
+    || "";
+  if (name === "AbortError" || /aborted|abort/i.test(msg)) return true;
+  const retryableCodes = [
+    "EPROTO", "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT",
+    "EAI_AGAIN", "ENOTFOUND", "EPIPE", "EHOSTUNREACH",
+    "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT",
+    "UND_ERR_BODY_TIMEOUT", "UND_ERR_RESPONSE_STATUS_CODE",
+  ];
+  if (retryableCodes.includes(code)) return true;
+  if (/EPROTO|ECONNRESET|ETIMEDOUT|ssl.*alert|handshake|fetch failed|socket hang up|TLS/i.test(msg)) {
+    return true;
+  }
+  return false;
+}
+
+async function anthropicCall(body: string): Promise<{ status: number; data: Record<string, unknown> }> {
+  // Preflight: throw BUDGET_EXCEEDED if a prior call already crossed the cap.
+  // No tracker = no cap (e.g. tests that don't wrap in runWithTracker).
+  budgetTracker.getCurrentTracker()?.preflight();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "connection": "close",
+      },
+      body,
+      signal: controller.signal,
+      keepalive: false,
+    });
+    const text = await res.text();
+    let data: Record<string, unknown>;
+    try { data = JSON.parse(text); } catch { data = { raw: text }; }
+    const result = { status: res.status, data };
+    // Record AFTER fetch so we account for actual output tokens. Tracker uses
+    // data.usage when present, falls back to char-estimate otherwise.
+    budgetTracker.getCurrentTracker()?.record(body, result);
+    return result;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Retry wrapper — handles both HTTP-status retries (429/5xx) and raw network
+// errors (EPROTO, ECONNRESET, TLS handshake). Jittered exponential backoff so
+// parallel retries don't synchronise and re-overwhelm the remote.
+async function anthropicCallWithRetry(body: string, maxAttempts = 6): Promise<{ status: number; data: Record<string, unknown> }> {
+  let lastError: unknown = null;
+  let lastResponse: { status: number; data: Record<string, unknown> } | null = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) {
+      const base = 1000 * Math.pow(2, attempt - 1);
+      const jitter = Math.floor(Math.random() * 500);
+      await new Promise((r) => setTimeout(r, base + jitter));
+    }
+    try {
+      const res = await anthropicCall(body);
+      if (res.status === 200) return res;
+      if (res.status !== 429 && res.status < 500) {
+        return res;
+      }
+      lastResponse = res;
+    } catch (err) {
+      if (!isRetryableNetworkError(err)) {
+        throw err;
+      }
+      lastError = err;
+    }
+  }
+
+  if (lastResponse) return lastResponse;
+  throw lastError instanceof Error
+    ? new Error(`Anthropic API unreachable after ${maxAttempts} attempts: ${lastError.message}`)
+    : new Error(`Anthropic API unreachable after ${maxAttempts} attempts`);
+}
+
+async function askClaude(fileContent: string, filePath: string, issues: string[], conventionsHeader = ""): Promise<string> {
+  const enrichedIssues = await Promise.all(issues.map(async (issue) => {
+    const brokenMatch = issue.match(/BROKEN LINK \(404\):\s*(https:\/\/github\.com\/([^/]+)\/([^/]+)\/([^\s]+))/i);
+    if (brokenMatch) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const [, _fullUrl, owner, repo, _path] = brokenMatch;
+      try {
+        const relRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases`, {
+          headers: { "User-Agent": "GateTest", "Accept": "application/vnd.github.v3+json" },
+        });
+        if (relRes.ok) {
+          const releases = await relRes.json() as Array<{ tag_name: string; html_url: string; assets: Array<{ name: string; browser_download_url: string }> }>;
+          if (releases.length > 0) {
+            const latest = releases[0];
+            const assetList = latest.assets.map((a: { name: string; browser_download_url: string }) => `  - ${a.name}: ${a.browser_download_url}`).join("\n");
+            return `${issue}\n\nCONTEXT: This URL 404s. The repo ${owner}/${repo} has ${releases.length} release(s). Latest: ${latest.tag_name} (${latest.html_url}).\nAvailable assets:\n${assetList || "  (no downloadable assets in latest release)"}\n\nFIX: Replace the broken URL with the correct release URL or asset download URL from above.`;
+          } else {
+            return `${issue}\n\nCONTEXT: The repo ${owner}/${repo} has NO releases. The download link cannot work. FIX: Either remove the download button, link to the repo page (https://github.com/${owner}/${repo}), or create a release first.`;
+          }
+        }
+      } catch { /* fall through to original issue */ }
+    }
+    return issue;
+  }));
+
+  const prompt = `${conventionsHeader}You are an expert code fixer for GateTest, an AI-powered QA platform with 90 scanning modules.
+
+Fix ALL of the following issues in this file. Every fix must pass GateTest's re-scan.
+
+FILE: ${filePath}
+ISSUES TO FIX:
+${enrichedIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}
+
+CURRENT CODE:
+\`\`\`
+${fileContent}
+\`\`\`
+
+CRITICAL RULES — violations will cause re-scan failure:
+- Return ONLY the complete fixed file content. No explanations. No markdown code fences.
+- Fix the ROOT CAUSE, not the symptom. Never patch over an issue.
+- NEVER introduce these patterns (GateTest scans for them):
+  * console.log / console.debug / console.info in library code
+  * debugger statements
+  * TODO / FIXME / HACK / XXX comments
+  * eval() or Function() calls
+  * Hardcoded secrets, API keys, tokens, passwords
+  * var declarations (use const/let)
+  * Empty catch blocks
+  * Unused imports or variables
+- Preserve every non-issue line exactly — do not rewrite or reformat unrelated code.
+- Never remove functionality to "fix" a warning.
+- If a fix would require context you don't have, output the UNCHANGED original file verbatim.
+- The fixed code will be automatically re-scanned. If it fails, the fix is rejected.`;
+
+  const body = JSON.stringify({
+    model: "claude-sonnet-4-6",
+    max_tokens: 8192,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const res = await anthropicCallWithRetry(body);
+  if (res.status === 200) {
+    const content = res.data.content as Array<{ type: string; text: string }>;
+    let fixedCode = content?.[0]?.text || "";
+    fixedCode = fixedCode.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "");
+    return fixedCode;
+  }
+  const errSnippet = JSON.stringify(res.data).slice(0, 200);
+  throw new Error(`Claude API error ${res.status}: ${errSnippet}`);
+}
+
+function validateFix(original: string, fixed: string): { ok: boolean; reason?: string } {
+  if (!fixed || fixed.trim().length === 0) {
+    return { ok: false, reason: "empty output" };
+  }
+  if (fixed === original) {
+    return { ok: false, reason: "no changes produced" };
+  }
+  if (original.length > 500 && fixed.length < original.length * 0.4) {
+    return { ok: false, reason: `likely truncation (${fixed.length}/${original.length} chars)` };
+  }
+  const refusalMarkers = ["I cannot", "I can't", "I'm unable to", "I won't", "As an AI"];
+  const firstLine = fixed.split("\n", 1)[0] || "";
+  if (refusalMarkers.some((m) => firstLine.startsWith(m))) {
+    return { ok: false, reason: "Claude refused" };
+  }
+  return { ok: true };
+}
+
+function verifyFixQuality(fixed: string, filePath: string): { clean: boolean; newIssues: string[] } {
+  const issues: string[] = [];
+  const lines = fixed.split("\n");
+  const ext = filePath.split(".").pop()?.toLowerCase() || "";
+  const isSource = ["js", "ts", "jsx", "tsx", "mjs", "cjs"].includes(ext);
+
+  if (!isSource) return { clean: true, newIssues: [] };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+
+    if (!filePath.includes(".test.") && !filePath.includes(".spec.") && !filePath.includes("__test")) {
+      if (/\bconsole\.(log|debug|info)\s*\(/.test(line)) {
+        issues.push(`Line ${i + 1}: console.log/debug/info introduced`);
+      }
+    }
+    if (/^\s*debugger\s*;?\s*$/.test(line)) {
+      issues.push(`Line ${i + 1}: debugger statement introduced`);
+    }
+    if (/\/\/\s*(TODO|FIXME|HACK|XXX)\b/i.test(line)) {
+      issues.push(`Line ${i + 1}: TODO/FIXME comment introduced`);
+    }
+    if (/\beval\s*\(/.test(line) && !trimmed.startsWith("//")) {
+      issues.push(`Line ${i + 1}: eval() introduced`);
+    }
+    if (/^\s*var\s+\w/.test(line)) {
+      issues.push(`Line ${i + 1}: var declaration introduced (use const/let)`);
+    }
+    if (/catch\s*\([^)]*\)\s*\{\s*\}/.test(line)) {
+      issues.push(`Line ${i + 1}: empty catch block introduced`);
+    }
+  }
+
+  return { clean: issues.length === 0, newIssues: issues };
+}
+
+const FIX_CONCURRENCY = 2;
+const MAX_FILE_BYTES = 400 * 1024;
+
+async function askClaudeForTest(prompt: string): Promise<string> {
+  const body = JSON.stringify({
+    model: "claude-sonnet-4-6",
+    max_tokens: 4096,
+    messages: [{ role: "user", content: prompt }],
+  });
+  const res = await anthropicCallWithRetry(body);
+  if (res.status !== 200) {
+    const errSnippet = JSON.stringify(res.data).slice(0, 200);
+    throw new Error(`Claude API error ${res.status}: ${errSnippet}`);
+  }
+  const content = res.data.content as Array<{ type: string; text: string }>;
+  return content?.[0]?.text || "";
+}
+
+async function askClaudeCreate(filePath: string, context: string[]): Promise<string> {
+  const prompt = `You are an expert developer. Generate the COMPLETE contents of a new file.
+
+FILE TO CREATE: ${filePath}
+CONTEXT / REASON:
+${context.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+
+Rules:
+- Return ONLY the file content. No explanations. No markdown code fences.
+- Generate a production-ready file, not a stub.
+- For .gitignore: include standard Node, env, and secret exclusions.
+- For README.md: include project purpose, installation, usage sections.
+- For .env.example: include common env vars with descriptions.
+- For tsconfig.json: use modern strict settings.
+- Follow whatever format the file extension implies.`;
+
+  const body = JSON.stringify({
+    model: "claude-sonnet-4-6",
+    max_tokens: 4096,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const res = await anthropicCallWithRetry(body);
+
+  if (res.status !== 200) {
+    const errSnippet = JSON.stringify(res.data).slice(0, 200);
+    throw new Error(`Claude API error ${res.status}: ${errSnippet}`);
+  }
+
+  const content = res.data.content as Array<{ type: string; text: string }>;
+  let newFile = content?.[0]?.text || "";
+  newFile = newFile.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "");
+  return newFile;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const idx = cursor++;
+      results[idx] = await fn(items[idx]);
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+interface IssueInput {
+  file: string;
+  issue: string;
+  module: string;
+  line?: number;
+}
+
+interface OriginalFileInput {
+  path: string;
+  content: string;
+}
+
 export async function POST(req: NextRequest) {
+  // Per-request budget tracker — caps Anthropic spend at GATETEST_MAX_USD_PER_SCAN
+  // (default $12) and GATETEST_MAX_TOKENS_PER_SCAN (default 1.5M). Lives in
+  // AsyncLocalStorage so deep call stacks (pair-review, architecture-annotator,
+  // nuclear-diagnoser) see the same budget without explicit threading. Once a
+  // cap is breached, the NEXT anthropicCall throws BUDGET_EXCEEDED which the
+  // outer catch turns into a clean 402.
+  const tracker = budgetTracker.createBudgetTracker({ label: "scan-fix" });
+  return budgetTracker.runWithTracker(tracker, () => _doPost(req, tracker));
+}
+
+async function _doPost(req: NextRequest, tracker: BudgetTrackerInstance) {
   const startTime = Date.now();
+  let input: {
+    repoUrl?: string;
+    issues?: IssueInput[];
+    originalFileContents?: OriginalFileInput[];
+    originalFindingsByModule?: Record<string, string[]>;
+    tier?: string;
+  };
   try {
     input = await req.json();
   } catch {
@@ -389,7 +745,64 @@ export async function POST(req: NextRequest) {
     files: (input.originalFileContents || []).map((f) => f.path),
     fileContents: input.originalFileContents || [],
   });
-  const conventionsHeader = formatGroundingHeader(groundingExtract.found);
+  // Stack auto-detection — reads package.json / requirements.txt / Cargo.toml /
+  // composer.json / pom.xml / build.gradle / vercel.json / Dockerfile / etc.
+  // from the in-memory file map, infers (language, framework, db, deploy, ci),
+  // and renders a "STACK: TypeScript (Next.js, React) + Prisma on Vercel"
+  // prompt header. Claude sees the customer's actual stack upfront, so fix
+  // recommendations land on-target instead of asking the customer to adapt
+  // a generic snippet.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { detectStack, formatStackHeader } = require("@lib/stack-detector") as {
+    detectStack: (opts: { projectRoot: string; fileContents?: Record<string, string> }) => {
+      summary: string;
+      languages: Array<{ language: string }>;
+      frameworks: Array<{ label: string }>;
+      databases: Array<{ label: string }>;
+      deploy: string[];
+      ci: string[];
+      testTools: Array<{ label: string }>;
+    };
+    formatStackHeader: (stack: { summary?: string; testTools?: Array<{ label: string }>; ci?: string[] }) => string;
+  };
+  const stackFileContents: Record<string, string> = {};
+  for (const f of input.originalFileContents || []) {
+    stackFileContents[f.path] = f.content;
+  }
+  const stack = detectStack({ projectRoot: "/", fileContents: stackFileContents });
+  const stackHeader = formatStackHeader(stack);
+
+  // Prior-art recall — surfaces the customer's own .gatetest/memory/fix-patterns.json
+  // (when committed) so Claude sees "you fixed this kind of issue 4 times before,
+  // here's how" before generating the new fix. Per-customer compounding moat;
+  // central cross-customer brain is the Boss-Rule Tier 2 unlock.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { buildPriorArtHeader, summarisePriorArt } = require("@lib/fix-pattern-recall") as {
+    buildPriorArtHeader: (opts: {
+      fileContents: Array<{ path: string; content: string }>;
+      findings: string[];
+      maxPatterns?: number;
+      maxExamplesPerPattern?: number;
+    }) => string;
+    summarisePriorArt: (opts: {
+      fileContents: Array<{ path: string; content: string }>;
+      findings: string[];
+    }) => { available: boolean; reason?: string; totalPatternsInStore?: number; matchedThisScan?: number; matchedKeys?: string[] };
+  };
+  const priorArtHeader = buildPriorArtHeader({
+    fileContents: input.originalFileContents || [],
+    findings: (input.issues || []).map((i) => `${i.module}: ${i.issue}`),
+  });
+  const priorArtSummary = summarisePriorArt({
+    fileContents: input.originalFileContents || [],
+    findings: (input.issues || []).map((i) => `${i.module}: ${i.issue}`),
+  });
+
+  // Order in the conventionsHeader passed to Claude:
+  //   1. STACK — what tools the customer uses
+  //   2. PROJECT CONVENTIONS — how they configure those tools (README/AGENTS/ARCHITECTURE)
+  //   3. PRIOR FIXES — how they've fixed similar issues before
+  const conventionsHeader = stackHeader + formatGroundingHeader(groundingExtract.found) + priorArtHeader;
   const groundingSummary  = summariseGrounding(groundingExtract);
 
   // Time budget — start the clock so per-file workers can bail early if the
@@ -932,6 +1345,25 @@ export async function POST(req: NextRequest) {
     const prNumber = prRes.data.number as number;
     const prUrl = (prRes.data.html_url as string) || "";
 
+    // Audit-log the PR-open event. Fire-and-forget. Includes the budget
+    // snapshot so finance / support can reconcile spend against the scan.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { recordEventIfConfigured } = require("@lib/audit-log-store");
+    void recordEventIfConfigured({
+      actor: input.tier ? `tier:${input.tier}` : "anonymous",
+      action: "fix.pr_opened",
+      resourceType: "pr",
+      resourceId: prUrl || `${owner}/${repo}#${prNumber}`,
+      metadata: {
+        repo: `${owner}/${repo}`,
+        prNumber,
+        tier: input.tier || "full",
+        issuesFixed: totalIssuesFixed,
+        filesFixed: fixes.length,
+        budget: tracker.snapshot(),
+      },
+    });
+
     // Post verification comment on the PR
     try {
       const remainingIssues: string[] = [];
@@ -1099,6 +1531,31 @@ export async function POST(req: NextRequest) {
   }
 
   } catch (outerErr) { // error-ok — outer guard: catches auth / file-fetch / gate throws that bypassed inner handler
+    // Budget-exceeded is a customer-visible quota event, not a server crash.
+    // Return 402 (Payment Required) with the tracker snapshot so support can
+    // see exactly which scan hit the cap and how much it had spent.
+    if ((outerErr as { code?: string })?.code === "BUDGET_EXCEEDED") {
+      const snap = (outerErr as { tracker?: Record<string, unknown> }).tracker || tracker.snapshot();
+      console.warn("[GateTest] scan/fix budget exhausted:", JSON.stringify(snap));
+      // Audit-log the budget exhaustion — high-value finance signal.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { recordEventIfConfigured } = require("@lib/audit-log-store");
+      void recordEventIfConfigured({
+        actor: "scan_fix",
+        action: "fix.budget_exceeded",
+        resourceType: "scan",
+        resourceId: typeof snap === "object" && snap && "label" in snap ? String((snap as { label?: string }).label || "scan-fix") : "scan-fix",
+        metadata: snap as Record<string, unknown>,
+      });
+      return NextResponse.json(
+        {
+          status: "error",
+          error: "Scan exceeded its AI spend budget. The work completed up to the cap is preserved; please retry with a smaller issue set or contact support.",
+          budget: snap,
+        },
+        { status: 402 }
+      );
+    }
     const msg = outerErr instanceof Error ? outerErr.message : "Unexpected fix-route error";
     console.error("[GateTest] scan/fix route crashed:", msg);
     return NextResponse.json(

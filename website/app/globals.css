@@ -63,8 +63,28 @@ body {
 /* === BACKGROUNDS === */
 
 .hero-dark {
-  background: #0a0a12;
+  background: #14141d;
   position: relative;
+}
+
+/* === MOBILE PERFORMANCE / VISIBILITY === */
+@media (max-width: 767px) {
+  /* The 40s grid drift animation pegs mobile GPUs and is invisible at
+     phone framerate anyway. Show the grid, skip the motion. */
+  .hero-grid { animation: none; }
+  /* Decorative gradient shimmer is GPU-heavy and adds nothing semantic. */
+  .gradient-text { animation: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-grid,
+  .gradient-text,
+  .fade-up,
+  .slide-in,
+  .progress-glow,
+  .module-pulse,
+  .flash-pass,
+  .flash-fail { animation: none !important; }
 }
 
 .hero-accent-text {

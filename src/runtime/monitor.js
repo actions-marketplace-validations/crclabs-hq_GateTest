@@ -44,9 +44,9 @@ class Monitor {
     this.running = true;
     this._loadState();
 
-    // [GateTest-Mute] // [GateTest-Mute] console.log(`\n[GateTest Monitor] Starting — watching ${this.targets.length} target(s)`); // code-quality-ok — CLI terminal output
-    // [GateTest-Mute] // [GateTest-Mute] console.log(`[GateTest Monitor] Auto-heal: ${this.autoHeal ? 'ON' : 'OFF (dry-run)'}`); // code-quality-ok — CLI terminal output
-    // [GateTest-Mute] // [GateTest-Mute] console.log(`[GateTest Monitor] Press Ctrl+C to stop\n`); // code-quality-ok — CLI terminal output
+    console.log(`\n[GateTest Monitor] Starting — watching ${this.targets.length} target(s)`); // code-quality-ok — CLI terminal output
+    console.log(`[GateTest Monitor] Auto-heal: ${this.autoHeal ? 'ON' : 'OFF (dry-run)'}`); // code-quality-ok — CLI terminal output
+    console.log(`[GateTest Monitor] Press Ctrl+C to stop\n`); // code-quality-ok — CLI terminal output
 
     for (const target of this.targets) {
       // Immediate first check
@@ -65,7 +65,7 @@ class Monitor {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     this._saveState();
-    // [GateTest-Mute] // [GateTest-Mute] console.log('\n[GateTest Monitor] Stopped.\n'); // code-quality-ok — CLI terminal output
+    console.log('\n[GateTest Monitor] Stopped.\n'); // code-quality-ok — CLI terminal output
     process.exit(0);
   }
 
@@ -107,7 +107,7 @@ class Monitor {
         if (heal.automated.length > 0) {
           const msgs = heal.automated.map(a => a.message).join(', ');
           await this.alerts.info(`${target.label} — auto-heal applied`, msgs, { url: target.url });
-          // [GateTest-Mute] // [GateTest-Mute] console.log(`[GateTest Monitor] Auto-healed: ${msgs}`); // code-quality-ok — CLI terminal output
+          console.log(`[GateTest Monitor] Auto-healed: ${msgs}`); // code-quality-ok — CLI terminal output
         }
       } catch { /* heal failures must not crash the monitor */ }
     }
@@ -135,11 +135,11 @@ class Monitor {
     const cache = diagnostic.checks?.cache?.cdnStatus ? ` | CDN:${diagnostic.checks.cache.cdnStatus}` : '';
     const icon = { healthy: '✓', warning: '!', degraded: '⚠', critical: '✗' }[diagnostic.status] || '?';
 
-    // [GateTest-Mute] // [GateTest-Mute] console.log(`[${ts}] ${icon} ${target.label} (${diagnostic.status})${rtStr}${cache}`); // code-quality-ok — CLI terminal output
+    console.log(`[${ts}] ${icon} ${target.label} (${diagnostic.status})${rtStr}${cache}`); // code-quality-ok — CLI terminal output
 
     if (diagnostic.issues.length > 0 && this.state[target.url].consecutiveFails >= 1) {
       for (const issue of diagnostic.issues) {
-        // [GateTest-Mute] // [GateTest-Mute] console.log(`         → ${issue.code}: ${issue.message}`); // code-quality-ok — CLI terminal output
+        console.log(`         → ${issue.code}: ${issue.message}`); // code-quality-ok — CLI terminal output
       }
     }
   }

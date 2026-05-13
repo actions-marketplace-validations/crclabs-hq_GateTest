@@ -10,7 +10,7 @@ const aiIssues = [
     icon: "!",
   },
   {
-    issue: "// [GateTest-Mute] // [GateTest-Mute] console.log left behind",
+    issue: "console.log left behind",
     description: "AI debugging artifacts slip into production. GateTest blocks every single one.",
     icon: ">",
   },
@@ -44,7 +44,7 @@ const aiIssues = [
 export default function AiNative() {
   return (
     <section id="features" className="py-24 px-6 border-t border-border/30 grid-bg relative">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent/5 rounded-full blur-[100px] pointer-events-none" />
+      <div className="hidden md:block absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent/5 rounded-full blur-[100px] pointer-events-none" />
 
       <div className="relative z-10 mx-auto max-w-6xl">
         <div className="text-center mb-16">

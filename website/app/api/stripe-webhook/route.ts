@@ -234,12 +234,12 @@ export async function POST(req: NextRequest) {
       });
       if (outcome.skipped) {
         // code-quality-ok — operational status log inside webhook after() handler
-        // [GateTest-Mute] // [GateTest-Mute] console.log(
+        console.log(
           `[GateTest] Scan job ${jobId} skipped: ${outcome.reason}`
         );
       } else {
         // code-quality-ok — operational status log inside webhook after() handler
-        // [GateTest-Mute] // [GateTest-Mute] console.log(
+        console.log(
           `[GateTest] Scan job ${jobId} finished: ${outcome.result?.status}`
         );
       }

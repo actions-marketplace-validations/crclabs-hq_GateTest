@@ -21,7 +21,7 @@ describe('GateTestCache', () => {
   it('should detect new files as changed', () => {
     const cache = new GateTestCache(tmpDir);
     const testFile = path.join(tmpDir, 'test.js');
-    fs.writeFileSync(testFile, '// [GateTest-Mute] // [GateTest-Mute] console.log("hello");');
+    fs.writeFileSync(testFile, 'console.log("hello");');
 
     assert.strictEqual(cache.hasChanged(testFile), true);
   });
@@ -29,7 +29,7 @@ describe('GateTestCache', () => {
   it('should detect unchanged files after update', () => {
     const cache = new GateTestCache(tmpDir);
     const testFile = path.join(tmpDir, 'test.js');
-    fs.writeFileSync(testFile, '// [GateTest-Mute] // [GateTest-Mute] console.log("hello");');
+    fs.writeFileSync(testFile, 'console.log("hello");');
 
     cache.update(testFile);
     assert.strictEqual(cache.hasChanged(testFile), false);
@@ -38,13 +38,13 @@ describe('GateTestCache', () => {
   it('should detect modified files', () => {
     const cache = new GateTestCache(tmpDir);
     const testFile = path.join(tmpDir, 'test.js');
-    fs.writeFileSync(testFile, '// [GateTest-Mute] // [GateTest-Mute] console.log("hello");');
+    fs.writeFileSync(testFile, 'console.log("hello");');
 
     cache.update(testFile);
     assert.strictEqual(cache.hasChanged(testFile), false);
 
     // Modify the file
-    fs.writeFileSync(testFile, '// [GateTest-Mute] // [GateTest-Mute] console.log("world");');
+    fs.writeFileSync(testFile, 'console.log("world");');
     assert.strictEqual(cache.hasChanged(testFile), true);
   });
 

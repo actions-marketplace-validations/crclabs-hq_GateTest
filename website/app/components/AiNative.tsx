@@ -10,7 +10,7 @@ const aiIssues = [
     icon: "!",
   },
   {
-    issue: "// [GateTest-Mute] // [GateTest-Mute] console.log left behind",
+    issue: "console.log left behind",
     description: "AI debugging artifacts slip into production. GateTest blocks every single one.",
     icon: ">",
   },

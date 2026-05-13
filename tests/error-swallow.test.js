@@ -245,7 +245,7 @@ describe('ErrorSwallowModule — callback err ignored', () => {
   it('warns when err is never referenced in callback body', async () => {
     write(tmp, 'src/a.js', [
       'fs.readFile(p, (err, data) => {',
-      '  // [GateTest-Mute] // [GateTest-Mute] console.log(data.toString());',
+      '  console.log(data.toString());',
       '});',
       '',
     ].join('\n'));
@@ -257,7 +257,7 @@ describe('ErrorSwallowModule — callback err ignored', () => {
     write(tmp, 'src/a.js', [
       'fs.readFile(p, (err, data) => {',
       '  if (err) throw err;',
-      '  // [GateTest-Mute] // [GateTest-Mute] console.log(data.toString());',
+      '  console.log(data.toString());',
       '});',
       '',
     ].join('\n'));

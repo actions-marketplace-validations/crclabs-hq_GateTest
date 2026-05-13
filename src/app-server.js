@@ -176,7 +176,7 @@ async function handlePush(event, token) {
   const sha = event.after;
   const branch = event.ref.replace('refs/heads/', '');
 
-  // [GateTest-Mute] // [GateTest-Mute] console.log(`[GateTest] Push to ${owner}/${name}@${branch} (${sha.slice(0, 7)})`);
+  console.log(`[GateTest] Push to ${owner}/${name}@${branch} (${sha.slice(0, 7)})`);
 
   // Set pending status
   await githubApi('POST', `/repos/${owner}/${name}/statuses/${sha}`, token, {
@@ -197,7 +197,7 @@ async function handlePush(event, token) {
       : `${result.issuesFound} issues found (${result.checksPassed}/${result.checksTotal} passed)`,
   });
 
-  // [GateTest-Mute] // [GateTest-Mute] console.log(`[GateTest] ${owner}/${name}: ${result.passed ? 'PASSED' : 'BLOCKED'} — ${result.issuesFound} issues`);
+  console.log(`[GateTest] ${owner}/${name}: ${result.passed ? 'PASSED' : 'BLOCKED'} — ${result.issuesFound} issues`);
 }
 
 async function handlePullRequest(event, token) {
@@ -210,7 +210,7 @@ async function handlePullRequest(event, token) {
 
   if (!['opened', 'synchronize', 'reopened'].includes(event.action)) return;
 
-  // [GateTest-Mute] // [GateTest-Mute] console.log(`[GateTest] PR #${pr.number} on ${owner}/${name} (${branch})`);
+  console.log(`[GateTest] PR #${pr.number} on ${owner}/${name} (${branch})`);
 
   // Set pending status
   await githubApi('POST', `/repos/${owner}/${name}/statuses/${sha}`, token, {
@@ -376,7 +376,7 @@ const server = http.createServer(async (req, res) => {
       // Verify signature
       const sig = req.headers['x-hub-signature-256'];
       if (WEBHOOK_SECRET && !verifySignature(body, sig)) {
-        // [GateTest-Mute] // [GateTest-Mute] console.log('[GateTest] Invalid webhook signature — rejected');
+        console.log('[GateTest] Invalid webhook signature — rejected');
         res.writeHead(401);
         res.end('Invalid signature');
         return;
@@ -393,7 +393,7 @@ const server = http.createServer(async (req, res) => {
         const installationId = event.installation?.id;
 
         if (!installationId) {
-          // [GateTest-Mute] // [GateTest-Mute] console.log(`[GateTest] No installation ID in ${eventType} event`);
+          console.log(`[GateTest] No installation ID in ${eventType} event`);
           return;
         }
 
@@ -404,7 +404,7 @@ const server = http.createServer(async (req, res) => {
         } else if (eventType === 'pull_request') {
           await handlePullRequest(event, token);
         } else {
-          // [GateTest-Mute] // [GateTest-Mute] console.log(`[GateTest] Ignoring event: ${eventType}`);
+          console.log(`[GateTest] Ignoring event: ${eventType}`);
         }
       } catch (err) { // error-ok — webhook handler must not crash the server process
         console.error(`[GateTest] Error processing webhook:`, err.message);
@@ -422,7 +422,7 @@ const server = http.createServer(async (req, res) => {
 // ============================================================
 
 if (!APP_ID) {
-  // [GateTest-Mute] // [GateTest-Mute] console.log(`
+  console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║  GateTest GitHub App — Setup Required                    ║
 ╠══════════════════════════════════════════════════════════╣
@@ -471,7 +471,7 @@ server.on('clientError', (err, socket) => {
 });
 
 server.listen(PORT, () => {
-  // [GateTest-Mute] // [GateTest-Mute] console.log(`
+  console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║  GateTest GitHub App — Running                           ║
 ╠══════════════════════════════════════════════════════════╣

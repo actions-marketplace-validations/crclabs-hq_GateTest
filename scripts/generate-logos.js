@@ -174,20 +174,20 @@ function drawLogo(ctx, size) {
 const icon400 = createCanvas(400, 400);
 drawIcon(icon400.getContext('2d'), 400);
 fs.writeFileSync(path.join(outDir, 'icon-400.png'), icon400.toBuffer('image/png'));
-// [GateTest-Mute] // [GateTest-Mute] console.log('Generated: icon-400.png (400x400)');
+console.log('Generated: icon-400.png (400x400)');
 
 // Generate icon at 180px (Apple touch icon)
 const icon180 = createCanvas(180, 180);
 drawIcon(icon180.getContext('2d'), 180);
 fs.writeFileSync(path.join(outDir, 'icon-180.png'), icon180.toBuffer('image/png'));
-// [GateTest-Mute] // [GateTest-Mute] console.log('Generated: icon-180.png (180x180)');
+console.log('Generated: icon-180.png (180x180)');
 
 // Generate logo at 512px (Stripe branding, social)
 const logo512 = createCanvas(512, 512);
 drawLogo(logo512.getContext('2d'), 512);
 fs.writeFileSync(path.join(outDir, 'logo-512.png'), logo512.toBuffer('image/png'));
-// [GateTest-Mute] // [GateTest-Mute] console.log('Generated: logo-512.png (512x512)');
+console.log('Generated: logo-512.png (512x512)');
 
-// [GateTest-Mute] // [GateTest-Mute] console.log(`\nAll PNGs saved to: ${outDir}`);
-// [GateTest-Mute] // [GateTest-Mute] console.log('Upload icon-400.png to GitHub org avatar');
-// [GateTest-Mute] // [GateTest-Mute] console.log('Upload logo-512.png to Stripe branding');
+console.log(`\nAll PNGs saved to: ${outDir}`);
+console.log('Upload icon-400.png to GitHub org avatar');
+console.log('Upload logo-512.png to Stripe branding');

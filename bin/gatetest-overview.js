@@ -36,7 +36,7 @@ function parseArgs(argv) {
 }
 
 function usage() {
-  // [GateTest-Mute] // [GateTest-Mute] console.log(`Usage: gatetest-overview [--json] [--url <base-url>]
+  console.log(`Usage: gatetest-overview [--json] [--url <base-url>]
 
 Env:
   ADMIN_TOKEN          Bearer token (required)

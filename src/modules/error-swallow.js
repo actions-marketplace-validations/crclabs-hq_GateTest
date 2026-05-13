@@ -33,7 +33,7 @@
  *   error:   empty `catch (err) { }` block                 (prod)
  *            warning in tests
  *            (rule: `error-swallow:empty-catch:<rel>:<line>`)
- *   error:   catch block that only calls `// [GateTest-Mute] // [GateTest-Mute] console.log`/`console.warn`
+ *   error:   catch block that only calls `console.log`/`console.warn`
  *            and does not re-throw — visible in logs but breaks
  *            downstream callers
  *            (rule: `error-swallow:log-and-eat:<rel>:<line>`)

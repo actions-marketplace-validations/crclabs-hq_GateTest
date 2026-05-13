@@ -16,7 +16,7 @@ const activeModules = [
   },
   {
     name: "Code Quality",
-    description: "Catches // [GateTest-Mute] // [GateTest-Mute] console.log, debugger, TODO/FIXME, eval(), function complexity.",
+    description: "Catches console.log, debugger, TODO/FIXME, eval(), function complexity.",
     icon: "Q",
   },
   {

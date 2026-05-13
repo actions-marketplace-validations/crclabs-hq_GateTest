@@ -18,7 +18,7 @@ CODE:
 ${fileContent}`;
 
   const body = JSON.stringify({
-    model: "claude-3-5-sonnet-20240620",
+    model: "claude-sonnet-4-20250514",
     max_tokens: 8192,
     messages: [{ role: "user", content: prompt }],
   });
@@ -38,7 +38,7 @@ export function verifyQuality(fixed: string, filePath: string) {
 
   const lines = fixed.split("\n");
   lines.forEach((line, i) => {
-    if (/\bconsole\.(log|debug|info)\s*\(/.test(line)) issues.push(`Line ${i + 1}: // [GateTest-Mute] // [GateTest-Mute] console.log introduced`);
+    if (/\bconsole\.(log|debug|info)\s*\(/.test(line)) issues.push(`Line ${i + 1}: console.log introduced`);
     if (/^\s*debugger\s*;?$/.test(line)) issues.push(`Line ${i + 1}: debugger introduced`);
     if (/\beval\s*\(/.test(line)) issues.push(`Line ${i + 1}: eval() introduced`);
   });

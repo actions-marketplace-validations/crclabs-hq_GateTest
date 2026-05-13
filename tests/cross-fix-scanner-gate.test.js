@@ -297,13 +297,13 @@ test('validateFixesAgainstScanner — input validation', async () => {
 });
 
 test('validateFixesAgainstScanner — does not roll back fix that ALREADY had a similar finding (same string)', async () => {
-  // Edge: if the original scan flagged "src/a.js: // [GateTest-Mute] // [GateTest-Mute] console.log" and the
+  // Edge: if the original scan flagged "src/a.js: console.log" and the
   // fix didn't fully remove it, the SAME string appears again post-fix.
   // That's not a NEW finding — it's a stale one. Don't roll back.
   const fixes = [{ file: 'src/a.js', fixed: 'still-has-console-log', original: 'old', issues: ['i'] }];
-  const originalFindings = { codeQuality: ['src/a.js: // [GateTest-Mute] // [GateTest-Mute] console.log present'] };
+  const originalFindings = { codeQuality: ['src/a.js: console.log present'] };
   const runTier = makeStubRunTier({
-    full: [{ name: 'codeQuality', details: ['src/a.js: // [GateTest-Mute] // [GateTest-Mute] console.log present'] }],
+    full: [{ name: 'codeQuality', details: ['src/a.js: console.log present'] }],
   });
   const result = await validateFixesAgainstScanner({
     fixes,

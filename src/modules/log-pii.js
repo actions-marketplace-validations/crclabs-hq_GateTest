@@ -2,7 +2,7 @@
  * Logging Hygiene / PII-in-Logs Detector Module.
  *
  * The GDPR / CCPA / PCI-DSS violation that ships in every codebase
- * at some point: `// [GateTest-Mute] // [GateTest-Mute] console.log(req.body)` on the login route.
+ * at some point: `console.log(req.body)` on the login route.
  * `logger.info(user)` on a "successful auth" line. `log.debug(\`req
  * headers: ${JSON.stringify(headers)}\`)`. Every one of those lines
  * writes a password, an Authorization bearer token, a session
@@ -24,20 +24,20 @@
  * We target four high-precision shapes:
  *
  *   1. Logger call with an explicitly sensitive identifier argument:
- *      `// [GateTest-Mute] // [GateTest-Mute] console.log(password)`, `logger.info(token)`,
+ *      `console.log(password)`, `logger.info(token)`,
  *      `log.debug(apiKey)`, `console.warn(authorization)`.
  *      These are near-certain bugs.
  *
  *   2. Logger call with a request / body / headers / user object
  *      as a direct argument or via `JSON.stringify(...)`.
- *      `// [GateTest-Mute] // [GateTest-Mute] console.log(req)`, `logger.info(req.body)`,
+ *      `console.log(req)`, `logger.info(req.body)`,
  *      `log.debug(JSON.stringify(user))`, `console.warn(headers)`.
  *      Any of these can leak PII or auth material depending on
  *      the request shape.
  *
  *   3. Logger call with a template-string interpolation of a
  *      sensitive identifier or object:
- *      `log.info(\`user=${user}\`)`, `// [GateTest-Mute] // [GateTest-Mute] console.log(\`req: ${req.body}\`)`.
+ *      `log.info(\`user=${user}\`)`, `console.log(\`req: ${req.body}\`)`.
  *
  *   4. `dump()` / `pp()` / `pprint()` / `print(...)` in Python on
  *      sensitive names (entry-level bug; we flag it warning).

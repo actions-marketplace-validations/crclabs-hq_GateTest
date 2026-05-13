@@ -12,7 +12,7 @@ const { execSync } = require('child_process');
 const projectRoot = path.resolve(__dirname, '../../');
 
 async function preCommit() {
-  // [GateTest-Mute] // [GateTest-Mute] console.log('[GateTest] Running pre-commit checks...\n');
+  console.log('[GateTest] Running pre-commit checks...\n');
 
   // Get staged files
   let stagedFiles;
@@ -22,16 +22,16 @@ async function preCommit() {
       cwd: projectRoot,
     }).trim().split('\n').filter(Boolean);
   } catch {
-    // [GateTest-Mute] // [GateTest-Mute] console.log('[GateTest] Could not get staged files — skipping.\n');
+    console.log('[GateTest] Could not get staged files — skipping.\n');
     process.exit(0);
   }
 
   if (stagedFiles.length === 0) {
-    // [GateTest-Mute] // [GateTest-Mute] console.log('[GateTest] No staged files.\n');
+    console.log('[GateTest] No staged files.\n');
     process.exit(0);
   }
 
-  // [GateTest-Mute] // [GateTest-Mute] console.log(`[GateTest] Checking ${stagedFiles.length} staged file(s)...\n`);
+  console.log(`[GateTest] Checking ${stagedFiles.length} staged file(s)...\n`);
 
   let hasErrors = false;
 
@@ -69,12 +69,12 @@ async function preCommit() {
         }
       }
 
-      // Check for // [GateTest-Mute] // [GateTest-Mute] console.log/debugger in JS/TS files
+      // Check for console.log/debugger in JS/TS files
       if (/\.(js|ts|jsx|tsx)$/.test(file)) {
         const lines = content.split('\n');
         for (let i = 0; i < lines.length; i++) {
           if (/\bconsole\.(log|debug)\b/.test(lines[i]) && !/eslint-disable/.test(lines[i])) {
-            console.error(`[GateTest] ERROR: // [GateTest-Mute] // [GateTest-Mute] console.log/debug at ${file}:${i + 1}`);
+            console.error(`[GateTest] ERROR: console.log/debug at ${file}:${i + 1}`);
             hasErrors = true;
           }
           if (/\bdebugger\b/.test(lines[i])) {
@@ -119,7 +119,7 @@ async function preCommit() {
     process.exit(1);
   }
 
-  // [GateTest-Mute] // [GateTest-Mute] console.log('[GateTest] Pre-commit checks PASSED.\n');
+  console.log('[GateTest] Pre-commit checks PASSED.\n');
   process.exit(0);
 }
 

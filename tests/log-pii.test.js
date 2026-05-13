@@ -50,8 +50,8 @@ describe('LogPiiModule — JS sensitive identifier', () => {
   beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-lp-sens-')); });
   afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
-  it('errors on // [GateTest-Mute] // [GateTest-Mute] console.log(password)', async () => {
-    write(tmp, 'src/a.js', '// [GateTest-Mute] // [GateTest-Mute] console.log(password);\n');
+  it('errors on console.log(password)', async () => {
+    write(tmp, 'src/a.js', 'console.log(password);\n');
     const r = await run(tmp);
     const hit = r.checks.find((c) => c.name && c.name.startsWith('log-pii:sensitive-arg:'));
     assert.ok(hit);
@@ -77,7 +77,7 @@ describe('LogPiiModule — JS sensitive identifier', () => {
   });
 
   it('does not flag non-sensitive identifiers', async () => {
-    write(tmp, 'src/a.js', '// [GateTest-Mute] // [GateTest-Mute] console.log(username);\nlogger.info(email);\n');
+    write(tmp, 'src/a.js', 'console.log(username);\nlogger.info(email);\n');
     const r = await run(tmp);
     const hits = r.checks.filter(
       (c) => c.passed === false && c.name && c.name.startsWith('log-pii:'),
@@ -91,8 +91,8 @@ describe('LogPiiModule — JS object-dump', () => {
   beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-lp-obj-')); });
   afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
-  it('warns on // [GateTest-Mute] // [GateTest-Mute] console.log(req)', async () => {
-    write(tmp, 'src/a.js', '// [GateTest-Mute] // [GateTest-Mute] console.log(req);\n');
+  it('warns on console.log(req)', async () => {
+    write(tmp, 'src/a.js', 'console.log(req);\n');
     const r = await run(tmp);
     const hit = r.checks.find((c) => c.name && c.name.startsWith('log-pii:object-dump:'));
     assert.ok(hit);
@@ -117,8 +117,8 @@ describe('LogPiiModule — JSON.stringify dump', () => {
   beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-lp-str-')); });
   afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
-  it('warns on // [GateTest-Mute] // [GateTest-Mute] console.log(JSON.stringify(user))', async () => {
-    write(tmp, 'src/a.js', '// [GateTest-Mute] // [GateTest-Mute] console.log(JSON.stringify(user));\n');
+  it('warns on console.log(JSON.stringify(user))', async () => {
+    write(tmp, 'src/a.js', 'console.log(JSON.stringify(user));\n');
     const r = await run(tmp);
     assert.ok(r.checks.find((c) => c.name && c.name.startsWith('log-pii:stringify-dump:')));
   });
@@ -136,7 +136,7 @@ describe('LogPiiModule — template-string interpolation', () => {
   afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
   it('errors on sensitive identifier in template', async () => {
-    write(tmp, 'src/a.js', '// [GateTest-Mute] // [GateTest-Mute] console.log(`auth=${password}`);\n');
+    write(tmp, 'src/a.js', 'console.log(`auth=${password}`);\n');
     const r = await run(tmp);
     const hit = r.checks.find((c) => c.name && c.name.startsWith('log-pii:sensitive-interp:'));
     assert.ok(hit);
@@ -182,7 +182,7 @@ describe('LogPiiModule — suppressions', () => {
   afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
   it('honours // log-safe on the same line (JS)', async () => {
-    write(tmp, 'src/a.js', '// [GateTest-Mute] // [GateTest-Mute] console.log(password); // log-safe — test fixture\n');
+    write(tmp, 'src/a.js', 'console.log(password); // log-safe — test fixture\n');
     const r = await run(tmp);
     const hits = r.checks.filter(
       (c) => c.passed === false && c.name && c.name.startsWith('log-pii:'),
@@ -206,7 +206,7 @@ describe('LogPiiModule — test path downgrade', () => {
   afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
   it('downgrades error -> warning in test paths (JS)', async () => {
-    write(tmp, 'tests/a.test.js', '// [GateTest-Mute] // [GateTest-Mute] console.log(password);\n');
+    write(tmp, 'tests/a.test.js', 'console.log(password);\n');
     const r = await run(tmp);
     const hit = r.checks.find((c) => c.name && c.name.startsWith('log-pii:sensitive-arg:'));
     assert.ok(hit);
@@ -214,7 +214,7 @@ describe('LogPiiModule — test path downgrade', () => {
   });
 
   it('downgrades warning -> info in test paths (JS object-dump)', async () => {
-    write(tmp, 'tests/a.test.js', '// [GateTest-Mute] // [GateTest-Mute] console.log(req);\n');
+    write(tmp, 'tests/a.test.js', 'console.log(req);\n');
     const r = await run(tmp);
     const hit = r.checks.find((c) => c.name && c.name.startsWith('log-pii:object-dump:'));
     assert.ok(hit);

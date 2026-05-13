@@ -1,6 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import PreLaunchBanner from "./components/PreLaunchBanner";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: "#0f766e",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://gatetest.ai"),
@@ -76,7 +83,6 @@ export default function RootLayout({
     <html lang="en" className="h-full antialiased">
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#0f766e" />
       </head>
       <body className="min-h-full flex flex-col">
         <script

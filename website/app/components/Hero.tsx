@@ -6,7 +6,7 @@ export default function Hero() {
         {/* Animated grid pattern */}
         <div className="hero-grid" aria-hidden="true" />
         {/* Subtle gradient accent */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-gradient-to-b from-teal-500/8 to-transparent rounded-full blur-[100px] pointer-events-none" />
+        <div className="hidden md:block absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-gradient-to-b from-teal-500/8 to-transparent rounded-full blur-[100px] pointer-events-none" />
 
         <div className="relative z-10 mx-auto max-w-5xl text-center">
           {/* Badge */}

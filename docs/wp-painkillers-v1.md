@@ -42,20 +42,27 @@ GateTest's existing 94-module engine already handles 1, 3, 4, 9, 10 with general
 | `wpUserEnumerate` | #5 brute-force enabler | Checks `/?author=1` redirect, `/wp-json/wp/v2/users` JSON leak, `/author/admin/` 200. If admin username is known, attack is half-done. |
 | `wpAdminProtection` | #5 brute-force | Checks `/wp-admin` and `/wp-login.php` reachability + cookie hardening + WAF / rate-limit signals. |
 
-## v2 module list (deferred)
+## v2 module list — 3/10 shipped, 7 deferred
+
+### Shipped this commit
+
+| Module | Painkiller | Status |
+|---|---|---|
+| `wpPluginCveCheck` | #10 — enumerate plugins via fingerprinting, cross-reference against curated CVE list (13 high-impact 2024-2026 CVEs inline; WPScan/Patchstack API integration deferred) | ✅ shipped |
+| `wpMalwarePatterns` | #1 — scan rendered homepage for known injection patterns (eval(atob), hidden iframes, base64 payloads, PHP-eval leak, deny-list of known-malicious domains) | ✅ shipped |
+| `wpUserEnumerate` | #5 — checks 3 username-leak vectors: `/?author=1` redirect, `/wp-json/wp/v2/users` REST API, `/author/admin/` probe with common-username list | ✅ shipped |
+
+### Still deferred (v3 candidates)
 
 | Module | Painkiller |
 |---|---|
-| `wpMalwarePatterns` | #1 — scan exposed HTML/JS for known injection patterns (eval(atob(…))), suspicious external scripts, Base64-encoded payloads |
-| `wpPluginCveCheck` | #10 — enumerate plugins via fingerprinting, cross-reference against wpvulndb / wpscan CVE feed |
 | `wpThemeAbandonment` | #10 — detect active theme, check repo last-update date, flag if > 18 months |
 | `wpPhpVersionCompatibility` | #6 — detect PHP via headers / error pages, flag if approaching EOL |
 | `wpBackupValidation` | #7 — check if known backup plugin endpoints exist + last-run-time visible |
 | `wpCommentAntiSpam` | #8 — check if comments accept anonymous links, presence of Akismet/Honeypot |
 | `wpCoreWebVitalsLive` | #3 / #9 — Lighthouse against the real URL, surface CrUX field data |
-| `wpAccessibilityWcag` | #4 — axe-core scan over real DOM (we already have `accessibility` module; this wires it for WP URLs specifically) |
-| `wpCookieConsent` | #4 — checks for cookie banner before any 3rd-party cookies are set |
-| `wpAdaCompliance` | #4 — checks WCAG 2.1 AA via axe-core; explicit lawyer-letter-defence framing |
+| `wpAccessibilityWcag` | #4 — axe-core scan over real DOM (already have `accessibility` module; wire for WP URLs) |
+| `wpAdminProtection` | #5 — checks `/wp-admin` and `/wp-login.php` reachability + WAF / rate-limit / cookie hardening signals |
 
 ## Pricing (placeholder — Boss Rule #6 pending)
 

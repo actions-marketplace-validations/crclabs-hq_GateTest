@@ -271,6 +271,31 @@ const DEFAULT_CONFIG = {
       'agentic',
       'fakeFixDetector',
     ],
+    // WordPress side product (wp.gatetest.ai) — Boss Rule D, Craig 2026-05-13.
+    // Reuses some general-purpose modules from the developer suites where
+    // they apply to a live WP URL (webHeaders, tlsSecurity, cookieSecurity,
+    // accessibility, seo, links, performance) plus the new WP-specific
+    // modules that only make sense when scanning a real WP site.
+    wp: [
+      'memory',
+      'wpExposedFiles',
+      'wpVersionLeak',
+      'wpXmlrpcExposed',
+      'wpPluginCveCheck',
+      'wpMalwarePatterns',
+      'wpUserEnumerate',
+      'wpAdminProtection',
+      'wpPhpVersionEol',
+      'wpThemeAbandonment',
+      'wpBackupValidation',
+      'webHeaders',
+      'tlsSecurity',
+      'cookieSecurity',
+      'accessibility',
+      'seo',
+      'links',
+      'performance',
+    ],
   },
 
   // Module-specific settings

@@ -220,7 +220,7 @@ async function scanRepo(owner: string, repo: string, tier: string): Promise<Scan
   if (cliEngineEnabled) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { runFullEngine } = require("@lib/cli-engine-runner") as {
+      const { runFullEngine } = require("@/app/lib/cli-engine-runner") as {
         runFullEngine: (opts: {
           fileContents: Array<{ path: string; content: string }>;
           suite: string;
@@ -425,7 +425,7 @@ async function _postImpl(req: NextRequest): Promise<ReturnType<typeof NextRespon
     // Fire-and-forget audit write for the crash. Failure to write the audit
     // entry must never block the response.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { recordEventIfConfigured } = require("@lib/audit-log-store");
+    const { recordEventIfConfigured } = require("@/app/lib/audit-log-store");
     void recordEventIfConfigured({
       actor: isAdmin ? "admin" : (sessionId || "anonymous"),
       action: "scan.crashed",
@@ -442,7 +442,7 @@ async function _postImpl(req: NextRequest): Promise<ReturnType<typeof NextRespon
   // Audit-log the scan outcome (completion or in-band failure). Fire-and-
   // forget — never blocks the customer's response.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { recordEventIfConfigured } = require("@lib/audit-log-store");
+  const { recordEventIfConfigured } = require("@/app/lib/audit-log-store");
   void recordEventIfConfigured({
     actor: isAdmin ? "admin" : (sessionId || "anonymous"),
     action: result.error ? "scan.failed" : "scan.completed",

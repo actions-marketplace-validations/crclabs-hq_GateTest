@@ -44,25 +44,30 @@ GateTest's existing 94-module engine already handles 1, 3, 4, 9, 10 with general
 
 ## v2 module list — 3/10 shipped, 7 deferred
 
-### Shipped this commit
-
-| Module | Painkiller | Status |
-|---|---|---|
-| `wpPluginCveCheck` | #10 — enumerate plugins via fingerprinting, cross-reference against curated CVE list (13 high-impact 2024-2026 CVEs inline; WPScan/Patchstack API integration deferred) | ✅ shipped |
-| `wpMalwarePatterns` | #1 — scan rendered homepage for known injection patterns (eval(atob), hidden iframes, base64 payloads, PHP-eval leak, deny-list of known-malicious domains) | ✅ shipped |
-| `wpUserEnumerate` | #5 — checks 3 username-leak vectors: `/?author=1` redirect, `/wp-json/wp/v2/users` REST API, `/author/admin/` probe with common-username list | ✅ shipped |
-
-### Still deferred (v3 candidates)
+### Shipped — v2 batch (2026-05-13)
 
 | Module | Painkiller |
 |---|---|
-| `wpThemeAbandonment` | #10 — detect active theme, check repo last-update date, flag if > 18 months |
-| `wpPhpVersionCompatibility` | #6 — detect PHP via headers / error pages, flag if approaching EOL |
-| `wpBackupValidation` | #7 — check if known backup plugin endpoints exist + last-run-time visible |
+| `wpPluginCveCheck` | #10 — enumerate plugins via fingerprinting, cross-reference against curated CVE list (13 high-impact 2024-2026 CVEs inline) |
+| `wpMalwarePatterns` | #1 — scan rendered homepage for known injection patterns (eval(atob), hidden iframes, base64 payloads, PHP-eval leak, deny-list of known-malicious domains) |
+| `wpUserEnumerate` | #5 — checks 3 username-leak vectors: `/?author=1` redirect, `/wp-json/wp/v2/users` REST API, `/author/admin/` probe |
+
+### Shipped — v3 batch (2026-05-13)
+
+| Module | Painkiller |
+|---|---|
+| `wpAdminProtection` | #5 — login-page WAF / rate-limit / 2FA detection + cookie hardening + bad-credential probe response shape |
+| `wpPhpVersionEol` | #6 — detects PHP version via X-Powered-By + error-page fingerprint; flags EOL versions with months-since-EOL count |
+| `wpThemeAbandonment` | #10 — detects active theme from `wp-content/themes/<slug>/style.css` URL; cross-references against curated deprecated/CVE list |
+| `wpBackupValidation` | #7 — detects backup plugins + probes for publicly-exposed backup files (UpdraftPlus, BackWPup, Duplicator, AIOWP, manual backup.zip/sql in webroot) |
+
+### Still deferred (v4 candidates)
+
+| Module | Painkiller |
+|---|---|
 | `wpCommentAntiSpam` | #8 — check if comments accept anonymous links, presence of Akismet/Honeypot |
 | `wpCoreWebVitalsLive` | #3 / #9 — Lighthouse against the real URL, surface CrUX field data |
 | `wpAccessibilityWcag` | #4 — axe-core scan over real DOM (already have `accessibility` module; wire for WP URLs) |
-| `wpAdminProtection` | #5 — checks `/wp-admin` and `/wp-login.php` reachability + WAF / rate-limit / cookie hardening signals |
 
 ## Pricing (placeholder — Boss Rule #6 pending)
 

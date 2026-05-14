@@ -5,25 +5,22 @@
 > Edit any line. The code already points at these strings — change the
 > strings in this doc + the matching component file and rebuild.
 
-## Three taglines
+## Three taglines (FINAL — confirmed by Craig 2026-05-13)
 
-| Product | Draft tagline | Where it lives in code |
+| Product | Tagline | Where it lives in code |
 |---|---|---|
-| **GateTest** | *"AI writes fast. GateTest keeps it honest."* (already in production footer) | `website/app/components/Footer.tsx:59` and the existing Hero |
-| **Gluecron** | *"Git hosting built for the era of AI code agents."* | `website/app/components/StackBar.tsx` + `website/app/stack/page.tsx` |
-| **Crontech** | *"Cron + uptime monitoring that tells you the second something breaks."* | `website/app/components/StackBar.tsx` + `website/app/stack/page.tsx` |
+| **GateTest** | *"AI writes fast. GateTest keeps it honest."* | `website/app/components/Footer.tsx:59` and the existing Hero |
+| **Gluecron** | *"The git host built around Claude."* | `website/app/components/StackBar.tsx` + `website/app/stack/page.tsx` |
+| **Crontech** | *"AI-native. Edge-first. Zero ops."* | `website/app/components/StackBar.tsx` + `website/app/stack/page.tsx` |
 
-### Why I picked these lines
+### Positioning notes
 
-**GateTest** — already battle-tested in production. No reason to change.
+- **Gluecron** is the git host (matches the Bible's Strategic Direction section). Differentiated from GitHub by being Claude-aware from day one — agent-friendly API, no AI-training opt-in, etc.
+- **Crontech** is the edge-runtime / scheduled-job platform — NOT uptime monitoring. The earlier draft assumed it was uptime monitoring; the corrected positioning is "scheduled jobs and background work running at the edge with zero infra."
 
-**Gluecron** — I don't fully know your final Gluecron pitch. The line I picked emphasises the AI-agent angle because (a) it's what makes Gluecron different from GitHub right now, (b) the agent era is genuinely accelerating and the buyer feels it, (c) it doesn't trash-talk GitHub, which would look petty. Honest alternative drafts:
-- *"A git host where your code is yours and your webhooks fire on time."*
-- *"The git host the GateTest team runs on."* (uses our own product as a trust signal)
-- *"Git hosting without the politics."*
-- *"A git host built by developers who got tired of the alternatives."*
+### Previous-draft archive (kept for reference)
 
-**Crontech** — I don't know whether Crontech is purely cron-monitoring, or full uptime monitoring, or both. I went with "Cron + uptime" because the name implies the cron half and uptime is the natural pairing. If Crontech is something different (e.g. CI scheduling, batch-job orchestration), the line is wrong and needs to be your call.
+The first draft of this doc had Gluecron and Crontech swapped. Craig confirmed the correct mapping on 2026-05-13 via session 016MgmXrLw4Y35fnyTBLS96m. If anyone reading this finds an outdated "Crontech = uptime monitoring" reference anywhere in the codebase, it's stale and should be updated.
 
 ## Where the cross-promo appears
 
@@ -32,10 +29,9 @@
 **Embedded in:** `website/app/components/Footer.tsx`
 **What:** three equal-weight cards, "Part of the same stack" header, "Built by the same team" footer. Highlights the current product with a subtle "you are here" tag.
 
-### Layer 2A — Contextual mention on `/wp` (WP customers → Crontech)
-**File:** `website/app/wp/page.tsx`
-**Where:** between the "What we don't do" section and the final CTA
-**What:** an amber-tinted card explaining that GateTest catches issues at scan time, Crontech catches them at run time. Single link to crontech.ai.
+### Layer 2A — Contextual mention on `/wp` — REMOVED
+
+Originally drafted a Crontech contextual mention framed as "catches issues at run time" (uptime monitoring). After Craig clarified Crontech is actually an edge-runtime / scheduled-job platform, the audience overlap with WordPress owners is near zero — they don't run scheduled jobs at the edge, they manage CMS sites. **Mention removed.** WP owners still see Crontech in the StackBar footer (Layer 1), which is appropriate exposure without forcing a poor product fit.
 
 ### Layer 2B — Gluecron in the developer Integrations grid
 **File:** `website/app/components/Integrations.tsx`

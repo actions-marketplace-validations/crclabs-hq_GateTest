@@ -113,19 +113,19 @@ export default function StackPage() {
         <ul className="text-sm text-muted space-y-3 max-w-2xl mx-auto text-left">
           <li>
             <span className="font-semibold text-foreground">Code on Gluecron, audited by GateTest:</span>{" "}
-            push triggers a scan; failing scans block the merge. Same dual-host story as a GitHub repo
-            but with a git host built by the team that built the scanner.
+            push triggers a scan; failing scans block the merge. Same gate story as a GitHub repo,
+            but on a git host that Claude actually understands.
           </li>
           <li>
-            <span className="font-semibold text-foreground">Site monitored by Crontech, audited by GateTest:</span>{" "}
-            GateTest tells you the bugs and security gaps; Crontech tells you the second the live
-            site goes down. One catches issues at write-time; the other catches issues at run-time.
+            <span className="font-semibold text-foreground">Scheduled jobs on Crontech, audited by GateTest:</span>{" "}
+            the cron / background work that powers your product gets the same QA treatment as your
+            request-path code. GateTest scans the job definition; Crontech runs it at the edge.
           </li>
           <li>
             <span className="font-semibold text-foreground">All three:</span>{" "}
-            code lives on Gluecron, gets gated by GateTest at push-time, and the deployed result is
-            watched by Crontech. End-to-end coverage with three independent tools, three independent
-            bills, three independent failure modes.
+            code on Gluecron, gated by GateTest at push-time, scheduled jobs running on Crontech.
+            End-to-end coverage with three independent tools, three independent bills, three
+            independent failure modes.
           </li>
         </ul>
       </section>
@@ -155,13 +155,13 @@ const PRODUCTS = [
     name: "Gluecron",
     badge: "Gc",
     badgeColor: "bg-indigo-500",
-    tagline: "Git hosting built for the era of AI code agents.",
+    tagline: "The git host built around Claude.",
     body:
-      "A git host where your code is yours, your webhooks fire the moment they should, and the API was designed for agents from day one. The platform GateTest itself runs on.",
+      "A git host designed from day one for the era when most of the code is being written by AI agents. Programmatic webhook API, agent-friendly auth, Claude-aware tooling. The platform GateTest itself runs on.",
     bullets: [
-      "Repos, branches, PRs, the usual — done right",
-      "Programmatic webhook registration via REST",
-      "Honest about what we are: a git host, nothing else",
+      "Repos, branches, PRs — done the way Claude expects them",
+      "Programmatic webhook registration via REST (no clicking through UIs)",
+      "PAT auth that just works for agents",
       "No code-AI-training opt-in question because there's no opt-in",
     ],
     href: "https://gluecron.com",
@@ -171,14 +171,14 @@ const PRODUCTS = [
     name: "Crontech",
     badge: "Ct",
     badgeColor: "bg-amber-500",
-    tagline: "Cron + uptime monitoring that tells you the second something breaks.",
+    tagline: "AI-native. Edge-first. Zero ops.",
     body:
-      "Heartbeat monitoring for the cron jobs and scheduled tasks that run your business. The thing that pages you at 2am because the nightly billing job failed, instead of you finding out at 9am.",
+      "Scheduled jobs, background tasks, and event-driven work that runs at the edge with zero infrastructure to manage. Designed for the agent era — describe what you want done; Crontech runs it.",
     bullets: [
-      "Dead-simple heartbeat URLs — curl or wget after each cron",
-      "SMS / email / Slack / webhook alerts when a beat is missed",
-      "Page status + on-call schedule built in",
-      "Free tier for hobby + dev",
+      "Edge-first runtime — close to your users, close to your data",
+      "Zero infra to provision, zero on-call rotation",
+      "AI-native by design — Claude understands your jobs",
+      "Pay only when work actually runs",
     ],
     href: "https://crontech.ai",
     external: true,

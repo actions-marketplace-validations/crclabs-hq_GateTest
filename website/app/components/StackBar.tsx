@@ -23,7 +23,7 @@ const STACK_PRODUCTS = [
   },
   {
     name: "Gluecron",
-    tagline: "Git hosting built for the era of AI code agents.",
+    tagline: "The git host built around Claude.",
     href: "https://gluecron.com",
     external: true,
     accent: "from-indigo-500/20 to-blue-500/10",
@@ -32,7 +32,7 @@ const STACK_PRODUCTS = [
   },
   {
     name: "Crontech",
-    tagline: "Cron + uptime monitoring that tells you the second something breaks.",
+    tagline: "AI-native. Edge-first. Zero ops.",
     href: "https://crontech.ai",
     external: true,
     accent: "from-amber-500/20 to-orange-500/10",

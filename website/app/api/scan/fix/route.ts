@@ -1414,7 +1414,7 @@ export async function POST(req: NextRequest) {
     // Audit-log the PR-open event. Fire-and-forget. Includes the budget
     // snapshot so finance / support can reconcile spend against the scan.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { recordEventIfConfigured } = require("@lib/audit-log-store");
+    const { recordEventIfConfigured } = require("@/app/lib/audit-log-store");
     void recordEventIfConfigured({
       actor: input.tier ? `tier:${input.tier}` : "anonymous",
       action: "fix.pr_opened",
@@ -1605,7 +1605,7 @@ export async function POST(req: NextRequest) {
       console.warn("[GateTest] scan/fix budget exhausted:", JSON.stringify(snap));
       // Audit-log the budget exhaustion — high-value finance signal.
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { recordEventIfConfigured } = require("@lib/audit-log-store");
+      const { recordEventIfConfigured } = require("@/app/lib/audit-log-store");
       void recordEventIfConfigured({
         actor: "scan_fix",
         action: "fix.budget_exceeded",

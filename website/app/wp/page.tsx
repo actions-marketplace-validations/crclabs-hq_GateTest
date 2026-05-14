@@ -168,6 +168,31 @@ export default function WordPressLanding() {
         </ul>
       </section>
 
+      <section className="px-6 py-12 max-w-3xl mx-auto border-t border-border">
+        <div className="rounded-2xl bg-gradient-to-br from-amber-500/10 to-orange-500/5 border border-amber-500/20 p-8">
+          <p className="text-xs uppercase tracking-widest text-amber-700 dark:text-amber-400 font-semibold mb-3">
+            One more thing
+          </p>
+          <h2 className="text-2xl font-bold mb-3">
+            Want to know the second your site goes down?
+          </h2>
+          <p className="text-base text-muted leading-relaxed mb-4">
+            GateTest catches issues at scan time. <span className="font-semibold text-foreground">Crontech</span>{" "}
+            catches issues at <em>run</em> time — the moment your homepage stops responding,
+            your checkout 500s, or a scheduled cron job fails to run.
+            Built by the same team. Pairs naturally with the audit you just ran.
+          </p>
+          <a
+            href="https://crontech.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-400 hover:underline"
+          >
+            See Crontech <span aria-hidden>→</span>
+          </a>
+        </div>
+      </section>
+
       <section className="px-6 py-16 max-w-3xl mx-auto border-t border-border text-center">
         <h2 className="text-3xl font-bold mb-6">Ready when you are.</h2>
         <Link

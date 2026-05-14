@@ -34,6 +34,17 @@ const ciProviders = [
   "Railway",
 ];
 
+const gitHosts = [
+  { name: "GitHub", href: null },
+  { name: "GitLab", href: null },
+  { name: "Bitbucket", href: null },
+  {
+    name: "Gluecron",
+    href: "https://gluecron.com",
+    note: "built by the same team",
+  },
+];
+
 const aiTools = [
   "Claude",
   "Claude Code",
@@ -87,6 +98,37 @@ export default function Integrations() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Git hosts */}
+        <div className="rounded-xl p-6 border border-border bg-surface mb-6">
+          <h3 className="font-semibold mb-1">Git Hosts</h3>
+          <p className="text-sm text-muted mb-4">Push to any host — GateTest hooks the webhook.</p>
+          <div className="flex flex-wrap gap-2">
+            {gitHosts.map((host) =>
+              host.href ? (
+                <a
+                  key={host.name}
+                  href={host.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm bg-accent/10 border border-accent/30 text-accent-light hover:bg-accent/20 transition-colors"
+                >
+                  {host.name}
+                  {host.note && (
+                    <span className="text-[10px] text-muted ml-1">({host.note})</span>
+                  )}
+                </a>
+              ) : (
+                <span
+                  key={host.name}
+                  className="px-3 py-1.5 rounded-lg text-sm bg-surface-light border border-border text-foreground"
+                >
+                  {host.name}
+                </span>
+              )
+            )}
+          </div>
         </div>
 
         {/* CI/CD and AI tools */}

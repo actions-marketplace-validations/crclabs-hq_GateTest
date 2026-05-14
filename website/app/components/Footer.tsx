@@ -1,11 +1,13 @@
 import Link from "next/link";
+import StackBar from "./StackBar";
 
 export default function Footer() {
   return (
     <footer className="relative border-t border-border py-12 px-6 bg-background-warm">
       <div className="footer-accent-bar absolute top-0 left-0 right-0" aria-hidden="true" />
       <div className="mx-auto max-w-6xl">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
+        <StackBar currentProduct="GateTest" />
+        <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
           <div>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-6 h-6 rounded bg-accent flex items-center justify-center">

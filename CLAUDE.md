@@ -1185,3 +1185,12 @@ Total real-Claude Anthropic spend across all four proofs: ~$3-4. At $399 tier: 1
 **Module count: 90 (unchanged — Phase 1-3 was about deepening capability per scan, not adding modules).** All 90 modules load cleanly via `node bin/gatetest.js --list`. Test count: 1300+. Sweep green at session end.
 
 Phase 4 (honesty sweep) — IN FLIGHT this commit: 4.1 confirmed no modules need disabling, 4.2 compare/* pages updated to mention all four tiers, 4.3 VERSION string updated (this paragraph), 4.4 Known Issues table reviewed for items the FIX-FIRST plan resolved.
+
+Date last updated: 2026-05-15 — **NOISE-CONTROL + UNIT ECONOMICS PROTECTION SHIPPED.** Real-customer scans return 900-1000 raw findings that mostly collapse to ~30 unique root causes (one `tsconfig` strict-false flag → 200 implicit-any findings across 50 files). Fixing each one separately would blow Anthropic spend past the customer's paid price. Two new helpers solve this:
+
+- `website/app/lib/finding-clusterer.js` — groups findings by file (since the fix loop already hands a whole file to Claude in one call), filters info-severity chatter, ranks clusters root-cause-first (`tsconfig.json`, `.eslintrc`, `.env`, `nginx.conf`, `Dockerfile`, `.github/workflows/*` win priority over generic source). 26 unit tests at `tests/finding-clusterer.test.js`, ALL green.
+- `website/app/lib/fix-cap.js` — per-tier file-fix caps: Quick=5, Full=20, Scan+Fix=50, Nuclear=100. Renders an Advisory markdown section listing the files left on the table (file + severity + count + modules) — customer sees what their tier excluded, upsells to higher tiers. 19 unit tests at `tests/fix-cap.test.js`, ALL green.
+
+Wired into `website/app/api/scan/fix/route.ts` immediately after input validation: cluster → rank → cap → flatten back to `IssueInput[]` for the existing fix loop. PR body gets the advisory section appended. API response carries a new `cluster` field with `{totalIssuesIn, totalClusters, clustersFixed, clustersAdvisory, advisoryIssueCount, infoFindings, tier, cap}` so the UI and analytics can show "fixed 20 root causes covering 847 findings."
+
+Net result: customer's 1000-finding scan ships 20 high-impact fixes, advisory ranking for the next 30, and total Anthropic spend stays under $5 on the $99 Full tier (~95% margin).

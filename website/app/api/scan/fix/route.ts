@@ -299,6 +299,77 @@ const { extractConventions, formatGroundingHeader, summariseGrounding } = requir
   }) => string;
 };
 
+// Phase: cluster + cap. A real customer scan returns 900-1000 raw
+// findings that mostly collapse to ~30 unique root causes. This helper
+// groups by file (since the fix loop already passes a whole file to
+// Claude in one call), ranks by impact (root-cause files first), and
+// caps to a per-tier file budget. Anything beyond the cap ships in the
+// PR as advisory, not as a Claude fix — protects unit economics.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { clusterAndRank } = require("@/app/lib/finding-clusterer") as {
+  clusterAndRank: (
+    issues: Array<{ file: string; issue: string; module: string; line?: number }>,
+    opts?: { includeWarnings?: boolean }
+  ) => {
+    clusters: Array<{
+      file: string;
+      issues: Array<{ file: string; issue: string; module: string; line?: number }>;
+      count: number;
+      modules: string[];
+      severityCounts: { error: number; warning: number; info: number };
+      topSeverity: 'error' | 'warning' | 'info';
+      isRootCause: boolean;
+    }>;
+    advisory: { warnings: Array<unknown>; info: Array<unknown> };
+    totalIssuesIn: number;
+    totalIssuesClustered: number;
+  };
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { applyFixCap, clustersToIssues, renderAdvisorySection } = require("@/app/lib/fix-cap") as {
+  applyFixCap: (
+    clusters: Array<{
+      file: string;
+      issues: Array<{ file: string; issue: string; module: string; line?: number }>;
+      count: number;
+      topSeverity: string;
+      isRootCause: boolean;
+      modules: string[];
+    }>,
+    tier: string
+  ) => {
+    toFix: Array<{
+      file: string;
+      issues: Array<{ file: string; issue: string; module: string; line?: number }>;
+      count: number;
+      topSeverity: string;
+      modules: string[];
+      isRootCause: boolean;
+    }>;
+    advisory: Array<{
+      file: string;
+      issues: Array<{ file: string; issue: string; module: string; line?: number }>;
+      count: number;
+      topSeverity: string;
+      modules: string[];
+      isRootCause: boolean;
+    }>;
+    cap: number;
+    tier: string;
+    wouldHaveFixed: number;
+    advisoryIssueCount: number;
+  };
+  clustersToIssues: (
+    clusters: Array<{ issues: Array<{ file: string; issue: string; module: string; line?: number }> }>
+  ) => Array<{ file: string; issue: string; module: string; line?: number }>;
+  renderAdvisorySection: (capResult: {
+    advisory: Array<{ file: string; topSeverity: string; count: number; modules: string[] }>;
+    cap: number;
+    tier: string;
+    advisoryIssueCount: number;
+  }) => string;
+};
+
 // Default attempt ceiling — set higher than the old hardcoded "1+1 retry"
 // so the loop has room to learn from its own mistakes. Configurable via
 // GATETEST_FIX_MAX_ATTEMPTS env var if a deployment wants tighter cost
@@ -701,14 +772,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { repoUrl, issues } = input;
+  const { repoUrl, issues: rawIssues } = input;
 
-  if (!repoUrl || !issues || issues.length === 0) {
+  if (!repoUrl || !rawIssues || rawIssues.length === 0) {
     return NextResponse.json({ error: "Missing repoUrl or issues" }, { status: 400 });
   }
 
   if (!ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: "AI not configured (ANTHROPIC_API_KEY)" }, { status: 503 });
+  }
+
+  // Cluster + cap. Collapses noisy multi-file fan-out (e.g. one tsconfig
+  // strict-false flag → 200 implicit-any findings across 50 files) into
+  // a ranked list of per-file fixes, then trims to the tier's budget.
+  // Default policy: include errors + warnings, drop info-severity
+  // (which is typically "scanned 42 files" chatter). Anything trimmed
+  // by the cap surfaces in the PR comment as advisory.
+  const tierForCap = input.tier || "full";
+  const clusterResult = clusterAndRank(rawIssues, { includeWarnings: true });
+  const capResult = applyFixCap(clusterResult.clusters, tierForCap);
+  const advisoryMarkdown = renderAdvisorySection(capResult);
+  const issues = clustersToIssues(capResult.toFix);
+
+  if (issues.length === 0) {
+    return NextResponse.json(
+      {
+        status: "no_fixable",
+        message: `No error/warning-severity findings to fix. ${clusterResult.advisory.info.length} info-level findings were excluded as non-actionable.`,
+        cluster: {
+          totalIssuesIn: clusterResult.totalIssuesIn,
+          totalClusters: clusterResult.clusters.length,
+          infoFindings: clusterResult.advisory.info.length,
+        },
+      },
+      { status: 400 }
+    );
   }
 
   // Rate-limit AFTER body parsing + validation, BEFORE Anthropic/GitHub API calls.
@@ -1366,7 +1464,7 @@ export async function POST(req: NextRequest) {
     const totalIssuesFixed = fixes.reduce((sum, f) => sum + f.issues.length, 0);
     const cvePrSection = composeCveFixPrSection(collectedCvePatches);
     const cveSummary = summariseCvePatches(collectedCvePatches);
-    const prBody = composePrBody({
+    const prBodyCore = composePrBody({
       fixes,
       errors,
       attemptHistoryByFile,
@@ -1380,6 +1478,11 @@ export async function POST(req: NextRequest) {
       repoUrl,
       cveSection: cvePrSection || undefined,
     });
+    // Append the advisory section (files the tier cap couldn't cover)
+    // so customers see what was left on the table without paying for it.
+    const prBody = advisoryMarkdown
+      ? `${prBodyCore}\n\n---\n\n${advisoryMarkdown}`
+      : prBodyCore;
 
     // Open the PR. NOTE: Gluecron uses `headBranch` / `baseBranch` (NOT
     // GitHub's `head` / `base`) — our openPullRequest helper handles the
@@ -1561,6 +1664,16 @@ export async function POST(req: NextRequest) {
       authSource,
       errors,
       failedFiles,
+      cluster: {
+        totalIssuesIn: clusterResult.totalIssuesIn,
+        totalClusters: clusterResult.clusters.length,
+        clustersFixed: capResult.toFix.length,
+        clustersAdvisory: capResult.advisory.length,
+        advisoryIssueCount: capResult.advisoryIssueCount,
+        infoFindings: clusterResult.advisory.info.length,
+        tier: tierForCap,
+        cap: capResult.cap,
+      },
       syntaxGate: { accepted: syntaxGate.accepted.length, rejected: syntaxGate.rejected.length, summary: syntaxGateSummary },
       scannerGate: scannerGateSummary
         ? { rolledBack: scannerGateRolledBack, summary: scannerGateSummary }

@@ -664,11 +664,8 @@ async function mapWithConcurrency<T, R>(
 //
 // `mapWithAdaptiveConcurrency` is implemented in
 // `website/app/lib/adaptive-concurrency.js` (pure JS for testability).
-interface AdaptiveState {
-  consecutiveNetworkErrors: number;
-  activeConcurrency: number;
-  haltRun: boolean;
-}
+// The matching AdaptiveState type is declared earlier in this file (line ~224)
+// next to the require() of the JS module — no second declaration here.
 
 interface IssueInput {
   file: string;

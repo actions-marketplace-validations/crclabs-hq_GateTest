@@ -6,9 +6,39 @@
 
 ## Task
 
-GateTest just shipped its side of a worker-tier integration with Crontech. Crontech is the worker that runs Playwright/Chromium for GateTest's `/api/web/scan` endpoint — GateTest can't launch Chromium on its serverless host. Your job is to implement the Crontech side of the contract.
+GateTest shipped its side of a worker-tier integration with Crontech in PR #80 (branch `feat/crontech-headless-worker`). GateTest needs Crontech to run Playwright/Chromium for `/api/web/scan` runtime checks — Vercel-style serverless can't launch Chromium reliably.
 
-This is a Craig-owned cross-product integration — Crontech is one of Craig's three products (Crontech, Gluecron, GateTest). The integration proves the three-product stack by having GateTest dogfood Crontech as its compute tier.
+This is the **interim** integration. Crontech's own 7-day plan (Day 2: *"Onboard GateTest as canary customer via the wizard"*) ends with GateTest deploying as a Crontech tenant through BLK-009 customer-deploys. That eventually obsoletes this worker handoff because Chromium will be local. **But the interim worker is still worth shipping** so the runtime-errors capability is real in production before the full migration lands.
+
+## Crontech stack reminders (this code MUST honor)
+
+- **Bun** 1.3+, ESM imports only (no `require()`).
+- **Hono** for HTTP routing, **tRPC v11** for typed procedures, **Drizzle ORM** for DB.
+- **Biome** for lint/format (NOT ESLint/Prettier). `bunx biome check .` must pass.
+- **`bun:test`** for tests (NOT `node:test`).
+- Strict TS: no `any`, no `@ts-ignore`, `exactOptionalPropertyTypes: true`, `noUncheckedIndexedAccess: true`.
+- Schemas live in `packages/schemas/`. Drizzle schemas in `packages/db/`.
+- Quality gates: `bun run check` 61/61 packages, `bun run check-links` 0 dead, `bun run check-buttons` 0 dead, `bun run db:validate` clean, `bun run test` green.
+- **Polite tone** — never name competitors in public copy (build-time enforcement via `apps/web/src/data/products/forbidden.ts`).
+
+## Where it should live
+
+Best fit candidates (Crontech Claude can choose):
+
+- **`services/web-runtime-worker/`** — new service alongside `customer-deploys`, `preview-deploys`, `cron-scheduler`. Cleanest because the work is bounded (one job type).
+- **`services/orchestrator/`** — already does build-sandboxing in Docker-isolated containers. The Playwright capture could be one of its job types.
+- **`services/edge-runtime/`** — if Crontech wants this to eventually run in V8 isolates (planned BLK).
+
+Recommended: standalone `services/web-runtime-worker/` for now; refactor into orchestrator if the patterns converge.
+
+## Mounting
+
+Two options for the inbound endpoint — Crontech Claude picks:
+
+1. **Hono route** at `apps/api/src/routes/jobs/web-runtime-scan.ts` — simpler, matches existing webhook patterns (`apps/api/src/webhooks/{gluecron,github}-push.ts`).
+2. **tRPC procedure** at `apps/api/src/trpc/procedures/gateTest.scheduleWebRuntimeScan.ts` — more type-safe but adds friction for a webhook from outside the tRPC client.
+
+Recommended: **Hono route**. GateTest dispatches via raw fetch (it doesn't import Crontech's tRPC client), so a Hono route keeps the contract clean.
 
 ---
 
@@ -45,6 +75,8 @@ Failure response:  4xx { "error": "..." }
 - Idempotency: a duplicate `scanId` returns 200 with the existing `jobId`.
 - Enqueue the job into Crontech's worker pool, return 201 with the job id.
 
+Validate body with **Zod** in `packages/schemas/` (e.g. `webRuntimeScanRequest.schema.ts`).
+
 ### 2. Worker — runs Playwright, captures runtime events
 
 ```
@@ -65,7 +97,7 @@ For each queued job, in a Crontech worker container with chromium available:
 ```
 
 **Heuristic rules (mirror these from GateTest's `src/modules/runtime-errors.js`):**
-```js
+```ts
 const CSP_HINT          = /content security policy|csp directive|refused to (?:execute|load|connect|frame)/i;
 const MIXED_CONTENT     = /mixed content/i;
 const HYDRATION_HINTS   = [
@@ -134,23 +166,27 @@ Body (failure):
 
 ---
 
-## Drop-in HMAC code (Node)
+## Drop-in HMAC code (Bun / ESM)
 
-Crontech can use this verbatim — same implementation GateTest uses, so the digests match exactly.
+Crontech uses this verbatim — same algorithm GateTest uses, so digests match exactly. Bun supports `node:crypto` 1:1.
 
-```js
-const crypto = require('crypto');
+```ts
+import crypto from "node:crypto";
 
-function signBody(body, secret) {
-  if (typeof body !== 'string') throw new TypeError('signBody: body must be a string');
-  if (typeof secret !== 'string' || !secret) throw new Error('signBody: secret is required');
-  return crypto.createHmac('sha256', secret).update(body).digest('hex');
+export function signBody(body: string, secret: string): string {
+  if (typeof body !== "string") throw new TypeError("signBody: body must be a string");
+  if (typeof secret !== "string" || !secret) throw new Error("signBody: secret is required");
+  return crypto.createHmac("sha256", secret).update(body).digest("hex");
 }
 
-function verifySignature(body, providedSignature, secret) {
-  if (typeof body !== 'string') return false;
-  if (typeof providedSignature !== 'string' || !providedSignature) return false;
-  if (typeof secret !== 'string' || !secret) return false;
+export function verifySignature(
+  body: string,
+  providedSignature: string | null | undefined,
+  secret: string
+): boolean {
+  if (typeof body !== "string") return false;
+  if (typeof providedSignature !== "string" || !providedSignature) return false;
+  if (typeof secret !== "string" || !secret) return false;
   const expected = signBody(body, secret);
   if (expected.length !== providedSignature.length) return false;
   try {
@@ -163,62 +199,79 @@ function verifySignature(body, providedSignature, secret) {
 
 ---
 
-## Playwright capture loop (Node) — port verbatim from GateTest
+## Playwright capture loop (Bun / TS, strict)
 
-```js
-// Crontech worker script. Receives the job from the inbound dispatcher.
-const playwright = require('playwright');
+```ts
+import { chromium, type Browser, type BrowserContext } from "playwright";
 
-async function runJob(job) {
-  const captured = {
-    pageErrors: [],
-    consoleErrors: [],
-    consoleWarnings: [],
-    requestFailures: [],
-    cspViolations: [],
-    mixedContent: [],
-    hydration: [],
-    deprecations: [],
-    navigationFailure: null,
-    status: null,
+interface CapturedRuntime {
+  pageErrors: Array<{ message: string; stack: string | null }>;
+  consoleErrors: Array<{ text: string }>;
+  consoleWarnings: Array<{ text: string }>;
+  requestFailures: Array<{ url: string; method: string; reason: string; resourceType: string }>;
+  cspViolations: Array<{ text: string }>;
+  mixedContent: Array<{ text: string }>;
+  hydration: Array<{ text: string }>;
+  deprecations: Array<{ text: string }>;
+  navigationFailure: string | null;
+  status: number | null;
+}
+
+interface Finding {
+  name: string;
+  severity: "error" | "warning" | "info";
+  passed: boolean;
+  message: string;
+}
+
+const CSP_HINT = /content security policy|csp directive|refused to (?:execute|load|connect|frame)/i;
+const MIXED = /mixed content/i;
+const HYDRATION = [
+  /hydration mismatch/i,
+  /text content does not match/i,
+  /hydration failed/i,
+  /did not match.*server/i,
+  /minified react error/i,
+  /uncaught \(in promise\)/i,
+  /\[vue warn\]/i,
+  /\[nuxt\]/i,
+];
+
+export async function captureRuntime(
+  targetUrl: string,
+  deadlineSec: number
+): Promise<CapturedRuntime> {
+  const captured: CapturedRuntime = {
+    pageErrors: [], consoleErrors: [], consoleWarnings: [],
+    requestFailures: [], cspViolations: [], mixedContent: [],
+    hydration: [], deprecations: [],
+    navigationFailure: null, status: null,
   };
 
-  const browser = await playwright.chromium.launch({ headless: true, timeout: 15000 });
-  const ctx = await browser.newContext({
+  const browser: Browser = await chromium.launch({ headless: true, timeout: 15000 });
+  const ctx: BrowserContext = await browser.newContext({
     ignoreHTTPSErrors: false,
     viewport: { width: 1280, height: 800 },
-    userAgent: 'GateTest/1.0 (+https://gatetest.ai/bot)',
+    userAgent: "GateTest/1.0 (+https://gatetest.ai/bot)",
   });
   const page = await ctx.newPage();
 
-  page.on('pageerror', (err) => {
+  page.on("pageerror", (err) => {
     captured.pageErrors.push({
-      message: err && err.message ? String(err.message) : String(err),
-      stack: err && err.stack ? String(err.stack).split('\n').slice(0, 5).join('\n') : null,
+      message: typeof err.message === "string" ? err.message : String(err),
+      stack: typeof err.stack === "string" ? err.stack.split("\n").slice(0, 5).join("\n") : null,
     });
   });
 
-  page.on('console', (msg) => {
+  page.on("console", (msg) => {
     const text = msg.text();
     const type = msg.type();
-    const CSP_HINT = /content security policy|csp directive|refused to (?:execute|load|connect|frame)/i;
-    const MIXED   = /mixed content/i;
-    const HYDRATION = [
-      /hydration mismatch/i,
-      /text content does not match/i,
-      /hydration failed/i,
-      /did not match.*server/i,
-      /minified react error/i,
-      /uncaught \(in promise\)/i,
-      /\[vue warn\]/i,
-      /\[nuxt\]/i,
-    ];
-    if (type === 'error') {
+    if (type === "error") {
       captured.consoleErrors.push({ text: text.slice(0, 500) });
       if (CSP_HINT.test(text)) captured.cspViolations.push({ text: text.slice(0, 500) });
       if (MIXED.test(text)) captured.mixedContent.push({ text: text.slice(0, 500) });
       if (HYDRATION.some((re) => re.test(text))) captured.hydration.push({ text: text.slice(0, 500) });
-    } else if (type === 'warning') {
+    } else if (type === "warning") {
       captured.consoleWarnings.push({ text: text.slice(0, 500) });
       if (CSP_HINT.test(text)) captured.cspViolations.push({ text: text.slice(0, 500) });
       if (MIXED.test(text)) captured.mixedContent.push({ text: text.slice(0, 500) });
@@ -226,22 +279,22 @@ async function runJob(job) {
     }
   });
 
-  page.on('requestfailed', (req) => {
+  page.on("requestfailed", (req) => {
     const failure = req.failure();
     captured.requestFailures.push({
       url: req.url().slice(0, 300),
       method: req.method(),
-      reason: failure ? failure.errorText : 'unknown',
+      reason: failure ? failure.errorText : "unknown",
       resourceType: req.resourceType(),
     });
   });
 
-  page.on('response', (resp) => {
+  page.on("response", (resp) => {
     const status = resp.status();
-    const url2 = resp.url();
-    if (status >= 400 && url2 !== job.targetUrl) {
+    const url = resp.url();
+    if (status >= 400 && url !== targetUrl) {
       captured.requestFailures.push({
-        url: url2.slice(0, 300),
+        url: url.slice(0, 300),
         method: resp.request().method(),
         reason: `HTTP ${status}`,
         resourceType: resp.request().resourceType(),
@@ -250,13 +303,13 @@ async function runJob(job) {
   });
 
   try {
-    const resp = await page.goto(job.targetUrl, {
-      timeout: (job.deadlineSec || 60) * 1000,
-      waitUntil: 'networkidle',
+    const resp = await page.goto(targetUrl, {
+      timeout: deadlineSec * 1000,
+      waitUntil: "networkidle",
     });
     captured.status = resp ? resp.status() : null;
   } catch (err) {
-    captured.navigationFailure = err && err.message ? String(err.message) : String(err);
+    captured.navigationFailure = err instanceof Error ? err.message : String(err);
   }
 
   try { await ctx.close(); } catch { /* ignore */ }
@@ -265,12 +318,12 @@ async function runJob(job) {
   return captured;
 }
 
-function capturedToFindings(captured, targetUrl) {
-  const findings = [];
+export function capturedToFindings(captured: CapturedRuntime, targetUrl: string): Finding[] {
+  const findings: Finding[] = [];
   if (captured.navigationFailure) {
     findings.push({
-      name: 'runtime-errors:navigation',
-      severity: 'error',
+      name: "runtime-errors:navigation",
+      severity: "error",
       passed: false,
       message: `Page failed to load: ${captured.navigationFailure}`,
     });
@@ -278,41 +331,41 @@ function capturedToFindings(captured, targetUrl) {
   }
   if (captured.status !== null && captured.status >= 400) {
     findings.push({
-      name: 'runtime-errors:initial-status',
-      severity: 'error',
+      name: "runtime-errors:initial-status",
+      severity: "error",
       passed: false,
       message: `Initial page load returned HTTP ${captured.status}.`,
     });
   }
   for (const e of captured.pageErrors.slice(0, 10)) {
-    findings.push({ name: 'runtime-errors:page-error', severity: 'error', passed: false, message: `Uncaught JS error: ${e.message}` });
+    findings.push({ name: "runtime-errors:page-error", severity: "error", passed: false, message: `Uncaught JS error: ${e.message}` });
   }
   for (const e of captured.consoleErrors.slice(0, 10)) {
-    findings.push({ name: 'runtime-errors:console-error', severity: 'warning', passed: false, message: `console.error during load: ${e.text}` });
+    findings.push({ name: "runtime-errors:console-error", severity: "warning", passed: false, message: `console.error during load: ${e.text}` });
   }
   for (const f of captured.requestFailures.slice(0, 15)) {
     findings.push({
-      name: 'runtime-errors:network',
-      severity: f.resourceType === 'document' || f.resourceType === 'script' ? 'error' : 'warning',
+      name: "runtime-errors:network",
+      severity: f.resourceType === "document" || f.resourceType === "script" ? "error" : "warning",
       passed: false,
       message: `${f.method} ${f.url} → ${f.reason} (${f.resourceType})`,
     });
   }
   for (const v of captured.cspViolations.slice(0, 5)) {
-    findings.push({ name: 'runtime-errors:csp-violation', severity: 'error', passed: false, message: `CSP violation: ${v.text}` });
+    findings.push({ name: "runtime-errors:csp-violation", severity: "error", passed: false, message: `CSP violation: ${v.text}` });
   }
   for (const m of captured.mixedContent.slice(0, 5)) {
-    findings.push({ name: 'runtime-errors:mixed-content', severity: 'warning', passed: false, message: `Mixed content blocked: ${m.text}` });
+    findings.push({ name: "runtime-errors:mixed-content", severity: "warning", passed: false, message: `Mixed content blocked: ${m.text}` });
   }
   for (const h of captured.hydration.slice(0, 5)) {
-    findings.push({ name: 'runtime-errors:hydration', severity: 'warning', passed: false, message: `Possible hydration mismatch: ${h.text}` });
+    findings.push({ name: "runtime-errors:hydration", severity: "warning", passed: false, message: `Possible hydration mismatch: ${h.text}` });
   }
   for (const d of captured.deprecations.slice(0, 5)) {
-    findings.push({ name: 'runtime-errors:deprecation', severity: 'info', passed: false, message: `Browser deprecation: ${d.text}` });
+    findings.push({ name: "runtime-errors:deprecation", severity: "info", passed: false, message: `Browser deprecation: ${d.text}` });
   }
   findings.push({
-    name: 'runtime-errors:summary',
-    severity: 'info',
+    name: "runtime-errors:summary",
+    severity: "info",
     passed: true,
     message:
       `runtime checked ${targetUrl} → ` +
@@ -331,18 +384,26 @@ function capturedToFindings(captured, targetUrl) {
 
 ## Deliverables — what Crontech Claude should produce
 
-1. The two endpoints (`/api/jobs/web-runtime-scan` inbound + the outbound callback POST) in whatever framework Crontech uses.
-2. A small worker pool that pulls queued jobs, runs the Playwright capture, POSTs the callback.
-3. Unit tests for the signature verification + payload shape.
-4. Docs on the Crontech side documenting the new env vars and the GateTest integration.
-5. A migration path / DB row for queued jobs so retries survive worker restarts.
+1. **Inbound Hono route** at (recommended) `apps/api/src/routes/jobs/web-runtime-scan.ts` with HMAC + timestamp + Bearer validation, Zod-validated body.
+2. **Zod schema** for the request/response in `packages/schemas/web-runtime-scan.ts`.
+3. **Drizzle migration** + table for queued jobs (idempotent — `CREATE TABLE IF NOT EXISTS`, `--> statement-breakpoint` between DDL statements, `_journal.json` entry). Suggested table: `web_runtime_jobs` keyed by `scan_id` with status / target_url / callback_url / attempts / next_run_at / completed_at columns.
+4. **Worker loop** (in `services/web-runtime-worker/` or wired into `services/orchestrator/`) that:
+   - Claims rows in `web_runtime_jobs` with `FOR UPDATE SKIP LOCKED` pattern
+   - Runs the Playwright capture (deps from `services/orchestrator/` or its own sandbox)
+   - POSTs the callback with retry (2s, 4s, 8s on 5xx; drop on 4xx)
+   - Updates row status accordingly
+5. **`bun:test`** tests for the HMAC helpers + payload shape + retry logic.
+6. **Docs**: update `apps/web/src/data/services/integrations.ts` (or wherever Crontech tracks integrations) with the new GateTest integration.
+7. **Quality gates green**: `bun run check`, `bunx biome check .`, `bun run check-links`, `bun run check-buttons`, `bun run db:validate`, `bun run test`.
 
 ## What Crontech Claude should NOT do
 
-- Don't store any of the customer's runtime data beyond what's needed to retry the callback. After GateTest acks the callback, drop the local copy.
+- Don't store any of the customer's runtime data beyond what's needed to retry the callback. After GateTest acks the callback, drop the local copy from `web_runtime_jobs` (or mark `completed_at` and let a TTL reaper sweep it).
 - Don't expose the runtime payload publicly — it gets POSTed only to the GateTest callback URL.
 - Don't add any external API integrations (no third-party analytics, no Sentry, no Datadog) without Craig's authorization.
 - Don't change Crontech's pricing / billing model to bill GateTest — that's a Boss Rule item for Craig.
+- Don't name "Vercel" / "Cloudflare" / "Render" / "Mailgun" / "Twilio" in any customer-facing copy — the build-time `apps/web/src/data/products/forbidden.ts` enforcer will block the PR.
+- Don't use `any`, `@ts-ignore`, or `@ts-expect-error`. Strict TS only.
 
 ## Status checking (sanity)
 
@@ -358,7 +419,13 @@ curl -X POST https://gatetest.ai/api/web/scan \
 # Within 30 seconds, polling pollUrl should show `runtime: { status: "completed", payload: { findings: [...] } }`
 ```
 
-When that round-trips successfully, the integration is wired.
+When that round-trips successfully, the worker-tier integration is wired.
+
+## The bigger picture — this is the interim, not the destination
+
+This worker-tier integration is **Phase 1** of GateTest moving onto Crontech. The 7-day plan in Crontech's CLAUDE.md has Day 2 as *"Onboard GateTest as canary customer via the wizard"* — i.e. GateTest deploys to Crontech as a tenant through BLK-009. When that lands, Chromium will be local to the GateTest process and this HTTP handoff becomes obsolete.
+
+But shipping the worker tier first means runtime-errors capture is real in production immediately — without waiting for the full migration. The HMAC contract + Playwright capture code we ship here is reusable as the in-process module when the full migration completes.
 
 ---
 

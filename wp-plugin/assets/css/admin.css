@@ -1,0 +1,175 @@
+/**
+ * GateTest Health Check — admin page styles.
+ * Matches the GateTest brand (teal accent, neutral surfaces).
+ */
+
+.gatetest-hc-wrap {
+    max-width: 960px;
+}
+
+.gatetest-hc-wrap h1 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.8rem;
+}
+
+.gatetest-hc-logo {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    background: #0f766e;
+    color: #fff;
+    border-radius: 6px;
+    font-weight: 800;
+    font-size: 0.9rem;
+}
+
+.gatetest-hc-tagline {
+    color: #6b7280;
+    font-size: 1.05rem;
+    margin-bottom: 2rem;
+}
+
+.gatetest-hc-panels {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.gatetest-hc-panel {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 1.5rem 1.75rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.gatetest-hc-panel-primary {
+    border-color: #0f766e;
+    background: linear-gradient(180deg, rgba(15, 118, 110, 0.04) 0%, #fff 60%);
+}
+
+.gatetest-hc-panel h2 {
+    margin-top: 0;
+    font-size: 1.2rem;
+    color: #111827;
+}
+
+.gatetest-hc-site-info {
+    padding: 0.6rem 0.85rem;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.gatetest-hc-site-info code {
+    background: transparent;
+    padding: 0;
+}
+
+.gatetest-hc-warning {
+    padding: 0.85rem 1rem;
+    background: #fef3c7;
+    border-left: 4px solid #d97706;
+    color: #78350f;
+    border-radius: 4px;
+}
+
+.gatetest-hc-status {
+    margin-top: 1rem;
+    font-size: 0.95rem;
+    min-height: 1.2em;
+}
+
+.gatetest-hc-status.is-scanning {
+    color: #0f766e;
+}
+
+.gatetest-hc-status.is-error {
+    color: #dc2626;
+}
+
+.gatetest-hc-status.is-success {
+    color: #059669;
+}
+
+.gatetest-hc-report {
+    margin-top: 1rem;
+}
+
+.gatetest-hc-finding {
+    padding: 0.85rem 1rem;
+    margin-bottom: 0.75rem;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    background: #fafafa;
+}
+
+.gatetest-hc-finding.severity-error {
+    border-left: 4px solid #dc2626;
+    background: #fef2f2;
+}
+
+.gatetest-hc-finding.severity-warning {
+    border-left: 4px solid #d97706;
+    background: #fffbeb;
+}
+
+.gatetest-hc-finding.severity-info {
+    border-left: 4px solid #6b7280;
+    background: #f9fafb;
+}
+
+.gatetest-hc-finding-title {
+    font-weight: 600;
+    font-size: 1rem;
+    color: #111827;
+    margin-bottom: 0.35rem;
+}
+
+.gatetest-hc-finding-body {
+    font-size: 0.92rem;
+    color: #374151;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.gatetest-hc-last-scan-time {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin: 0 0 1rem 0;
+}
+
+.gatetest-hc-paywall {
+    margin-top: 1.5rem;
+    padding: 1.25rem 1.5rem;
+    background: linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(20, 184, 166, 0.04));
+    border: 1px solid rgba(15, 118, 110, 0.2);
+    border-radius: 10px;
+    text-align: center;
+}
+
+.gatetest-hc-paywall h3 {
+    margin-top: 0;
+    color: #0f766e;
+}
+
+.gatetest-hc-footer {
+    margin-top: 2.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e5e7eb;
+    color: #9ca3af;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.gatetest-hc-footer a {
+    color: #0f766e;
+    text-decoration: none;
+}
+
+.gatetest-hc-footer a:hover {
+    text-decoration: underline;
+}

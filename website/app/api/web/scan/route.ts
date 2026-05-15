@@ -221,6 +221,11 @@ export async function POST(req: NextRequest) {
   const workspace = fs.mkdtempSync(pathMod.join(os.tmpdir(), "web-scan-"));
   const startTime = Date.now();
   const previousExitCode = process.exitCode;
+  // Stable per-scan id used to link the static probe results with the
+  // runtime payload that Crontech will POST back to us.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const cryptoMod = require("crypto") as typeof import("crypto");
+  const scanId = `scn_${cryptoMod.randomBytes(9).toString("hex")}`;
 
   let summary: { results?: Array<{ module?: string; name?: string; checks?: Array<{ name: string; severity?: string; passed: boolean; message?: string }>; errors?: number; warnings?: number; info?: number; duration?: number; skipped?: string }>; gateStatus?: string; totalErrors?: number; totalWarnings?: number };
 
@@ -298,7 +303,50 @@ export async function POST(req: NextRequest) {
     highSignal: c.isHighSignal,
   }));
 
+  // Dispatch the headless-browser runtime scan to Crontech (worker tier).
+  // Static probes already ran inline on this serverless function. The
+  // runtime checks (live JS errors, hydration mismatches, CSP violations,
+  // network failures) need a long-running container with Chromium —
+  // that's Crontech's job. Best effort: if dispatch fails we still ship
+  // the static-probe results below.
+  let runtimeStatus: "queued" | "unavailable" = "unavailable";
+  let runtimeJobId: string | null = null;
+  let runtimeReason: string | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { dispatchRuntimeScan } = require("@/app/lib/crontech-dispatch") as {
+      dispatchRuntimeScan: (opts: {
+        scanId: string;
+        targetUrl: string;
+        suite: string;
+        callbackUrl: string;
+        deadlineSec?: number;
+      }) => Promise<{ ok: true; jobId: string; queuedAt: string } | { ok: false; reason: string; status?: number }>;
+    };
+    const callbackBase = process.env.GATETEST_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || "";
+    if (callbackBase) {
+      const result = await dispatchRuntimeScan({
+        scanId,
+        targetUrl,
+        suite: "web",
+        callbackUrl: `${callbackBase.replace(/\/$/, "")}/api/web/scan/runtime-callback`,
+        deadlineSec: 60,
+      });
+      if (result.ok) {
+        runtimeStatus = "queued";
+        runtimeJobId = result.jobId;
+      } else {
+        runtimeReason = result.reason;
+      }
+    } else {
+      runtimeReason = "GATETEST_PUBLIC_BASE_URL not configured";
+    }
+  } catch (err) {
+    runtimeReason = err instanceof Error ? err.message : String(err);
+  }
+
   return NextResponse.json({
+    scanId,
     targetUrl,
     scannedAt: new Date().toISOString(),
     duration: Date.now() - startTime,
@@ -314,6 +362,12 @@ export async function POST(req: NextRequest) {
     infoCount: clusterResult.droppedInfo,
     preview: isPreview,
     findings,
+    runtime: {
+      status: runtimeStatus,
+      jobId: runtimeJobId,
+      reason: runtimeReason,
+      pollUrl: runtimeStatus === "queued" ? `/api/web/scan/runtime-status?scanId=${scanId}` : null,
+    },
     paywall: isPreview
       ? {
           remainingCount: Math.max(0, clusterResult.clusters.length - findings.length),

@@ -213,8 +213,14 @@ async function runFullEngine({ fileContents, suite = DEFAULT_SUITE, deadlineMs, 
 
     // Require the CLI engine. Pure CJS — works under Next.js server bundling
     // as long as the path resolves relative to this file.
+    //
+    // turbopackIgnore: the CLI engine eventually loads src/core/registry.js
+    // which does dynamic require()s of every module file. Turbopack tries
+    // to enumerate all possible targets at build time and crashes. The
+    // comment tells Turbopack to skip tracing through this boundary;
+    // Node-at-runtime resolves normally.
     // eslint-disable-next-line global-require
-    const { GateTest } = require('../../../src/index.js');
+    const { GateTest } = require(/* turbopackIgnore: true */ '../../../src/index.js');
 
     const opts = {
       silent: true,

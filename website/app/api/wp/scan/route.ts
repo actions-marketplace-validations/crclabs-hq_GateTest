@@ -203,8 +203,14 @@ export async function POST(req: NextRequest) {
   // so we can inject targetUrl into the runtime config that the WP
   // modules read. cli-engine-runner doesn't yet support a config-override
   // shape; can be unified once we have a clear pattern across both flows.
+  //
+  // turbopackIgnore: the CLI engine eventually loads src/core/registry.js
+  // which does dynamic require()s of every module file. Turbopack tries
+  // to enumerate all possible targets at build time and crashes. The
+  // comment tells Turbopack to skip tracing through this boundary;
+  // Node-at-runtime resolves normally.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { GateTest } = require("../../../../../src/index.js") as {
+  const { GateTest } = require(/* turbopackIgnore: true */ "../../../../../src/index.js") as {
     GateTest: new (root: string, opts?: Record<string, unknown>) => {
       init: () => { runSuite: (name: string) => Promise<unknown> };
       registry: { list: () => string[] };

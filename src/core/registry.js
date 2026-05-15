@@ -126,7 +126,14 @@ class ModuleRegistry {
       try {
         const modulePath = path.resolve(__dirname, relativePath);
         if (fs.existsSync(modulePath)) {
-          const ModuleClass = require(modulePath);
+          // turbopackIgnore: this dynamic require resolves to one of the ~100 module
+          // files listed in BUILT_IN_MODULES above. At Node runtime this works fine.
+          // At Turbopack/Next.js build time, however, the bundler tries to enumerate
+          // every possible target of the dynamic require — which drags the entire
+          // /src/modules tree (and its transitive imports) into the website's
+          // server bundle, fails the trace, and crashes the build. The comment
+          // tells Turbopack to skip analysis; the runtime behaviour is unchanged.
+          const ModuleClass = require(/* turbopackIgnore: true */ modulePath);
           this.modules.set(name, new ModuleClass());
         }
       } catch (err) { // error-ok — failed module load is non-fatal; suite runs without it
@@ -142,7 +149,9 @@ class ModuleRegistry {
     const files = fs.readdirSync(modulesDir).filter(f => f.endsWith('.js'));
     for (const file of files) {
       try {
-        const ModuleClass = require(path.join(modulesDir, file));
+        // turbopackIgnore — same reasoning as loadBuiltIn above; this require
+        // resolves dynamically at runtime.
+        const ModuleClass = require(/* turbopackIgnore: true */ path.join(modulesDir, file));
         const name = path.basename(file, '.js');
         this.modules.set(name, new ModuleClass());
       } catch (err) { // error-ok — failed custom module load is non-fatal; suite runs without it

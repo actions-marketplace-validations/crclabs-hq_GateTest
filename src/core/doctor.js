@@ -242,6 +242,26 @@ async function runDoctor(opts = {}) {
     record('info', `GLUECRON_API_TOKEN not set (only needed if using Gluecron as your git host)`);
   }
 
+  // ── 6b. Public API platform — for third-party integration partners ────
+  // The /api/v1/* endpoints expose GateTest as a platform that ANY external
+  // SaaS can integrate with. These checks verify the env is configured for
+  // partner-facing API traffic.
+  if (process.env.NEXT_PUBLIC_BASE_URL) {
+    record('ok', `NEXT_PUBLIC_BASE_URL set to ${process.env.NEXT_PUBLIC_BASE_URL} (partners hit this for /api/v1/*)`);
+  } else {
+    record('warn',
+      'NEXT_PUBLIC_BASE_URL not set — partners will see localhost URLs in webhook payloads',
+      'Set NEXT_PUBLIC_BASE_URL=https://gatetest.ai in Vercel env vars');
+  }
+
+  if (process.env.DATABASE_URL) {
+    record('ok', `DATABASE_URL set (Postgres backing for api_keys + scan_queue + audit_log)`);
+  } else {
+    record('bad',
+      'DATABASE_URL not set — public API cannot authenticate keys or queue scans',
+      'Set DATABASE_URL=postgres://... in Vercel env vars');
+  }
+
   // ── 7. Disk space (lightweight check — Vercel /tmp + local) ───────
   try {
     const diskCheck = trySh('df -h .', { cwd: projectRoot });

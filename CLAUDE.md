@@ -503,7 +503,7 @@ When something breaks:
 | They use | GateTest replaces it with |
 |----------|--------------------------|
 | Jest/Vitest/Mocha | `gatetest --module unitTests` |
-| Playwright/Cypress | `gatetest --module e2e` |
+| Cypress / BrowserStack / Sauce Labs | `gatetest --module e2e` |
 | ESLint/Stylelint | `gatetest --module lint` |
 | Snyk/npm audit | `gatetest --module security` |
 | Renovate/Dependabot (hygiene only) | `gatetest --module dependencies` |
@@ -1194,3 +1194,21 @@ Date last updated: 2026-05-15 — **NOISE-CONTROL + UNIT ECONOMICS PROTECTION SH
 Wired into `website/app/api/scan/fix/route.ts` immediately after input validation: cluster → rank → cap → flatten back to `IssueInput[]` for the existing fix loop. PR body gets the advisory section appended. API response carries a new `cluster` field with `{totalIssuesIn, totalClusters, clustersFixed, clustersAdvisory, advisoryIssueCount, infoFindings, tier, cap}` so the UI and analytics can show "fixed 20 root causes covering 847 findings."
 
 Net result: customer's 1000-finding scan ships 20 high-impact fixes, advisory ranking for the next 30, and total Anthropic spend stays under $5 on the $99 Full tier (~95% margin).
+
+Date last updated: 2026-05-15 (same day, second wave) — **URL-SCAN LAUNCH PACK SHIPPED — full pipeline for any public website.** Four pieces delivered together so the URL-scan flow can launch immediately:
+
+1. **`website/app/lib/url-finding-clusterer.js`** — sister helper to the repo-fix clusterer. Groups URL-scan findings by `ruleKey` (one missing CSP header is one cluster, not 47 noise rows), promotes severity when a higher-severity instance arrives later, flags "high-signal" rules (TLS missing, XML-RPC open, exposed secrets, admin reachable, subdomain takeover, open redirect, CSP missing/unsafe-eval, mixed-content). Drops info-severity by default. 23 unit tests at `tests/url-finding-clusterer.test.js`, all green.
+
+2. **`website/app/lib/health-score.js`** — 0-100 verdict aggregator. High-signal clusters cost 12pts/error vs 6pts for standard; warnings cost 5/2. Instance count contributes sub-linearly (log scale, capped at 1.8×) so a "missing header on 200 pages" cluster can't wipe the score. Letter grade: A ≥ 90, B 75-89, C 60-74, D 40-59, F < 40. `renderHealthScoreCard()` produces a customer-facing markdown table with severity badges. 23 unit tests at `tests/health-score.test.js`, all green.
+
+3. **`src/modules/runtime-errors.js`** — headless-browser-driven LIVE error capture using Playwright. Watches for: uncaught JS errors (`page.on('pageerror')`), console.error / console.warn spam, network request failures (4xx/5xx/refused/timeout, per resource type), CSP violations (heuristic on console output), mixed-content warnings, hydration mismatches (React/Vue/Nuxt patterns), browser deprecations. Gracefully degrades when Playwright unavailable (Vercel serverless) or chromium binary missing — emits an info-level skip note rather than failing the suite. Registered in `BUILT_IN_MODULES` and added to BOTH `wp` and new `web` suites. 8 shape tests at `tests/runtime-errors.test.js`, all green.
+
+4. **`/api/web/scan` + `/web` landing** — generic web URL scan. Twin of `/api/wp/scan` but runs the new `web` suite (no WP-specific modules, plus runtimeErrors). New `translateFinding()` maps every check to plain-English customer copy with module attribution. `/web/page.tsx` is the public landing — 8 painkillers (live JS errors, hydration mismatches, broken network resources, CSP violations, mixed content, missing security headers, TLS misconfig, cookie hardening) plus 3-tier pricing (Free Preview / $29 Quick Scan / $49 Continuous). Cross-links to `/wp` for WordPress owners.
+
+Both routes now compute health score + cluster the findings + show preview-vs-full-report paywall. API response carries `healthScore: {score, grade, summary}`, `totalClusters`, `errorCount`, `warningCount` etc.
+
+**Module count: 91** (was 90 — +1 runtimeErrors). CLI `node bin/gatetest.js --list` shows 106 lines (94 modules + header lines). `npx tsc --noEmit` clean on `website/`.
+
+Headless browser path: in the serverless production environment Chromium typically can't launch — the module returns an info-level "playwright not available" skip and the rest of the scan continues uninterrupted. Real runtime capture lights up when the same engine runs on a worker / local CLI / dedicated infra. The hooks for that worker pipeline already exist (`scan-queue`).
+
+**Playwright-as-internal-dep decision (Craig 2026-05-15):** Playwright is an open-source browser-automation library (Microsoft, free) used internally by `chaos.js` and `runtime-errors.js` to drive Chromium. It is NOT one of our paid revenue competitors (those are Cypress Cloud, BrowserStack, Sauce Labs — listed in the "we replace" table). Marketing copy in CLAUDE.md and README.md previously listed "Playwright/Cypress → replaces it" which was contradictory; updated to "Cypress / BrowserStack / Sauce Labs → replaces it" so the claim matches reality. README.md:81 and MARKETING.md:58 saying *"e2e module integrates with Playwright/Cypress/Puppeteer"* stays as-is — that describes the implementation honestly. **Future sessions:** do NOT rip Playwright out as a competitor concern; Craig has explicitly authorized the internal use after weighing options A (rip out for CDP), B (soften marketing — chosen), and C (drop headless entirely).

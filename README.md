@@ -22,7 +22,7 @@ Every team using AI coding assistants (Copilot, Claude, Cursor) is duct-taping 8
 | They use | GateTest replaces it with |
 |----------|--------------------------|
 | Jest/Vitest/Mocha | `gatetest --module unitTests` |
-| Playwright/Cypress | `gatetest --module e2e` |
+| Cypress / BrowserStack / Sauce Labs | `gatetest --module e2e` |
 | ESLint/Stylelint | `gatetest --module lint` |
 | Snyk/npm audit | `gatetest --module security` |
 | Lighthouse | `gatetest --module performance` |

@@ -25,6 +25,7 @@ const BUILT_IN_MODULES = {
   liveCrawler: '../modules/live-crawler.js',
   explorer: '../modules/explorer.js',
   chaos: '../modules/chaos.js',
+  runtimeErrors: '../modules/runtime-errors.js',
   mutation: '../modules/mutation.js',
   aiReview: '../modules/ai-review.js',
   fakeFixDetector: '../modules/fake-fix-detector.js',

@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
   if (rl) {
     return NextResponse.json(
       { error: rl.error, code: "RATE_LIMITED" },
-      { status: rl.status, headers: rl.headers || {} }
+      { status: rl.status, headers: { "Retry-After": "300" } }
     );
   }
 

@@ -72,7 +72,7 @@ function parseUrl(input: string): URL | null {
  */
 function translateFinding(check: {
   name: string;
-  severity: string;
+  severity?: string;
   message?: string;
 }): WpFinding | null {
   const sev = (check.severity || "info").toLowerCase();

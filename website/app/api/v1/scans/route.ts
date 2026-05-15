@@ -139,8 +139,10 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. Tier enforcement — does the key allow this suite?
-  // tier_allowed values: 'quick' (free), 'full' (paid), 'all' (enterprise).
-  // Map suites to the minimum tier required.
+  // tier_allowed values: 'quick' (free), 'full' (paid), 'all' (enterprise),
+  // 'admin' (first-party / sibling-product integration; bypasses payment +
+  // rate limits via the SAME code path as everyone else). Map suites to
+  // the minimum tier required.
   const suiteToTier: Record<string, string> = {
     web: "quick",
     quick: "quick",
@@ -151,7 +153,7 @@ export async function POST(req: NextRequest) {
   };
   const requiredTier = suiteToTier[suite];
   const keyTier = auth.key.tier_allowed || "quick";
-  const tierOrder = { quick: 0, full: 1, all: 2 };
+  const tierOrder = { quick: 0, full: 1, all: 2, admin: 3 };
   const keyLevel = tierOrder[keyTier as keyof typeof tierOrder] ?? 0;
   const requiredLevel = tierOrder[requiredTier as keyof typeof tierOrder] ?? 0;
   if (keyLevel < requiredLevel) {

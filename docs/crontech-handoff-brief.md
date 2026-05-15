@@ -8,7 +8,16 @@
 
 GateTest shipped its side of a worker-tier integration with Crontech in PR #80 (branch `feat/crontech-headless-worker`). GateTest needs Crontech to run Playwright/Chromium for `/api/web/scan` runtime checks — Vercel-style serverless can't launch Chromium reliably.
 
-This is the **interim** integration. Crontech's own 7-day plan (Day 2: *"Onboard GateTest as canary customer via the wizard"*) ends with GateTest deploying as a Crontech tenant through BLK-009 customer-deploys. That eventually obsoletes this worker handoff because Chromium will be local. **But the interim worker is still worth shipping** so the runtime-errors capability is real in production before the full migration lands.
+**Architectural principle (CRITICAL):**
+
+All three products (GateTest, Crontech, Gluecron) operate **as if they're strangers**. Each is a standalone product with its own customers, billing, brand, and API. They CAN integrate with each other — but only through the **same public API surface any external customer would use**. The only difference between an external partner and a sibling product: the sibling product gets issued an **admin-tier API key** that bypasses payment / rate limits. **The code path is identical** — there is no special "internal" route. If Crontech wouldn't expose this endpoint to a third-party developer, it shouldn't expose it to GateTest either.
+
+What this means for your build:
+- Don't build a "GateTest-only" endpoint. Build a generic `web-runtime-scan` job service that Crontech could sell to **any** external customer who needs headless-browser scans on demand. GateTest is the first customer; it carries an admin-tier API key issued by Craig.
+- Don't add backdoors / shortcuts / internal-only auth. Everything goes through Bearer + HMAC + Zod-validated body — same as Crontech would require from any external partner.
+- The pricing / billing for this endpoint is a Boss Rule decision (admin keys may bypass it, but external partners pay it).
+
+This is the **interim** integration. Crontech's own 7-day plan (Day 2: *"Onboard GateTest as canary customer via the wizard"*) ends with GateTest deploying as a Crontech *infrastructure* tenant through BLK-009 customer-deploys. That's an infrastructure decision and doesn't bundle the two products at the brand level — GateTest stays a fully standalone product. But shipping the worker tier first means runtime-errors capture is real in production immediately.
 
 ## Crontech stack reminders (this code MUST honor)
 
@@ -421,11 +430,13 @@ curl -X POST https://gatetest.ai/api/web/scan \
 
 When that round-trips successfully, the worker-tier integration is wired.
 
-## The bigger picture — this is the interim, not the destination
+## The bigger picture — both products stay standalone
 
-This worker-tier integration is **Phase 1** of GateTest moving onto Crontech. The 7-day plan in Crontech's CLAUDE.md has Day 2 as *"Onboard GateTest as canary customer via the wizard"* — i.e. GateTest deploys to Crontech as a tenant through BLK-009. When that lands, Chromium will be local to the GateTest process and this HTTP handoff becomes obsolete.
+GateTest and Crontech are independently sold products. This integration treats Crontech as a **vendor selling headless-browser-scan compute** to GateTest — exactly the same way Crontech would sell that compute to any third-party developer who paid for it. GateTest holds an admin-tier API key issued by Craig; that's the only thing distinguishing the integration from a normal customer relationship.
 
-But shipping the worker tier first means runtime-errors capture is real in production immediately — without waiting for the full migration. The HMAC contract + Playwright capture code we ship here is reusable as the in-process module when the full migration completes.
+The 7-day-plan "Day 2: Onboard GateTest as canary customer" is real, but it's an *infrastructure-level* tenancy (GateTest's services may run on Crontech compute via BLK-009), not a *product-level* merger. GateTest's brand, pricing, and customer-facing surface remain entirely independent of Crontech's. Same reverse: GateTest API keys sold to Crontech don't make GateTest a Crontech feature.
+
+**Practical implication for this endpoint:** treat `web-runtime-scan` as a public Crontech product offering. Document it where external developers would find it. Charge for it (admin keys exempted). Build it generic enough that the second customer of this endpoint is as easy to onboard as GateTest was.
 
 ---
 

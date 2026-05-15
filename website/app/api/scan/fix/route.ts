@@ -1423,7 +1423,9 @@ export async function POST(req: NextRequest) {
         tier: input.tier || "full",
         issuesFixed: totalIssuesFixed,
         filesFixed: fixes.length,
-        budget: tracker.snapshot(),
+        // TODO(budget-tracker): re-wire createBudgetTracker + runWithTracker
+        // around _doPost so we can attach a per-scan spend snapshot here.
+        // Lost during the AdaptiveState duplicate cleanup; tracked separately.
       },
     });
 
@@ -1598,7 +1600,13 @@ export async function POST(req: NextRequest) {
     // Return 402 (Payment Required) with the tracker snapshot so support can
     // see exactly which scan hit the cap and how much it had spent.
     if ((outerErr as { code?: string })?.code === "BUDGET_EXCEEDED") {
-      const snap = (outerErr as { tracker?: Record<string, unknown> }).tracker || tracker.snapshot();
+      // The budget tracker is currently UNWIRED in this file (see TODO at
+      // the audit-log call upstream). Until it's re-introduced, this branch
+      // is defensive — it will only fire if BUDGET_EXCEEDED is thrown by a
+      // helper that brings its own tracker snapshot on the error. The local
+      // `tracker.snapshot()` fallback is removed because `tracker` is no
+      // longer in scope.
+      const snap = (outerErr as { tracker?: Record<string, unknown> }).tracker || { reason: "budget-tracker-unwired" };
       console.warn("[GateTest] scan/fix budget exhausted:", JSON.stringify(snap));
       // Audit-log the budget exhaustion — high-value finance signal.
       // eslint-disable-next-line @typescript-eslint/no-require-imports

@@ -50,6 +50,12 @@ const HELP = `
     --ci-init <type>   Generate CI config: github, gitlab, circleci
     --project <path>   Set project root (default: cwd)
     --help, -h         Show this help message
+    --doctor           Audit your environment — checks every prerequisite for
+                       auto-fix to work (Node version, gh CLI, ANTHROPIC_API_KEY,
+                       workflow file version, etc.) and reports what's missing
+                       with copy-paste fix commands. Run this any time you
+                       suspect something isn't working.
+    --doctor-quick     Same but skips the live Anthropic API ping (offline mode)
     --version, -v      Show version
 
     --server <url>     Scan a live server: SSL, headers, DNS, performance
@@ -117,6 +123,19 @@ async function main() {
   if (args.init) {
     initProject(projectRoot);
     return;
+  }
+
+  // Doctor — full environment audit, plain-English, for non-experts.
+  // Designed so Craig (or any customer) can answer "why isn't auto-fix
+  // working?" in 30 seconds without needing a developer to interpret.
+  if (args.doctor) {
+    const { runDoctor, renderDoctor } = require('../src/core/doctor');
+    const result = await runDoctor({
+      projectRoot,
+      probeAnthropic: !args.doctorQuick,
+    });
+    console.log(renderDoctor(result));
+    process.exit(result.summary.bad > 0 ? 1 : 0);
   }
 
   // Health check — verify GitHub API access before starting scans
@@ -514,6 +533,8 @@ function parseArgs(argv) {
     else if (arg === '--init') args.init = true;
     else if (arg === '--init-claude-md') args.initClaudeMd = true;
     else if (arg === '--health') args.health = true;
+    else if (arg === '--doctor') args.doctor = true;
+    else if (arg === '--doctor-quick') { args.doctor = true; args.doctorQuick = true; }
     else if (arg === '--parallel') args.parallel = true;
     else if (arg === '--stop-first') args['stop-first'] = true;
     else if (arg === '--fix') args.fix = true;

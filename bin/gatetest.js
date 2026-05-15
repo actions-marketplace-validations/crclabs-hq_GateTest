@@ -36,6 +36,13 @@ const HELP = `
     --parallel         Run modules in parallel
     --stop-first       Stop on first module failure
     --fix              Auto-fix safe issues (formatting, imports, etc.)
+    --auto-pr          After a failed gate, AI-fix every finding with a file path
+                       and open a pull request with the fixes. Requires gh CLI
+                       authenticated (or GH_TOKEN env var) AND ANTHROPIC_API_KEY.
+                       Use this in CI to turn "gate blocked" into "gate blocked
+                       BUT here is a PR to merge."
+    --auto-pr-base <ref>    Base branch for the auto-PR (default: current branch)
+    --auto-pr-branch <name> Override the auto-generated branch name
     --diff             Only scan git-changed files (fast pre-commit mode)
     --watch            Watch for file changes and re-scan continuously
     --sarif            Output results in SARIF format (for GitHub Security)
@@ -335,7 +342,164 @@ async function main() {
     summary = await gatetest.runSuite(args.suite || 'standard');
   }
 
+  // --auto-pr: when the gate fails AND the customer wants automated fixes,
+  // invoke the AI fix engine for every finding with a file path and open a
+  // pull request. Closes the long-standing "gate finds errors but doesn't
+  // fix them" UX gap.
+  if (args.autoPr && summary.gateStatus !== 'PASSED') {
+    const autoPrResult = await runAutoPr(summary, projectRoot, args);
+    // The summary's gate verdict still drives the exit code so the original
+    // PR remains blocked until reviewed — but the fix-PR is now waiting.
+    if (autoPrResult.prUrl) {
+      console.log(`\n  \x1b[36m[GateTest auto-PR] Fix PR opened: ${autoPrResult.prUrl}\x1b[0m\n`);
+    } else if (autoPrResult.error) {
+      console.log(`\n  \x1b[33m[GateTest auto-PR] Could not open fix PR: ${autoPrResult.error}\x1b[0m\n`);
+    }
+  }
+
   process.exit(summary.gateStatus === 'PASSED' ? 0 : 1);
+}
+
+/**
+ * Auto-PR runner — applies AI-driven fixes to every finding that has a file
+ * path, then opens a pull request via the `gh` CLI.
+ *
+ * Returns { prUrl, fixesApplied, error }. Never throws — the gate's exit
+ * code is the authoritative signal; the auto-PR is a value-add on top.
+ *
+ * Pre-conditions checked at runtime:
+ *   - We're inside a git repository
+ *   - `gh` CLI is on PATH and authenticated (or GH_TOKEN is set)
+ *   - ANTHROPIC_API_KEY is set (the AI fix engine no-ops without it)
+ */
+async function runAutoPr(summary, projectRoot, args) {
+  const { execSync } = require('child_process');
+  const { aiFix } = require('../src/core/ai-fix-engine');
+
+  function sh(cmd, opts) {
+    return execSync(cmd, { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...opts });
+  }
+
+  // Pre-flight checks
+  try { sh('git rev-parse --git-dir'); }
+  catch { return { error: 'Not a git repository — auto-PR skipped' }; }
+
+  try { sh('gh --version'); }
+  catch { return { error: 'gh CLI not found on PATH. Install: https://cli.github.com/' }; }
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { error: 'ANTHROPIC_API_KEY not set — AI fix engine cannot run' };
+  }
+
+  // Capture original branch so we can return to it if needed
+  let originalBranch = 'main';
+  try { originalBranch = sh('git rev-parse --abbrev-ref HEAD').trim(); }
+  catch { /* default to main */ }
+
+  const baseBranch = args.autoPrBase || originalBranch;
+  const ts = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+  const fixBranch = args.autoPrBranch || `gatetest/auto-fix-${ts}`;
+
+  // Collect every fixable finding from the summary
+  const fixable = [];
+  for (const moduleResult of summary.results || []) {
+    for (const check of moduleResult.checks || []) {
+      if (check.passed) continue;
+      if (check.severity !== 'error' && check.severity !== 'warning') continue;
+      // We need a file path to know where to fix
+      const file = check.file || check.details?.file || check.path;
+      if (!file) continue;
+      fixable.push({
+        moduleName: moduleResult.module || moduleResult.name || 'unknown',
+        checkName: check.name || 'unnamed-check',
+        file,
+        line: check.line || check.details?.line || null,
+        message: check.message || check.details?.message || check.name || '',
+        severity: check.severity,
+      });
+    }
+  }
+
+  if (fixable.length === 0) {
+    return { error: 'No findings with file paths — nothing to fix automatically' };
+  }
+
+  console.log(`\n  [GateTest auto-PR] ${fixable.length} fixable finding(s). Generating AI fixes...\n`);
+
+  // Create fix branch off the current branch
+  try {
+    sh(`git checkout -b ${fixBranch}`);
+  } catch (err) {
+    return { error: `Could not create branch ${fixBranch}: ${err.message?.slice(0, 200) || err}` };
+  }
+
+  let fixesApplied = 0;
+  const fixesAttempted = [];
+  // Cap at 50 fixes per run to bound Anthropic spend
+  const FIX_CAP = 50;
+  for (const finding of fixable.slice(0, FIX_CAP)) {
+    try {
+      const result = await aiFix({
+        filePath: require('path').isAbsolute(finding.file) ? finding.file : require('path').join(projectRoot, finding.file),
+        issueTitle: finding.checkName,
+        issueMessage: finding.message,
+        lineNumber: finding.line,
+        projectRoot,
+      });
+      fixesAttempted.push({ ...finding, fixed: result.fixed === true, description: result.description });
+      if (result.fixed === true) {
+        fixesApplied += 1;
+        console.log(`  [\x1b[32m✓\x1b[0m] ${finding.file}: ${finding.checkName}`);
+      } else {
+        console.log(`  [\x1b[33m~\x1b[0m] ${finding.file}: ${finding.checkName} (skipped: ${result.description?.slice(0, 60) || 'no-fix'})`);
+      }
+    } catch (err) {
+      console.log(`  [\x1b[31m✗\x1b[0m] ${finding.file}: ${err.message?.slice(0, 80) || err}`);
+    }
+  }
+
+  if (fixesApplied === 0) {
+    // Restore original branch — nothing to commit
+    try { sh(`git checkout ${originalBranch}`); sh(`git branch -D ${fixBranch}`); } catch { /* ignore */ }
+    return { error: 'AI fix engine could not generate any fixes' };
+  }
+
+  // Commit + push + open PR
+  try {
+    sh('git add -A');
+    const subject = `fix: GateTest auto-fixes for ${fixesApplied}/${fixable.length} findings`;
+    const body = fixesAttempted
+      .map((f) => `  * ${f.fixed ? '[fixed]' : '[skipped]'} ${f.moduleName}: ${f.file}${f.line ? `:${f.line}` : ''} — ${f.checkName}`)
+      .join('\n');
+    sh(`git commit -m ${JSON.stringify(subject + '\n\n' + body)}`);
+    sh(`git push -u origin ${fixBranch}`);
+
+    const prTitle = `GateTest auto-fix — ${fixesApplied} of ${fixable.length} findings`;
+    const prBody = [
+      `# GateTest auto-fix`,
+      ``,
+      `The CI gate found ${fixable.length} actionable finding(s) on this branch. This PR applies AI-generated fixes for ${fixesApplied} of them.`,
+      ``,
+      `## Findings handled`,
+      ``,
+      ...fixesAttempted.map((f) => `- ${f.fixed ? '✅' : '⚠️'} \`${f.file}${f.line ? `:${f.line}` : ''}\` — \`${f.moduleName}:${f.checkName}\` — ${f.message?.slice(0, 200) || '(no message)'}`),
+      ``,
+      `## What to do`,
+      ``,
+      `1. Review each diff in this PR carefully — AI fixes can introduce subtle changes`,
+      `2. Run tests locally if possible`,
+      `3. Merge this PR before merging the original PR — the gate is still blocking that one until these fixes land`,
+      ``,
+      `🤖 Generated by GateTest \`--auto-pr\``,
+    ].join('\n');
+
+    const prResult = sh(`gh pr create --base ${JSON.stringify(baseBranch)} --head ${JSON.stringify(fixBranch)} --title ${JSON.stringify(prTitle)} --body ${JSON.stringify(prBody)}`);
+    const prUrl = prResult.trim().split('\n').filter((l) => l.startsWith('https://')).pop();
+
+    return { prUrl, fixesApplied, fixesAttempted: fixable.length };
+  } catch (err) {
+    return { error: `Commit/push/PR step failed: ${err.message?.slice(0, 200) || err}`, fixesApplied };
+  }
 }
 
 function parseArgs(argv) {
@@ -353,6 +517,9 @@ function parseArgs(argv) {
     else if (arg === '--parallel') args.parallel = true;
     else if (arg === '--stop-first') args['stop-first'] = true;
     else if (arg === '--fix') args.fix = true;
+    else if (arg === '--auto-pr') args.autoPr = true;
+    else if (arg === '--auto-pr-base' && argv[i + 1]) args.autoPrBase = argv[++i];
+    else if (arg === '--auto-pr-branch' && argv[i + 1]) args.autoPrBranch = argv[++i];
     else if (arg === '--diff') args.diff = true;
     else if (arg === '--watch') args.watch = true;
     else if (arg === '--sarif') args.sarif = true;

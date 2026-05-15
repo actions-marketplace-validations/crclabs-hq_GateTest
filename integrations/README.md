@@ -57,13 +57,35 @@ your org starts opening surgical-fix PRs the moment a scan fails:
 6. Save
 
 That's it. The next failed gate run on any repo in your org will:
-- Run `gatetest --suite quick --fix` (surgical-diff mode — never mutates
-  unrelated code)
+- Run `gatetest --suite quick --auto-pr` — calls the AI fix engine for every
+  finding with a file path, applies the Claude-generated fixes, commits them,
+  and opens a PR via the `gh` CLI (one CLI call, no extra workflow steps)
 - Open a `gatetest/auto-repair-<run-id>` branch with the fixes
-- Open a PR for review — original failing PR stays untouched
+- Generate a PR body that lists every finding, marked ✅ (fixed) or
+  ⚠️ (couldn't fix), so reviewers see what AI handled and what they need
+  to do manually
+- The original failing PR stays untouched — it remains blocked until the
+  auto-fix PR is merged
 
 To **disable** auto-fix on a specific repo: Settings → Secrets and variables
 → Actions → Variables tab → New repository variable → `GATETEST_AUTOFIX = off`.
+
+### Manual use outside CI
+
+The same flow works on any developer machine:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+gh auth login                                  # if not already logged in
+git checkout -b your-feature
+# … make some changes …
+gatetest --suite quick --auto-pr               # gate runs, AI fixes what
+                                               # it can, opens a PR
+```
+
+Cap: at most 50 fixes per `--auto-pr` invocation, bounded to keep Anthropic
+spend predictable. Re-run after merging the auto-fix PR to handle any
+remaining findings.
 
 When the key is **missing**, the workflow prints a one-shot setup hint at
 the end of every failed run so a new dev can self-serve the activation.

@@ -295,6 +295,24 @@ const DEFAULT_CONFIG = {
       'seo',
       'links',
       'performance',
+      'runtimeErrors',
+    ],
+
+    // Generic web URL suite — runs against any public site. Same engine
+    // as the wp suite but without the WordPress-specific probes. Adds
+    // runtime browser checks so we catch live JS errors, CSP violations,
+    // hydration mismatches, and broken assets — the failures static
+    // probing alone can't see.
+    web: [
+      'memory',
+      'webHeaders',
+      'tlsSecurity',
+      'cookieSecurity',
+      'accessibility',
+      'seo',
+      'links',
+      'performance',
+      'runtimeErrors',
     ],
   },
 

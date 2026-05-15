@@ -10,9 +10,34 @@ permissions:
   contents: read
 
 jobs:
+  # Fast TypeScript gate — runs first, blocks the slower test + build jobs
+  # on type errors. Catches the cache-cold Vercel regressions that have
+  # been slipping through Next.js's build-time tsc (we've had 4 in 24h:
+  # AdaptiveState duplicate, turbopack dynamic require, orphan tracker,
+  # AuthFailure.headers). `tsc --noEmit` is ~10s vs ~2-3min for the full
+  # build — fast feedback, clear failure message, no Turbopack noise.
+  typecheck:
+    name: TypeScript (website)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install website dependencies
+        run: cd website && npm ci
+
+      - name: Run tsc --noEmit
+        run: cd website && npx tsc --noEmit
+
   test:
     name: Test + Build
     runs-on: ubuntu-latest
+    needs: typecheck
     steps:
       - uses: actions/checkout@v4
 

@@ -31,7 +31,12 @@ class LiveCrawlerModule extends BaseModule {
 
   async run(result, config) {
     const crawlConfig = config.getModuleConfig('liveCrawler') || {};
-    const baseUrl = crawlConfig.url || config.get('liveCrawler.url');
+    const baseUrl =
+      crawlConfig.url ||
+      config.get('liveCrawler.url') ||
+      config.get('targetUrl') ||
+      config.get('webUrl') ||
+      config.get('wpUrl');
 
     if (!baseUrl) {
       result.addCheck('crawl:config', true, {
@@ -51,6 +56,17 @@ class LiveCrawlerModule extends BaseModule {
     const brokenLinks = [];
     const redirects = [];
     const brokenImages = [];
+    // Phase 2 — richer per-page + cross-page surfaces. Each list feeds a
+    // distinct addCheck() at the end so the url-finding-clusterer groups
+    // them cleanly into the customer report.
+    const brokenScripts = [];
+    const brokenStylesheets = [];
+    const missingMetaDescription = [];
+    const missingCanonical = [];
+    const slowPages = [];
+    const anchorMissingId = [];
+    const titlesByUrl = new Map();              // url -> trimmed title (for duplicate detection)
+    const slowThresholdMs = crawlConfig.slowThresholdMs || 2500;
 
     // Determine crawl mode: Playwright (JS-rendered) or HTTP-only
     let playwright = null;
@@ -116,6 +132,125 @@ class LiveCrawlerModule extends BaseModule {
       });
     }
 
+    if (brokenScripts.length > 0) {
+      result.addCheck('crawl:broken-scripts', false, {
+        severity: 'error',
+        message: `${brokenScripts.length} broken script(s) found — features depending on these scripts will silently fail for real users`,
+        details: brokenScripts.slice(0, 30),
+        suggestion: 'Audit <script src> URLs. 404s typically mean a CDN deprecated the asset or a deploy didn\'t ship the bundle.',
+      });
+    }
+
+    if (brokenStylesheets.length > 0) {
+      result.addCheck('crawl:broken-stylesheets', false, {
+        severity: 'error',
+        message: `${brokenStylesheets.length} broken stylesheet(s) found — users see unstyled HTML`,
+        details: brokenStylesheets.slice(0, 30),
+        suggestion: 'Audit <link rel="stylesheet"> URLs and CDN endpoints for 404s.',
+      });
+    }
+
+    if (missingMetaDescription.length > 0) {
+      result.addCheck('crawl:missing-meta-description', false, {
+        severity: 'warning',
+        message: `${missingMetaDescription.length} page(s) missing meta description — Google generates poor snippet text for these pages`,
+        details: missingMetaDescription.slice(0, 30),
+        suggestion: 'Add <meta name="description" content="..."> to each page. Ideal length 150-160 characters.',
+      });
+    }
+
+    if (missingCanonical.length > 0) {
+      result.addCheck('crawl:missing-canonical', false, {
+        severity: 'warning',
+        message: `${missingCanonical.length} page(s) missing <link rel="canonical"> — risks duplicate-content SEO penalties`,
+        details: missingCanonical.slice(0, 30),
+        suggestion: 'Add <link rel="canonical" href="..."> pointing at the page\'s preferred URL.',
+      });
+    }
+
+    if (slowPages.length > 0) {
+      result.addCheck('crawl:slow-pages', false, {
+        severity: 'warning',
+        message: `${slowPages.length} page(s) slower than threshold — real users bounce on slow TTFB`,
+        details: slowPages.slice(0, 30),
+        suggestion: 'Investigate slow endpoints. Common causes: cold-start backends, unindexed DB queries, blocking 3rd-party scripts.',
+      });
+    }
+
+    if (anchorMissingId.length > 0) {
+      result.addCheck('crawl:anchor-missing-target', false, {
+        severity: 'warning',
+        message: `${anchorMissingId.length} broken anchor link(s) — clicking does nothing for users`,
+        details: anchorMissingId.slice(0, 30),
+        suggestion: 'Either remove the anchor or add the corresponding id="..." attribute to the target element.',
+      });
+    }
+
+    // Cross-page: titles that repeat across pages dilute SEO and confuse users
+    // in browser tabs. Build a counter, surface duplicates.
+    const titleCounts = new Map();
+    for (const t of titlesByUrl.values()) {
+      titleCounts.set(t, (titleCounts.get(t) || 0) + 1);
+    }
+    const duplicateTitles = [];
+    for (const [title, count] of titleCounts.entries()) {
+      if (count > 1) {
+        const urls = Array.from(titlesByUrl.entries())
+          .filter(([, t]) => t === title)
+          .map(([u]) => u);
+        duplicateTitles.push({ title, count, urls });
+      }
+    }
+    if (duplicateTitles.length > 0) {
+      result.addCheck('crawl:duplicate-titles', false, {
+        severity: 'warning',
+        message: `${duplicateTitles.length} title(s) used by multiple pages — confuses users + dilutes SEO`,
+        details: duplicateTitles.slice(0, 20),
+        suggestion: 'Each page should have a unique <title> describing that page specifically.',
+      });
+    }
+
+    // Sitemap and robots.txt — fetch independently of the crawl loop.
+    if (crawlConfig.checkSitemap !== false) {
+      try {
+        const sitemapUrl = new URL('/sitemap.xml', baseUrl).href;
+        const r = await this._checkUrl(sitemapUrl, timeout);
+        if (r.status >= 400) {
+          result.addCheck('crawl:sitemap-missing', false, {
+            severity: 'warning',
+            message: `No /sitemap.xml found (HTTP ${r.status}) — Google crawls without guidance`,
+            suggestion: 'Generate a sitemap.xml. Most frameworks have a plugin for this.',
+          });
+        }
+      } catch { /* network error, skip silently */ }
+    }
+    if (crawlConfig.checkRobotsTxt !== false) {
+      try {
+        const robotsUrl = new URL('/robots.txt', baseUrl).href;
+        const r = await this._checkUrl(robotsUrl, timeout);
+        if (r.status >= 400) {
+          result.addCheck('crawl:robots-missing', false, {
+            severity: 'info',
+            message: `No /robots.txt found (HTTP ${r.status}) — crawlers default to allow-all`,
+            suggestion: 'Add a /robots.txt even if it just says "User-agent: *\\nAllow: /" — signals intentionality.',
+          });
+        }
+      } catch { /* network error, skip silently */ }
+    }
+    if (crawlConfig.checkFavicon !== false) {
+      try {
+        const faviconUrl = new URL('/favicon.ico', baseUrl).href;
+        const r = await this._checkUrl(faviconUrl, timeout);
+        if (r.status >= 400) {
+          result.addCheck('crawl:favicon-missing', false, {
+            severity: 'info',
+            message: `No /favicon.ico found (HTTP ${r.status}) — browser tabs show a generic icon`,
+            suggestion: 'Add a favicon.ico in the site root. Modern alternative: <link rel="icon" href="..."> in <head>.',
+          });
+        }
+      } catch { /* network error, skip silently */ }
+    }
+
     if (redirects.length > 0) {
       result.addCheck('crawl:redirects', true, {
         message: `${redirects.length} redirect(s) detected`,
@@ -144,6 +279,7 @@ class LiveCrawlerModule extends BaseModule {
     return new Promise((resolve, reject) => {
       const parsedUrl = new URL(url);
       const client = parsedUrl.protocol === 'https:' ? https : http;
+      const startedAt = Date.now();
 
       const req = client.get(url, {
         timeout,
@@ -177,6 +313,7 @@ class LiveCrawlerModule extends BaseModule {
             contentType: res.headers['content-type'] || '',
             body,
             redirected: false,
+            responseMs: Date.now() - startedAt,
           });
         });
       });
@@ -407,6 +544,42 @@ class LiveCrawlerModule extends BaseModule {
         const titleMatch = body.match(/<title>([^<]*)<\/title>/i);
         if (!titleMatch || titleMatch[1].trim().length === 0) {
           errors.push({ url, type: 'missing-title', message: 'Page has no <title> or title is empty' });
+        } else {
+          titlesByUrl.set(url, titleMatch[1].trim());
+        }
+
+        // Meta description — Google snippet + social previews depend on this.
+        const metaDescMatch = body.match(/<meta\s+[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']*)["']/i);
+        if (!metaDescMatch || metaDescMatch[1].trim().length === 0) {
+          missingMetaDescription.push({ url, message: 'No meta description tag' });
+        }
+
+        // Canonical URL — prevents duplicate-content SEO penalties.
+        const canonicalMatch = body.match(/<link\s+[^>]*rel\s*=\s*["']canonical["'][^>]*href\s*=\s*["']([^"']+)["']/i);
+        if (!canonicalMatch) {
+          missingCanonical.push({ url, message: 'No <link rel="canonical"> tag' });
+        }
+
+        // Slow page heuristic — real users bounce on TTFB > 2.5s.
+        if (pageResult.responseMs && pageResult.responseMs > slowThresholdMs) {
+          slowPages.push({ url, responseMs: pageResult.responseMs, message: `Page took ${pageResult.responseMs}ms (threshold ${slowThresholdMs}ms)` });
+        }
+
+        // Anchor links pointing at IDs that don't exist on the page.
+        // Customer clicks "back to top" → nothing happens.
+        const idsOnPage = new Set();
+        const idRegex = /\bid\s*=\s*["']([^"'\s]+)["']/gi;
+        let idMatch;
+        while ((idMatch = idRegex.exec(body)) !== null) {
+          idsOnPage.add(idMatch[1]);
+        }
+        const anchorRegex = /<a\s+[^>]*href\s*=\s*["']#([^"'\s]+)["']/gi;
+        let anchorMatch;
+        while ((anchorMatch = anchorRegex.exec(body)) !== null) {
+          const targetId = anchorMatch[1];
+          if (!idsOnPage.has(targetId)) {
+            anchorMissingId.push({ page: url, anchor: `#${targetId}`, message: `<a href="#${targetId}"> targets a non-existent id` });
+          }
         }
 
         const errorPatterns = [
@@ -440,6 +613,45 @@ class LiveCrawlerModule extends BaseModule {
             }
           } catch {
             brokenImages.push({ page: url, image: imgUrl, status: 'timeout/error' });
+          }
+        }
+
+        // Broken external scripts — empty 404s here break entire features
+        // (search, auth, analytics) silently for real users.
+        const scriptRegex = /<script[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi;
+        const scriptUrls = new Set();
+        let scriptMatch;
+        while ((scriptMatch = scriptRegex.exec(body)) !== null) {
+          try {
+            const resolved = new URL(scriptMatch[1].trim(), url).href;
+            scriptUrls.add(resolved);
+          } catch { /* invalid URL */ }
+        }
+        for (const scriptUrl of scriptUrls) {
+          try {
+            const r = await this._checkUrl(scriptUrl, timeout);
+            if (r.status >= 400) brokenScripts.push({ page: url, script: scriptUrl, status: r.status });
+          } catch {
+            brokenScripts.push({ page: url, script: scriptUrl, status: 'timeout/error' });
+          }
+        }
+
+        // Broken stylesheets — visible to users as unstyled HTML.
+        const styleRegex = /<link\s+[^>]*rel\s*=\s*["'](?:stylesheet|preload)["'][^>]*href\s*=\s*["']([^"']+)["']/gi;
+        const styleUrls = new Set();
+        let styleMatch;
+        while ((styleMatch = styleRegex.exec(body)) !== null) {
+          try {
+            const resolved = new URL(styleMatch[1].trim(), url).href;
+            styleUrls.add(resolved);
+          } catch { /* invalid URL */ }
+        }
+        for (const styleUrl of styleUrls) {
+          try {
+            const r = await this._checkUrl(styleUrl, timeout);
+            if (r.status >= 400) brokenStylesheets.push({ page: url, stylesheet: styleUrl, status: r.status });
+          } catch {
+            brokenStylesheets.push({ page: url, stylesheet: styleUrl, status: 'timeout/error' });
           }
         }
 

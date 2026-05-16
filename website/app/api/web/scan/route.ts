@@ -136,6 +136,71 @@ function translateFinding(check: {
     body =
       (check.message || "") +
       `\n\nA headless Chromium instance could not reach this page. If a scanner can't load it, real visitors will hit the same wall.`;
+  } else if (name === "crawl:broken-links" || name === "crawl:broken-images") {
+    module = "liveCrawler";
+    title = name === "crawl:broken-images" ? "Broken image(s) on your site" : "Broken link(s) on your site";
+    body =
+      (check.message || "") +
+      `\n\nVisitors clicking these get a 404 — bad for conversion and SEO.`;
+  } else if (name === "crawl:broken-scripts") {
+    module = "liveCrawler";
+    title = "Broken JavaScript bundle";
+    body =
+      (check.message || "") +
+      `\n\nWhen a JS file 404s, the features depending on it silently break. Users may not even see an error — they just won't be able to use search, forms, or interactive elements.`;
+  } else if (name === "crawl:broken-stylesheets") {
+    module = "liveCrawler";
+    title = "Broken stylesheet";
+    body =
+      (check.message || "") +
+      `\n\nVisitors see raw HTML with no styling for the few seconds before the page falls back, or permanently if the file never loads.`;
+  } else if (name === "crawl:missing-meta-description") {
+    module = "liveCrawler";
+    title = "Pages missing meta description";
+    body =
+      (check.message || "") +
+      `\n\nGoogle's snippet text uses your meta description. Without one, Google guesses — usually poorly. Click-through rate suffers.`;
+  } else if (name === "crawl:missing-canonical") {
+    module = "liveCrawler";
+    title = "Pages missing canonical link";
+    body =
+      (check.message || "") +
+      `\n\nWithout a canonical, multiple URLs (with/without trailing slash, with/without query strings) can be indexed as separate pages — diluting SEO authority.`;
+  } else if (name === "crawl:slow-pages") {
+    module = "liveCrawler";
+    title = "Slow-loading pages";
+    body =
+      (check.message || "") +
+      `\n\nReal users bounce when TTFB exceeds ~2.5 seconds. Each second past that costs measurable revenue.`;
+  } else if (name === "crawl:anchor-missing-target") {
+    module = "liveCrawler";
+    title = "Anchor links pointing at non-existent targets";
+    body =
+      (check.message || "") +
+      `\n\nA visitor clicks the link and nothing happens. Either remove the anchor or add the id to the target element.`;
+  } else if (name === "crawl:duplicate-titles") {
+    module = "liveCrawler";
+    title = "Duplicate page titles";
+    body =
+      (check.message || "") +
+      `\n\nMultiple pages share a <title>. Browser tabs become indistinguishable and Google de-prioritises duplicated content.`;
+  } else if (name === "crawl:sitemap-missing") {
+    module = "liveCrawler";
+    title = "No sitemap.xml found";
+    body = check.message || "";
+  } else if (name === "crawl:robots-missing") {
+    module = "liveCrawler";
+    title = "No robots.txt found";
+    body = check.message || "";
+  } else if (name === "crawl:favicon-missing") {
+    module = "liveCrawler";
+    title = "No favicon found";
+    body = check.message || "";
+  } else if (name.startsWith("crawl:error:")) {
+    module = "liveCrawler";
+    const errType = name.replace("crawl:error:", "");
+    title = `Site issue detected: ${errType.replace(/-/g, " ")}`;
+    body = check.message || "";
   } else if (name.startsWith("accessibility:") || name.includes("a11y")) {
     module = "accessibility";
     title = "Accessibility issue";

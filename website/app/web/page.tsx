@@ -6,6 +6,7 @@
 // detection, real CSP violation capture).
 
 import Link from "next/link";
+import { UrlScanFlow } from "@/app/components/UrlScanFlow";
 
 export const metadata = {
   title: "GateTest — Live Website Health Check, Security + Runtime Audit",
@@ -36,30 +37,7 @@ export default function WebLanding() {
           checks. One 0-100 score. Plain-English fixes.
         </p>
 
-        <form
-          action="/api/web/scan"
-          method="POST"
-          className="flex flex-col sm:flex-row items-stretch justify-center gap-3 max-w-xl mx-auto mb-12"
-        >
-          <input
-            type="url"
-            name="url"
-            required
-            placeholder="https://yoursite.com"
-            className="flex-1 px-5 py-4 rounded-xl border border-border bg-background-alt text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent text-lg"
-          />
-          <button
-            type="submit"
-            className="px-8 py-4 rounded-xl bg-accent text-white font-semibold text-lg hover:bg-accent-hover transition-colors"
-          >
-            Scan my site
-          </button>
-        </form>
-
-        <p className="text-sm text-muted">
-          Free preview — top 3 root-cause issues and your health score.
-          No signup, no install, no admin access needed.
-        </p>
+        <UrlScanFlow suite="web" endpoint="/api/web/scan" />
       </section>
 
       <section className="px-6 py-16 max-w-5xl mx-auto border-t border-border">

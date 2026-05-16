@@ -96,8 +96,29 @@ interface UrlScanFlowProps {
    * Falls back to the non-streaming endpoint if the stream errors.
    */
   streamEndpoint?: string;
+  /**
+   * Optional recommend endpoint. When set, the component probes the URL
+   * after a short debounce and shows a "we detected X, recommend Y"
+   * card under the form so customers can sanity-check the scan suite
+   * before they commit.
+   */
+  recommendEndpoint?: string;
   placeholderUrl?: string;
   brandLabel?: string;
+}
+
+interface Recommendation {
+  detected: { cms?: string | null; framework?: string | null; cdn?: string | null; server?: string | null; language?: string | null; hints?: string[] } | null;
+  recommendation: {
+    suite: "web" | "wp";
+    tier: "quick" | "full" | "scan_fix" | "nuclear";
+    emphasis: string[];
+    reasoning: string[];
+    ctaUrl: string;
+    suiteDescription: string;
+    tierDescription: string;
+    priceUsd: number;
+  };
 }
 
 interface ModuleProgress {
@@ -423,6 +444,54 @@ function CopyForClaudeButton({ result }: { result: ScanResult }) {
   );
 }
 
+function RecommendationCard({ rec }: { rec: Recommendation }) {
+  const detected = rec.detected || {};
+  const detectedBits: string[] = [];
+  if (detected.cms) detectedBits.push(detected.cms);
+  if (detected.framework) detectedBits.push(detected.framework);
+  if (detected.cdn && detected.cdn !== detected.server) detectedBits.push(detected.cdn);
+  if (detected.server) detectedBits.push(detected.server);
+  if (detected.language) detectedBits.push(detected.language);
+  return (
+    <div className="mt-6 max-w-2xl mx-auto rounded-2xl border border-accent/20 bg-accent/5 p-5">
+      <div className="flex items-start gap-3">
+        <span className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full bg-accent/15 text-accent text-sm font-bold">✦</span>
+        <div className="flex-1">
+          <div className="flex flex-wrap items-baseline gap-2 mb-2">
+            <p className="font-semibold text-foreground">Detected</p>
+            {detectedBits.length > 0 ? (
+              <p className="text-sm text-muted">
+                {detectedBits.map((d, i) => (
+                  <span key={d}>
+                    {i > 0 && <span className="mx-1.5 text-muted/60">·</span>}
+                    <span className="text-foreground font-medium">{d}</span>
+                  </span>
+                ))}
+              </p>
+            ) : (
+              <p className="text-sm text-muted">No specific framework — generic web site</p>
+            )}
+          </div>
+          <p className="text-sm text-foreground/90 leading-relaxed">
+            <span className="font-semibold">Recommended:</span>{" "}
+            {rec.recommendation.suiteDescription.toLowerCase()} at{" "}
+            <span className="font-semibold capitalize">{rec.recommendation.tier.replace("_", " + ")}</span> tier
+            {rec.recommendation.tier !== "quick" && (
+              <span className="text-muted"> (${rec.recommendation.priceUsd})</span>
+            )}
+            .
+          </p>
+          {rec.recommendation.reasoning[0] && (
+            <p className="text-sm text-muted leading-relaxed mt-1">
+              {rec.recommendation.reasoning[0]}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PaywallCard({ paywall, targetUrl }: { paywall: NonNullable<ScanResult["paywall"]>; targetUrl: string }) {
   return (
     <div className="rounded-3xl bg-foreground text-background p-8 sm:p-10">
@@ -621,7 +690,7 @@ function RuntimePending({ pollUrl, onComplete }: { pollUrl: string; onComplete: 
   );
 }
 
-export function UrlScanFlow({ suite, endpoint, streamEndpoint, placeholderUrl = "https://yoursite.com", brandLabel }: UrlScanFlowProps) {
+export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint, placeholderUrl = "https://yoursite.com", brandLabel }: UrlScanFlowProps) {
   type Phase = "idle" | "scanning" | "results" | "error";
   const [phase, setPhase] = useState<Phase>("idle");
   const [url, setUrl] = useState("");
@@ -629,8 +698,46 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, placeholderUrl = 
   const [error, setError] = useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [liveModules, setLiveModules] = useState<ModuleProgress[]>([]);
+  const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const tickerRef = useRef<NodeJS.Timeout | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const recAbortRef = useRef<AbortController | null>(null);
+
+  // Debounced pre-scan recommendation fetch. Triggers when the URL looks
+  // valid AND hasn't changed for 600ms. Aborts any in-flight previous
+  // recommendation when the URL changes. Failures are silent — the
+  // recommendation card just doesn't appear; the scan flow still works.
+  useEffect(() => {
+    if (!recommendEndpoint || phase !== "idle") return;
+    const trimmed = url.trim();
+    if (!trimmed) { setRecommendation(null); return; }
+    // Very loose URL shape check — avoid pinging for "https://"
+    if (!/^https?:\/\/[^/\s.]+\.[^/\s]+/i.test(trimmed) && !/^[^/\s.]+\.[^/\s.]+/.test(trimmed)) {
+      setRecommendation(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      if (recAbortRef.current) recAbortRef.current.abort();
+      const abort = new AbortController();
+      recAbortRef.current = abort;
+      try {
+        const res = await fetch(recommendEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: trimmed }),
+          signal: abort.signal,
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.recommendation) {
+          setRecommendation(data as Recommendation);
+        }
+      } catch {
+        /* abort or network error — silent */
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [url, recommendEndpoint, phase]);
 
   useEffect(() => {
     if (phase === "scanning") {
@@ -873,9 +980,12 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, placeholderUrl = 
       </form>
 
       {phase === "idle" && (
-        <p className="text-center text-sm text-muted mt-6">
-          Free preview — top 3 issues plus your Health Score. No signup, no install.
-        </p>
+        <>
+          <p className="text-center text-sm text-muted mt-6">
+            Free preview — top 3 issues plus your Health Score. No signup, no install.
+          </p>
+          {recommendation && <RecommendationCard rec={recommendation} />}
+        </>
       )}
 
       {/* SCANNING STATE — cinematic progress ticker.

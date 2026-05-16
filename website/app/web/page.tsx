@@ -41,6 +41,7 @@ export default function WebLanding() {
           suite="web"
           endpoint="/api/web/scan"
           streamEndpoint="/api/web/scan/stream"
+          recommendEndpoint="/api/scan/recommend"
         />
       </section>
 

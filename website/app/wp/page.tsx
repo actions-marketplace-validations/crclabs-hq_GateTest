@@ -39,6 +39,7 @@ export default function WordPressLanding() {
           suite="wp"
           endpoint="/api/wp/scan"
           streamEndpoint="/api/wp/scan/stream"
+          recommendEndpoint="/api/scan/recommend"
           brandLabel="WordPress scan"
         />
       </section>

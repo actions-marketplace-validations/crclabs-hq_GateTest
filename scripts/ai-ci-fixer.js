@@ -3,10 +3,13 @@
  * AI CI-fixer — watches for failing CI runs, asks Claude what's wrong,
  * opens a PR with the proposed fix, and runs the gate against it.
  *
- * AUTHORIZATION: This script is gated behind the `GATETEST_AI_CI_FIXER=1`
- * repository variable (defaults OFF). The workflow that drives this script
- * (`.github/workflows/ai-ci-fixer.yml`) checks that flag before running so
- * the code lands without any surprise Anthropic API spend.
+ * ACTIVATION: The fixer activates automatically when `ANTHROPIC_API_KEY`
+ * is set as a repo secret — customer brings their own key, the presence
+ * of the key IS the opt-in. The `GATETEST_AI_CI_FIXER` repository variable
+ * is now an OPT-OUT escape hatch: set it to `"0"` to explicitly disable
+ * even when the key is present (useful if a customer is burning through
+ * tokens). Any other value (including `"1"` or unset) leaves the fixer
+ * enabled.
  *
  * Inputs (env vars):
  *   ANTHROPIC_API_KEY   — required, fail-closed if missing
@@ -15,6 +18,7 @@
  *   WORKFLOW_RUN_ID     — the failed workflow run id
  *   MAX_FIX_ATTEMPTS    — default 3
  *   CLAUDE_MODEL        — default claude-sonnet-4-5 (cheap + capable enough)
+ *   GATETEST_AI_CI_FIXER — optional; "0" disables, anything else is a no-op
  *
  * Failure-mode philosophy: NEVER block CI. If anything goes wrong (no API
  * key, GitHub rate-limit, Claude returns nonsense), log it and exit 0.
@@ -67,8 +71,27 @@ The fixer NEVER blocks CI. On any error it logs and exits 0.
 
 /**
  * Open a PR carrying the patches applied during a successful attempt.
+ *
+ * Branch-collision handling: a previous AI fix-PR for the same workflow run
+ * may still be open (customer hasn't reviewed/merged/closed it yet). We
+ * detect that via the GitHub REST API and rotate the branch name through
+ * `ai-fix/<runId>-attempt-2` … `-attempt-10` until a free slot is found.
+ * If all 10 attempts are taken, we return `{ status: 'all-branches-taken' }`
+ * and let the orchestrator open a fallback issue instead.
  */
-async function openFixPr({ token, repo, branch, runUrl, logExcerpt, attempt, model, baseRef, git: _git, transport }) {
+async function openFixPr({ token, repo, runId, runUrl, logExcerpt, attempt, model, baseRef, git: _git, transport }) {
+  // Pick a non-colliding branch name first. If every attempt slot is taken,
+  // bail out gracefully so the caller can open an issue.
+  const free = await core.findFreeBranchName({ token, repo, baseRunId: runId, transport });
+  if (!free) {
+    core.log(`branch ai-fix/${runId} and all attempt-2..${core.MAX_BRANCH_ATTEMPTS} variants are taken — giving up on PR`);
+    return { status: 'all-branches-taken' };
+  }
+  const { branch, attemptNumber } = free;
+  if (attemptNumber > 1) {
+    core.log(`branch ai-fix/${runId} already exists; rotating to ${branch}`);
+  }
+
   _git(['config', 'user.name',  'gatetest-ai-fixer[bot]']);
   _git(['config', 'user.email', 'gatetest-ai-fixer@users.noreply.github.com']);
 
@@ -84,18 +107,43 @@ async function openFixPr({ token, repo, branch, runUrl, logExcerpt, attempt, mod
     return { status: 'no-changes' };
   }
 
-  const push = _git(['push', '-u', 'origin', branch, '--force-with-lease']);
+  // Branch is guaranteed free (we just checked the remote) so a plain push
+  // is safe. `--force-with-lease` is unnecessary now and could surprise a
+  // user who happened to push from elsewhere — drop it.
+  const push = _git(['push', '-u', 'origin', branch]);
   if (!push.ok) {
     core.logErr('git push failed', new Error(push.stderr));
     return { status: 'push-failed' };
   }
 
+  const titleSuffix = attemptNumber > 1 ? ` (attempt ${attemptNumber})` : '';
   return core.createPullRequest({
     token, repo, head: branch, base: baseRef || 'main',
-    title: `AI CI-fixer: repair workflow run #${branch.split('/').pop()}`,
+    title: `AI CI-fixer: repair workflow run #${runId}${titleSuffix}`,
     body:  core.buildPrBody({ runUrl, logExcerpt, attempt, model }),
     opts:  { transport },
   });
+}
+
+/**
+ * Build the issue strings the flywheel layers' `matches(issue)` predicates
+ * will see. The transforms keyword-match on issue text (e.g. /rejectUnauthorized/,
+ * /js-httponly-false/). The CI log naturally contains both the GateTest
+ * rule keys and the human messages, so the log excerpt itself is the most
+ * faithful issue stream we can build — every transform that's relevant
+ * will fire, every irrelevant one will miss. This closes the "AST/Rule
+ * short-circuited on empty issues" bug Agent G surfaced.
+ */
+function issuesFromLog(logExcerpt, filePath) {
+  if (typeof logExcerpt !== 'string' || logExcerpt.length === 0) return [filePath];
+  // Pass each non-blank line as a separate issue. Most transforms' matches
+  // predicates run on a single line of context; passing the whole log as
+  // one string also works but per-line is friendlier to predicates that
+  // anchor on line boundaries.
+  const lines = logExcerpt.split('\n').map((l) => l.trim()).filter(Boolean);
+  // Keep it bounded so a 200-line excerpt doesn't make the rule fixer
+  // iterate 200x per file.
+  return lines.slice(0, 80);
 }
 
 /**
@@ -108,27 +156,34 @@ async function openFixPr({ token, repo, branch, runUrl, logExcerpt, attempt, mod
  * even if other files still need Claude — the orchestrator concatenates
  * the deterministic wins with the eventual Claude patches.
  */
-function tryFlywheel({ files, repoRoot, flywheel }) {
+function tryFlywheel({ files, repoRoot, flywheel, logExcerpt }) {
   if (!flywheel || !flywheel.available) return { patches: [], filesHandled: new Set() };
 
   const patches = [];
   const filesHandled = new Set();
+  const issues = issuesFromLog(logExcerpt || '', '');
 
   for (const f of files) {
     const filePath = path.isAbsolute(f.path) ? f.path : path.join(repoRoot, f.path);
     const content = f.content;
     if (typeof content !== 'string' || content.length === 0) continue;
 
-    // AST layer — operates on JS/TS only.
+    // AST layer — operates on JS/TS only. In CI-log mode we use
+    // applyAstTransforms (not tryAstFix) because the CI log contains many
+    // non-issue lines (file paths, stack frames, prose) that don't match
+    // any transform. tryAstFix's "any unhandled = fall through" contract
+    // is right for curated issue lists but wrong for raw log excerpts.
+    // Here we accept any successfully applied transform, regardless of
+    // how many log lines were "unhandled" — those are noise, not bugs.
     if (flywheel.astFixer.isJsOrTs && flywheel.astFixer.isJsOrTs(filePath)) {
       const t0 = Date.now();
       try {
-        const fixed = flywheel.astFixer.tryAstFix(content, filePath, []);
-        if (fixed && fixed !== content) {
-          patches.push({ path: f.path, content: fixed });
+        const ast = flywheel.astFixer.applyAstTransforms(content, filePath, issues);
+        if (ast && ast.content !== content && ast.handled && ast.handled.length > 0) {
+          patches.push({ path: f.path, content: ast.content });
           filesHandled.add(f.path);
           recordTelemetry(flywheel, { layer: 'ast', success: true, file: f.path, durationMs: Date.now() - t0 });
-          core.log(`  flywheel/ast: fixed ${f.path}`);
+          core.log(`  flywheel/ast: fixed ${f.path} (${ast.handled.length} transform(s))`);
           continue;
         }
         recordTelemetry(flywheel, { layer: 'ast', success: false, file: f.path, durationMs: Date.now() - t0 });
@@ -141,7 +196,7 @@ function tryFlywheel({ files, repoRoot, flywheel }) {
     // Rule layer — language-agnostic regex.
     const t0 = Date.now();
     try {
-      const fixed = flywheel.ruleFixer.tryRuleBasedFix(content, filePath, []);
+      const fixed = flywheel.ruleFixer.tryRuleBasedFix(content, filePath, issues);
       if (fixed && fixed !== content) {
         patches.push({ path: f.path, content: fixed });
         filesHandled.add(f.path);
@@ -201,7 +256,7 @@ async function tryAttempt({ cfg, files, logExcerpt, attempt, deps }) {
   let allPatches = [];
   let claudeNeeded = files;
   if (deps.flywheel && deps.flywheel.available) {
-    const flywheelResult = tryFlywheel({ files, repoRoot: deps.repoRoot, flywheel: deps.flywheel });
+    const flywheelResult = tryFlywheel({ files, repoRoot: deps.repoRoot, flywheel: deps.flywheel, logExcerpt });
     allPatches = flywheelResult.patches;
     claudeNeeded = files.filter((f) => !flywheelResult.filesHandled.has(f.path));
     core.log(`attempt ${attempt}: flywheel handled ${allPatches.length}/${files.length} file(s); ${claudeNeeded.length} need Claude`);
@@ -341,13 +396,18 @@ async function runFixer(deps = {}) {
     if (r.patches.length === 0) continue;
     if (r.ok) {
       core.log(`attempt ${attempt}: gate is GREEN — opening PR`);
-      const branch = `ai-fix/${cfg.runId}`;
       const prResp = await openFixPr({
-        token: cfg.token, repo: cfg.repo, branch, runUrl, logExcerpt,
+        token: cfg.token, repo: cfg.repo, runId: cfg.runId, runUrl, logExcerpt,
         attempt, model: cfg.model,
         baseRef: runResp.body?.head_branch || 'main',
         git: _git, transport,
       });
+      // If every branch slot is taken, fall through to the give-up branch so
+      // a fallback issue is opened. Otherwise return the PR result as before.
+      if (prResp && prResp.status === 'all-branches-taken') {
+        lastError = new Error(`all branch-attempt slots taken for run ${cfg.runId}`);
+        break;
+      }
       return { status: 'pr-opened', attempt, pr: prResp };
     }
     core.log(`attempt ${attempt}: gate still red`);

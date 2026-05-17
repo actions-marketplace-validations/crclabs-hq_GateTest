@@ -1,13 +1,13 @@
 name: AI CI Fixer
 
-# Triggered after the main CI workflow completes. Runs ONLY when the upstream
-# workflow concluded in failure AND the repository variable
-# GATETEST_AI_CI_FIXER is set to "1".
+# Triggered after the main CI workflow completes. Activates automatically
+# when ANTHROPIC_API_KEY is set as a repo secret — customer brings their own
+# key, the presence of the key IS the opt-in. No second flag needed.
 #
-# Authorization: pre-authorized scaffold (CLAUDE.md FIX-FIRST plan), but
-# the recurring Anthropic spend is NOT — that's why the flag exists. Craig
-# will flip GATETEST_AI_CI_FIXER on as a repository variable when he's
-# ready to pay for it.
+# Escape hatch: set the GATETEST_AI_CI_FIXER repository variable to "0" to
+# explicitly disable even when the key is present (useful if a customer is
+# burning through tokens). Any other value (including "1" or unset) leaves
+# the fixer enabled.
 
 on:
   workflow_run:
@@ -28,13 +28,19 @@ jobs:
     # Only run on failed CI runs.
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     env:
-      GATETEST_AI_CI_FIXER: ${{ vars.GATETEST_AI_CI_FIXER || '0' }}
+      ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+      GATETEST_AI_CI_FIXER: ${{ vars.GATETEST_AI_CI_FIXER || '' }}
     steps:
-      - name: Check feature flag
+      - name: Check ANTHROPIC_API_KEY presence + opt-out flag
         id: gate
         run: |
-          if [ "${GATETEST_AI_CI_FIXER}" != "1" ]; then
-            echo "AI CI-fixer disabled (set repository variable GATETEST_AI_CI_FIXER=1 to enable)"
+          if [ -z "${ANTHROPIC_API_KEY}" ]; then
+            echo "AI CI-fixer disabled (no ANTHROPIC_API_KEY secret set)"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${GATETEST_AI_CI_FIXER}" = "0" ]; then
+            echo "AI CI-fixer disabled (GATETEST_AI_CI_FIXER=0 — explicitly opted out)"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -61,9 +67,8 @@ jobs:
         run: npm ci
 
       - name: Run AI CI-fixer
-        if: steps.gate.outputs.skip != 'true'
+        if: steps.gate.outputs.skip != 'true' && env.ANTHROPIC_API_KEY != ''
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN:      ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           WORKFLOW_RUN_ID:   ${{ github.event.workflow_run.id }}

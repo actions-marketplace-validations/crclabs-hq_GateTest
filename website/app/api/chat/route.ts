@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : "Network error reaching the chat agent";
-    return new Response(makeLocalStream(`Sorry — I couldn't reach my brain just now. ${reason}. Please email hello@gatetest.ai if this keeps happening.`), {
+    return new Response(makeLocalStream(`Sorry — I couldn't reach my brain just now. ${reason}. Try again in a moment — the issue is usually temporary.`), {
       status: 200,
       headers: sseHeaders(),
     });
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
   if (!upstream.ok || !upstream.body) {
     let detail = "";
     try { detail = (await upstream.text()).slice(0, 200); } catch { /* ignore */ }
-    return new Response(makeLocalStream(`The chat agent is having trouble (status ${upstream.status}). Please email hello@gatetest.ai. ${detail}`), {
+    return new Response(makeLocalStream(`The chat agent is having a hiccup (status ${upstream.status}). Try again in a few seconds — these are usually transient. ${detail}`.trim()), {
       status: 200,
       headers: sseHeaders(),
     });

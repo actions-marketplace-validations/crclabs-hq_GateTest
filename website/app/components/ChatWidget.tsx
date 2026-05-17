@@ -165,7 +165,7 @@ export function ChatWidget() {
         setError(msg);
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: `Sorry — I'm having trouble responding. ${msg} You can email hello@gatetest.ai if it keeps happening.` },
+          { role: "assistant", content: `Sorry — I'm having trouble responding right now. ${msg} Try again in a moment; these are usually transient.` },
         ]);
       }
     } finally {
@@ -257,10 +257,19 @@ export function ChatWidget() {
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" aria-live="polite" aria-atomic="false">
             {messages.length === 0 && !isThinking && (
               <div className="space-y-4">
-                <p className="text-sm text-muted leading-relaxed">
-                  Hi — I&apos;m the GateTest AI support agent. Ask me anything about scans,
-                  pricing, modules, or how the product works.
+                <p className="text-sm text-foreground leading-relaxed">
+                  Hi — I&apos;m the GateTest AI support agent. I can answer questions about
+                  scans, pricing, modules, and how the product works.
                 </p>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 leading-relaxed">
+                  <p className="font-semibold mb-0.5">I&apos;m AI — I can be wrong.</p>
+                  <p>
+                    If my answer doesn&apos;t match what you see in product, trust the
+                    product. For pricing and policies, the source of truth is the{" "}
+                    <a href="/legal/terms" className="underline">legal pages</a>.
+                  </p>
+                </div>
+                <p className="text-xs text-muted">Pick a starter question or type your own:</p>
                 <div className="space-y-2">
                   {STARTER_PROMPTS.map((p) => (
                     <button
@@ -291,8 +300,7 @@ export function ChatWidget() {
 
             {error && (
               <p className="text-xs text-rose-600 mt-2">
-                Last request failed: {error}. You can retry, or email{" "}
-                <a href="mailto:hello@gatetest.ai" className="underline">hello@gatetest.ai</a>.
+                Last request failed: {error}. Try sending your message again — these are usually transient.
               </p>
             )}
 
@@ -326,8 +334,8 @@ export function ChatWidget() {
               </button>
             </div>
             <p className="text-[10px] text-muted mt-2 text-center">
-              AI responses can be wrong — for anything urgent, email{" "}
-              <a href="mailto:hello@gatetest.ai" className="underline">hello@gatetest.ai</a>.
+              I&apos;m AI — I can get things wrong. For pricing and policies, the source of truth is the{" "}
+              <a href="/legal/terms" className="underline">legal pages</a>. For everything else, run a scan to see the real answer.
             </p>
           </div>
         </div>

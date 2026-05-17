@@ -31,8 +31,22 @@ test('buildSystemPrompt — includes pricing tiers', () => {
 test('buildSystemPrompt — includes the agent rules', () => {
   const p = buildSystemPrompt();
   assert.ok(/NEVER INVENT facts/.test(p) || /never invent/i.test(p));
-  assert.ok(/hello@gatetest\.ai/i.test(p));
   assert.ok(/AI agent/i.test(p));
+});
+
+test('buildSystemPrompt — does NOT route customers to email (Craig: no email channel)', () => {
+  const p = buildSystemPrompt();
+  assert.equal(/hello@gatetest\.ai/i.test(p), false, 'agent must not direct users to a support email address');
+  // The phrases "No email support" / "no email channel" are HONEST disclosures
+  // about what we DON'T offer — those are fine. We only fail on routing
+  // language: "email us", "send an email to", "via email", "email the team".
+  assert.equal(/email (?:us|the team|us at|me at|support at)/i.test(p), false);
+  assert.equal(/send an? email|via email|drop us an email/i.test(p), false);
+});
+
+test('buildSystemPrompt — explicitly tells agent THIS chat is the only support channel', () => {
+  const p = buildSystemPrompt();
+  assert.ok(/no phone|no email|entire support|chat is the support|no human handoff|NEVER suggest emailing/i.test(p));
 });
 
 test('buildSystemPrompt — references key products', () => {
@@ -51,7 +65,11 @@ test('PRODUCT_FACTS includes refund + data handling info', () => {
 
 test('AGENT_RULES explicitly forbids inventing facts', () => {
   assert.ok(/INVENT|invent/i.test(AGENT_RULES));
-  assert.ok(/hello@gatetest\.ai/.test(AGENT_RULES));
+});
+
+test('AGENT_RULES explicitly forbids redirecting to email / phone', () => {
+  assert.match(AGENT_RULES, /NEVER suggest emailing/i);
+  assert.equal(/hello@gatetest\.ai/i.test(AGENT_RULES), false);
 });
 
 test('CHAT_MODEL is a Sonnet 4 family identifier', () => {

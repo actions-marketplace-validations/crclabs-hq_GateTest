@@ -33,8 +33,13 @@ class ExplorerModule extends BaseModule {
 
   async run(result, config) {
     const explorerConfig = config.getModuleConfig('explorer') || {};
-    const baseUrl = explorerConfig.url || config.get('explorer.url') ||
-                    config.get('liveCrawler.url');
+    const baseUrl =
+      explorerConfig.url ||
+      config.get('explorer.url') ||
+      config.get('liveCrawler.url') ||
+      config.get('targetUrl') ||
+      config.get('webUrl') ||
+      config.get('wpUrl');
 
     if (!baseUrl) {
       result.addCheck('explorer:config', true, {

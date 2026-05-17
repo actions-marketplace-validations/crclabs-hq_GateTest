@@ -16,7 +16,7 @@ Today's protected platforms:
 
 | Platform     | Repository                                         |
 | ------------ | -------------------------------------------------- |
-| Crontech.ai  | https://github.com/ccantynz-alt/Crontech           |
+| Crontech.ai  | https://github.com/Gate-Test/Crontech              |
 | Gluecron.com | https://github.com/ccantynz-alt/Gluecron.com       |
 
 Every push and PR on those repos runs the full GateTest quality gate.

@@ -40,6 +40,15 @@ const HIGH_SIGNAL_PREFIXES = [
   'mixed-content:error',        // active mixed content
   'csp:missing',                // no CSP at all
   'csp:unsafe-eval',            // CSP allows eval
+  'crawl:broken-scripts',       // JS bundle 404 = features silently break
+  'crawl:broken-stylesheets',   // CSS 404 = users see unstyled HTML
+  'crawl:error:js-runtime-error',
+  'crawl:error:hydration-error',
+  'crawl:error:server-error',
+  'crawl:error:app-error',
+  'runtime-errors:page-error',  // uncaught JS during page load
+  'runtime-errors:csp-violation',
+  'runtime-errors:navigation',  // page didn't load at all
 ];
 
 /** @param {string} ruleKey */

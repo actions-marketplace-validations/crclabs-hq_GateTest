@@ -295,7 +295,17 @@ const DEFAULT_CONFIG = {
       'seo',
       'links',
       'performance',
+      // liveCrawler: HTTP-only by default on Vercel (Playwright unavailable);
+      // catches 404/500 + broken images + redirect chains + mixed-content
+      // across the customer's site. Falls back to "no URL configured" if
+      // targetUrl isn't set.
+      'liveCrawler',
       'runtimeErrors',
+      // explorer: clicks every button + form + dropdown via Playwright,
+      // catches "button doesn't fire" and post-click JS errors. Skips
+      // gracefully when Chromium isn't available (Vercel today; lights
+      // up when Crontech worker is wired).
+      'explorer',
     ],
 
     // Generic web URL suite — runs against any public site. Same engine
@@ -312,12 +322,46 @@ const DEFAULT_CONFIG = {
       'seo',
       'links',
       'performance',
-      'runtimeErrors',
+      'liveCrawler',     // 404 / 500 / broken-image / redirect-chain on the live URL
+      'runtimeErrors',   // live JS errors / CSP violations (needs Crontech worker)
+      'explorer',        // "button doesn't fire" detection (needs Crontech worker)
     ],
   },
 
   // Module-specific settings
   modules: {
+    // liveCrawler defaults — tuned for the /api/web/scan and /api/wp/scan
+    // serverless paths (60s budget). Local CLI invocations can override
+    // any of these via `.gatetest/config.json`.
+    liveCrawler: {
+      maxPages: 25,              // breadth-first up to 25 internal pages
+      timeout: 6000,             // 6s per HTTP request
+      checkExternal: false,      // skip external links for serverless (saves budget)
+      browser: false,            // default to HTTP-only; lights up to browser when Playwright available
+      // Deep checks performed per page beyond raw status code:
+      //   - missing/empty <title>
+      //   - missing meta description
+      //   - missing canonical
+      //   - broken <script src>, <link rel=stylesheet>, <link rel=icon>
+      //   - mixed content (http: asset on https: page)
+      //   - anchor links to missing IDs (#section with no matching id)
+      //   - empty-page heuristic (no <h1> / <p> / <main>)
+      //   - response time > slowThresholdMs
+      //   - missing security headers (per-page, deltas only — gate-fail
+      //     style is reported by the dedicated webHeaders module)
+      slowThresholdMs: 2500,
+      checkSitemap: true,        // fetch /sitemap.xml — flag missing pages
+      checkRobotsTxt: true,      // fetch /robots.txt — flag missing or wide-open
+      checkFavicon: true,        // GET /favicon.ico — flag 404s
+      checkCommonPaths: true,    // probe /, /404, /500, /admin, /api — flag inconsistencies
+    },
+    explorer: {
+      // Autonomous interactive testing — clicks every button, fills forms,
+      // exercises every keyboard path, watches for JS errors per click.
+      // Browser-only; gracefully degrades when Chromium unavailable.
+      maxInteractions: 100,
+      timeout: 5000,
+    },
     visual: {
       screenshotDir: '.gatetest/screenshots',
       baselineDir: '.gatetest/baselines',

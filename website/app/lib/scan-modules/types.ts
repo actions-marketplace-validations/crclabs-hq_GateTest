@@ -61,6 +61,7 @@ const FULL_MODULES: string[] = [
   "migrations",
   "authFlaws",
   "flakyTests",
+  "mutationAnalysis",
 ];
 
 /** Modules that incur Anthropic API cost when they run. Must stay in sync

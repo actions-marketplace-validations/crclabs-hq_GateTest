@@ -43,7 +43,7 @@ async function ensureFixesTable(sql) {
  *
  * @param {object} opts
  * @param {Function} opts.sql
- * @param {string}   opts.repoName       e.g. "ccantynz-alt/Crontech"
+ * @param {string}   opts.repoName       e.g. "Gate-Test/Crontech"
  * @param {string}   opts.prUrl          full GitHub PR URL
  * @param {string}   [opts.tier]         quick|full|scan_fix|nuclear
  * @param {number}   [opts.errorsFixed]

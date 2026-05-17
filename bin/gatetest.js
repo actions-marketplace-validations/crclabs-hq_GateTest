@@ -419,28 +419,45 @@ async function runAutoPr(summary, projectRoot, args) {
   const ts = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
   const fixBranch = args.autoPrBranch || `gatetest/auto-fix-${ts}`;
 
-  // Collect every fixable finding from the summary
+  // Collect every fixable finding from the summary. Use the shared
+  // extractFileFromCheck() so we don't silently drop findings that
+  // emit their file path in the MESSAGE text rather than a structured
+  // field. The old code dropped ~97% of findings (~745/764) because
+  // only 19 module addCheck calls set check.file explicitly.
+  const { extractFileFromCheck } = require('../src/core/parse-finding');
   const fixable = [];
+  const needsManualReview = [];
   for (const moduleResult of summary.results || []) {
     for (const check of moduleResult.checks || []) {
       if (check.passed) continue;
       if (check.severity !== 'error' && check.severity !== 'warning') continue;
-      // We need a file path to know where to fix
-      const file = check.file || check.details?.file || check.path;
-      if (!file) continue;
-      fixable.push({
+      const checkWithModule = { ...check, module: moduleResult.module || moduleResult.name };
+      const { file, line } = extractFileFromCheck(checkWithModule);
+      const entry = {
         moduleName: moduleResult.module || moduleResult.name || 'unknown',
         checkName: check.name || 'unnamed-check',
         file,
-        line: check.line || check.details?.line || null,
+        line,
         message: check.message || check.details?.message || check.name || '',
         severity: check.severity,
-      });
+      };
+      if (file) {
+        fixable.push(entry);
+      } else {
+        // Config-level findings (CI security, dependency hygiene, etc.)
+        // often have no file. We can't auto-fix them, but we MUST
+        // surface them — silently dropping is what made auto-repair
+        // look broken in the first place.
+        needsManualReview.push(entry);
+      }
     }
   }
 
+  if (fixable.length === 0 && needsManualReview.length === 0) {
+    return { error: 'No actionable findings — nothing to fix automatically' };
+  }
   if (fixable.length === 0) {
-    return { error: 'No findings with file paths — nothing to fix automatically' };
+    return { error: `No findings with file paths — ${needsManualReview.length} config-level finding(s) need manual review (see workflow log).`, needsManualReview };
   }
 
   console.log(`\n  [GateTest auto-PR] ${fixable.length} fixable finding(s). Generating AI fixes...\n`);
@@ -493,21 +510,35 @@ async function runAutoPr(summary, projectRoot, args) {
     sh(`git commit -m ${JSON.stringify(subject + '\n\n' + body)}`);
     sh(`git push -u origin ${fixBranch}`);
 
-    const prTitle = `GateTest auto-fix — ${fixesApplied} of ${fixable.length} findings`;
+    const totalActionable = fixable.length + needsManualReview.length;
+    const prTitle = `GateTest auto-fix — ${fixesApplied} of ${totalActionable} findings`;
+    const manualReviewSection = needsManualReview.length > 0 ? [
+      ``,
+      `## Findings that need manual review (no fixable file path)`,
+      ``,
+      `These findings are config-level (CI workflows, dependency lockfiles, environment settings) or summary checks — the auto-fix engine can't safely apply a code change. Review them manually:`,
+      ``,
+      ...needsManualReview.slice(0, 50).map((f) => `- ⚠️ \`${f.moduleName}:${f.checkName}\` — ${f.message?.slice(0, 200) || '(no message)'}`),
+      ...(needsManualReview.length > 50 ? [`- _… plus ${needsManualReview.length - 50} more — see the workflow log for the full list_`] : []),
+    ].join('\n') : '';
     const prBody = [
       `# GateTest auto-fix`,
       ``,
-      `The CI gate found ${fixable.length} actionable finding(s) on this branch. This PR applies AI-generated fixes for ${fixesApplied} of them.`,
+      `The CI gate found ${totalActionable} actionable finding(s) on this branch — ${fixable.length} with a file path and ${needsManualReview.length} config-level. This PR applies AI-generated fixes for ${fixesApplied} of the ${fixable.length} file-level findings.`,
       ``,
-      `## Findings handled`,
+      `## File-level findings handled`,
       ``,
-      ...fixesAttempted.map((f) => `- ${f.fixed ? '✅' : '⚠️'} \`${f.file}${f.line ? `:${f.line}` : ''}\` — \`${f.moduleName}:${f.checkName}\` — ${f.message?.slice(0, 200) || '(no message)'}`),
+      ...(fixesAttempted.length > 0
+        ? fixesAttempted.map((f) => `- ${f.fixed ? '✅' : '⚠️'} \`${f.file}${f.line ? `:${f.line}` : ''}\` — \`${f.moduleName}:${f.checkName}\` — ${f.message?.slice(0, 200) || '(no message)'}`)
+        : ['_(no file-level findings — all the gate failures are config-level, see below)_']),
+      manualReviewSection,
       ``,
       `## What to do`,
       ``,
       `1. Review each diff in this PR carefully — AI fixes can introduce subtle changes`,
       `2. Run tests locally if possible`,
       `3. Merge this PR before merging the original PR — the gate is still blocking that one until these fixes land`,
+      `4. If there are manual-review findings above, fix them by hand in a follow-up commit`,
       ``,
       `🤖 Generated by GateTest \`--auto-pr\``,
     ].join('\n');

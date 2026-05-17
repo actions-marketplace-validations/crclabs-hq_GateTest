@@ -37,7 +37,12 @@ export default function WebLanding() {
           checks. One 0-100 score. Plain-English fixes.
         </p>
 
-        <UrlScanFlow suite="web" endpoint="/api/web/scan" />
+        <UrlScanFlow
+          suite="web"
+          endpoint="/api/web/scan"
+          streamEndpoint="/api/web/scan/stream"
+          recommendEndpoint="/api/scan/recommend"
+        />
       </section>
 
       <section className="px-6 py-16 max-w-5xl mx-auto border-t border-border">

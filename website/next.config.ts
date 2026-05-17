@@ -1,8 +1,18 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+
+// Treat the REPO root (one level above this file) as the build / tracing
+// root so `@lib/*` aliases that point at `../lib/*` resolve correctly.
+// Vercel does this implicitly via outputFileTracingRoot=/vercel/path0
+// but GitHub Actions and local builds need it set explicitly here or
+// Turbopack throws "Module not found: Can't resolve '@lib/*'" for every
+// API route that uses the shared helpers.
+const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: repoRoot,
   turbopack: {
-    root: import.meta.dirname,
+    root: repoRoot,
   },
   serverExternalPackages: ["ssh2"],
   async headers() {

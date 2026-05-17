@@ -144,26 +144,45 @@ jobs:
           #   3. Creates a new branch, commits the fixes
           #   4. Opens a pull request via the gh CLI
           #
-          # This REPLACES the older `--fix` + peter-evans/create-pull-request
-          # combo because (a) the new flow uses real AI fixes not just
-          # runner-internal lint-fixers, (b) one CLI call instead of two
-          # workflow steps, and (c) the PR body lists every finding +
-          # which were fixed vs skipped.
-          #
           # Configure git identity so the auto-commit has a sensible author.
           git config user.email "auto-repair@gatetest.ai"
           git config user.name "GateTest Auto-Repair"
-          #
-          # Failure here is logged but never blocks the workflow — the gate
-          # verdict from the earlier step stands, so the original PR remains
-          # blocked until the auto-repair PR is reviewed and merged.
-          node "$GATETEST_HOME/bin/gatetest.js" --suite quick --auto-pr \
+
+          # Capture all output so we can post it as a GitHub Actions
+          # annotation even when stdout is hidden inside a long log.
+          set +e
+          OUTPUT=$(node "$GATETEST_HOME/bin/gatetest.js" --suite quick --auto-pr \
             --auto-pr-base "${{ github.head_ref || github.ref_name }}" \
             --auto-pr-branch "gatetest/auto-repair-${{ github.run_id }}" \
-            --project "$GITHUB_WORKSPACE" \
-            || echo "Auto-repair completed with some fixes skipped — see workflow log for the breakdown"
+            --project "$GITHUB_WORKSPACE" 2>&1)
+          EXIT_CODE=$?
+          set -e
+          echo "$OUTPUT"
 
-      - name: Auto-repair not configured — print one-shot setup steps
+          # Surface the outcome as a GitHub Actions annotation so the
+          # customer sees it on the PR summary page — not buried in logs.
+          if echo "$OUTPUT" | grep -q "Fix PR opened:"; then
+            PR_URL=$(echo "$OUTPUT" | grep -o "Fix PR opened: [^ ]*" | head -1 | sed 's/Fix PR opened: //')
+            echo "::notice title=GateTest auto-repair PR opened::A follow-up PR with AI-generated fixes is available at $PR_URL"
+          elif echo "$OUTPUT" | grep -q "No findings with file paths"; then
+            echo "::warning title=GateTest auto-repair skipped::The gate failed but every finding lacks a file path. Auto-repair needs file-line metadata to apply fixes. This usually means the failing checks are config-level (e.g. CI workflow security) rather than file-level. Review the gate output and fix manually."
+          elif echo "$OUTPUT" | grep -q "AI fix engine could not generate any fixes"; then
+            echo "::warning title=GateTest auto-repair found no fixes::The fix engine ran on every finding but could not produce a verified fix. Common causes: file too large, unsupported language, or the finding wasn't a straightforward code change. See the per-finding [skipped:...] lines above for the reason."
+          elif echo "$OUTPUT" | grep -q "Could not create branch"; then
+            echo "::error title=GateTest auto-repair failed to create branch::Could not create the auto-repair branch. Common cause: a stale branch with the same name already exists. Workflow output above has the exact error."
+          elif echo "$OUTPUT" | grep -q "gh CLI not found"; then
+            echo "::error title=GateTest auto-repair: gh CLI missing::The GitHub CLI isn't on PATH in this runner. This is unusual — gh ships preinstalled on ubuntu-latest. Try re-running."
+          elif [ $EXIT_CODE -ne 0 ]; then
+            echo "::warning title=GateTest auto-repair exited with errors::Auto-repair ran but reported errors (exit $EXIT_CODE). Output above. The original gate failure still stands."
+          else
+            echo "::notice title=GateTest auto-repair completed::No PR was opened — typically because the fix engine produced 0 changes. See log for per-finding breakdown."
+          fi
+
+          # NEVER block the workflow on auto-repair's own exit code.
+          # The gate verdict from the earlier step is the source of truth.
+          exit 0
+
+      - name: Auto-repair not configured — surface as PR annotation (not just logs)
         if: failure() && env.ANTHROPIC_KEY_PRESENT != 'yes'
         run: |
           echo ""
@@ -182,3 +201,7 @@ jobs:
           echo " an auto-repair PR with Claude-generated fixes. No per-repo"
           echo " setup needed."
           echo "============================================================"
+          # Annotation surfaces in the GitHub UI directly on the PR — not
+          # buried in workflow logs. This is the single most-asked support
+          # question, so we make sure it's visible.
+          echo "::warning title=GateTest auto-repair not configured::The gate failed and there are findings to fix, but ANTHROPIC_API_KEY isn't set on this repo or the parent org. Add it ONCE at https://github.com/organizations/<your-org>/settings/secrets/actions (name: ANTHROPIC_API_KEY) and every future failing run will auto-open a fix PR. See workflow log for the full one-time setup steps."

@@ -105,6 +105,23 @@ class GateTest {
     if (this.options.sarif) new SarifReporter(runner, this.config);
     if (this.options.junit) new JunitReporter(runner, this.config);
 
+    // onProgress hook — lets a caller (e.g. SSE-streaming route) observe
+    // module-level events as they happen. Pass a function `(event, payload)`
+    // and we forward suite:start, module:start, module:end, module:skip,
+    // and suite:end from the runner's EventEmitter. Failures inside the
+    // hook are swallowed so they can never crash the scan.
+    if (typeof this.options.onProgress === 'function') {
+      const hook = this.options.onProgress;
+      const safe = (event, payload) => {
+        try { hook(event, payload); } catch { /* never crash scan */ }
+      };
+      runner.on('suite:start', (p) => safe('suite:start', p));
+      runner.on('suite:end', (p) => safe('suite:end', p));
+      runner.on('module:start', (p) => safe('module:start', p));
+      runner.on('module:end', (p) => safe('module:end', p));
+      runner.on('module:skip', (p) => safe('module:skip', p));
+    }
+
     // Run and return summary
     const summary = await runner.run(moduleNames);
 

@@ -81,7 +81,7 @@ const fs = require('fs');
 const path = require('path');
 
 const EXCLUDE_DIRS = new Set([
-  'node_modules', '.git', 'dist', 'build', 'coverage', '.gatetest',
+  'node_modules', '.git', '.claude', 'dist', 'build', 'coverage', '.gatetest',
   '.next', 'out', 'target', 'vendor', '.terraform', '__pycache__',
 ]);
 

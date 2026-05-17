@@ -186,7 +186,7 @@ class RollbackHonestyModule extends BaseModule {
       let entries;
       try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
       for (const e of entries) {
-        if (['node_modules', '.git', '.next', 'dist'].includes(e.name)) continue;
+        if (['node_modules', '.git', '.claude', '.next', 'dist'].includes(e.name)) continue;
         const full = path.join(dir, e.name);
         if (e.isDirectory()) walk(full);
         else if (/\.(sh|bash)$/.test(e.name) || /deploy/.test(e.name.toLowerCase())) {

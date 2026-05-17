@@ -57,12 +57,12 @@ class BashSafetyModule extends BaseModule {
     const root = config.projectRoot;
 
     // Shell scripts
-    for (const file of this._glob(root, /\.(sh|bash)$/, ['node_modules', '.git', '.next', 'dist'])) {
+    for (const file of this._glob(root, /\.(sh|bash)$/, ['node_modules', '.git', '.claude', '.next', 'dist'])) {
       this._scanFile(file, path.relative(root, file), result, 'shell');
     }
 
     // CI YAML — extract run: blocks
-    for (const file of this._glob(root, /\.(yml|yaml)$/, ['node_modules', '.git', '.next', 'dist'])) {
+    for (const file of this._glob(root, /\.(yml|yaml)$/, ['node_modules', '.git', '.claude', '.next', 'dist'])) {
       this._scanFile(file, path.relative(root, file), result, 'yaml');
     }
 

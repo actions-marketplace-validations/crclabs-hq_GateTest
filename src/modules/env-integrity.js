@@ -147,7 +147,7 @@ class EnvIntegrityModule extends BaseModule {
     // Also scan one level deep (apps/web/.env, packages/api/.env, etc.)
     for (const e of entries) {
       if (!e.isDirectory()) continue;
-      if (['node_modules', '.git', '.next', 'dist', 'build'].includes(e.name)) continue;
+      if (['node_modules', '.git', '.claude', '.next', 'dist', 'build'].includes(e.name)) continue;
       const sub = path.join(root, e.name);
       try {
         for (const se of fs.readdirSync(sub, { withFileTypes: true })) {

@@ -196,7 +196,7 @@ class MutationModule extends BaseModule {
 
   _findSourceFiles(projectRoot) {
     const sourceFiles = this._collectFiles(projectRoot, ['.js', '.ts'], [
-      'node_modules', '.git', 'dist', 'build', 'coverage', '.gatetest',
+      'node_modules', '.git', '.claude', 'dist', 'build', 'coverage', '.gatetest',
       '.next', 'website', 'test', 'tests', '__tests__', 'spec',
     ]);
 

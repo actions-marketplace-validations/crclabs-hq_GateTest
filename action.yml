@@ -1,0 +1,214 @@
+# ============================================================================
+# GateTest — Composite GitHub Action
+# ============================================================================
+# Lets any repo run the GateTest gate (91 modules) with a single
+# `uses: ccantynz-alt/gatetest@v1` line in their workflow.
+#
+# Optional AI auto-repair: when `auto-fix: true` AND the gate blocks AND
+# the workflow exposes ANTHROPIC_API_KEY, the action invokes the AI
+# CI-fixer (scripts/ai-ci-fixer.js) to propose a patch.
+#
+# The gate verdict is the source of truth — auto-repair NEVER masks a
+# failing gate (Bible Forbidden #24). On any auto-repair failure the
+# original gate exit code stands.
+# ============================================================================
+
+name: 'GateTest Quality Gate'
+description: '91-module AI-powered quality gate with self-healing CI'
+author: 'GateTest (gatetest.ai)'
+
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  suite:
+    description: 'Which GateTest suite to run: quick (4 modules) / full (91) / scan_fix / nuclear'
+    required: false
+    default: 'quick'
+  auto-fix:
+    description: 'When true and the gate blocks, run the AI CI-fixer to propose a patch (requires ANTHROPIC_API_KEY).'
+    required: false
+    default: 'false'
+  node-version:
+    description: 'Node.js version to use (GateTest requires Node 20+).'
+    required: false
+    default: '22'
+  working-directory:
+    description: 'Directory to scan. Defaults to the repository root.'
+    required: false
+    default: '.'
+  report-format:
+    description: 'Report format produced by the gate: console / json / sarif / junit.'
+    required: false
+    default: 'console'
+  fail-on-warning:
+    description: 'When true, warning-severity findings also block the gate (default is errors-only).'
+    required: false
+    default: 'false'
+
+outputs:
+  gate-status:
+    description: 'The gate verdict: "passed" or "blocked".'
+    value: ${{ steps.gate.outputs.gate-status }}
+  error-count:
+    description: 'Number of error-severity findings from the scan.'
+    value: ${{ steps.gate.outputs.error-count }}
+  warning-count:
+    description: 'Number of warning-severity findings from the scan.'
+    value: ${{ steps.gate.outputs.warning-count }}
+  report-path:
+    description: 'Filesystem path to the generated report (empty when report-format is "console").'
+    value: ${{ steps.gate.outputs.report-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    # ----------------------------------------------------------------------
+    # 1. Setup Node.js (GateTest requires Node 20+).
+    # ----------------------------------------------------------------------
+    - name: Setup Node.js ${{ inputs.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    # ----------------------------------------------------------------------
+    # 2. Install GateTest.
+    # First try the published npm package; fall back to cloning the repo
+    # if the package isn't published yet.
+    # TODO(publish): swap the fallback for `npm install -g @gatetest/cli`
+    # only once the npm package is published. Until then the clone path
+    # is the primary install method.
+    # ----------------------------------------------------------------------
+    - name: Install GateTest
+      shell: bash
+      run: |
+        set -euo pipefail
+        if npm install -g @gatetest/cli 2>/dev/null; then
+          echo "GATETEST_BIN=gatetest" >> "$GITHUB_ENV"
+          echo "Installed @gatetest/cli from npm."
+        else
+          # Fallback: clone the canonical repo (single source of truth).
+          # TODO(publish): remove this branch once @gatetest/cli is on npm.
+          GATETEST_HOME="$RUNNER_TEMP/gatetest"
+          git clone --depth 1 https://github.com/ccantynz-alt/gatetest.git "$GATETEST_HOME"
+          chmod +x "$GATETEST_HOME/bin/gatetest.js"
+          # Install runtime deps without scripts to keep this fast + safe.
+          (cd "$GATETEST_HOME" && (npm ci --omit=dev --ignore-scripts 2>/dev/null || npm install --production --ignore-scripts 2>/dev/null || true))
+          echo "GATETEST_BIN=node $GATETEST_HOME/bin/gatetest.js" >> "$GITHUB_ENV"
+          echo "GATETEST_HOME=$GATETEST_HOME" >> "$GITHUB_ENV"
+          echo "Cloned GateTest from source (npm package not yet published)."
+        fi
+
+    # ----------------------------------------------------------------------
+    # 3. Run the gate. Capture the exit code without aborting the step so
+    # we can emit outputs + decide whether to invoke auto-repair.
+    # ----------------------------------------------------------------------
+    - name: Run GateTest gate (${{ inputs.suite }})
+      id: gate
+      shell: bash
+      env:
+        GATETEST_FAIL_ON_WARNING: ${{ inputs.fail-on-warning }}
+      run: |
+        set -uo pipefail
+        cd "${{ inputs.working-directory }}"
+
+        REPORT_FORMAT="${{ inputs.report-format }}"
+        REPORT_DIR=".gatetest/reports"
+        REPORT_PATH=""
+        EXTRA_FLAGS=""
+        case "$REPORT_FORMAT" in
+          json)    EXTRA_FLAGS="--json";   REPORT_PATH="$REPORT_DIR/gatetest-results.json";;
+          sarif)   EXTRA_FLAGS="--sarif";  REPORT_PATH="$REPORT_DIR/gatetest-results.sarif";;
+          junit)   EXTRA_FLAGS="--junit";  REPORT_PATH="$REPORT_DIR/gatetest-results.xml";;
+          console) EXTRA_FLAGS="";         REPORT_PATH="";;
+          *)
+            echo "::error title=GateTest::Unknown report-format '$REPORT_FORMAT' — must be console / json / sarif / junit."
+            exit 2
+            ;;
+        esac
+
+        # Run the gate, capture stdout for parsing.
+        set +e
+        OUTPUT=$(${GATETEST_BIN} --suite "${{ inputs.suite }}" $EXTRA_FLAGS --project "$(pwd)" 2>&1)
+        EXIT_CODE=$?
+        set -e
+        echo "$OUTPUT"
+
+        # Parse error / warning counts from the captured output. The runner
+        # emits a summary line like "Errors: N" / "Warnings: N".
+        ERR_COUNT=$(printf '%s\n' "$OUTPUT" | grep -Eio '^[[:space:]]*errors?:[[:space:]]*[0-9]+' | head -1 | grep -Eio '[0-9]+' | head -1)
+        WARN_COUNT=$(printf '%s\n' "$OUTPUT" | grep -Eio '^[[:space:]]*warnings?:[[:space:]]*[0-9]+' | head -1 | grep -Eio '[0-9]+' | head -1)
+        ERR_COUNT="${ERR_COUNT:-0}"
+        WARN_COUNT="${WARN_COUNT:-0}"
+
+        if [ "$EXIT_CODE" -eq 0 ]; then
+          GATE_STATUS="passed"
+        else
+          GATE_STATUS="blocked"
+        fi
+
+        # Emit outputs so downstream steps can read them. We always write
+        # these BEFORE deciding to fail so the auto-fix step and any user
+        # post-step can react to gate-status.
+        echo "gate-status=$GATE_STATUS" >> "$GITHUB_OUTPUT"
+        echo "error-count=$ERR_COUNT"   >> "$GITHUB_OUTPUT"
+        echo "warning-count=$WARN_COUNT" >> "$GITHUB_OUTPUT"
+        echo "report-path=$REPORT_PATH" >> "$GITHUB_OUTPUT"
+        echo "exit-code=$EXIT_CODE"     >> "$GITHUB_OUTPUT"
+
+        # Surface the verdict in the Actions UI even when the customer
+        # uses an exotic theme that hides red exit codes in the log.
+        if [ "$GATE_STATUS" = "blocked" ]; then
+          echo "::warning title=GateTest gate blocked::$ERR_COUNT error(s), $WARN_COUNT warning(s). Suite=${{ inputs.suite }}."
+        else
+          echo "::notice title=GateTest gate passed::$ERR_COUNT error(s), $WARN_COUNT warning(s). Suite=${{ inputs.suite }}."
+        fi
+
+        # Defer the failure to the final step so auto-fix can run first
+        # without `failure()` propagating up the workflow short-circuit.
+        exit 0
+
+    # ----------------------------------------------------------------------
+    # 4. Optional AI auto-repair. Runs ONLY when the gate is blocked,
+    # auto-fix is on, and ANTHROPIC_API_KEY is exposed to the action.
+    # ----------------------------------------------------------------------
+    - name: GateTest AI auto-repair
+      if: ${{ steps.gate.outputs.gate-status == 'blocked' && inputs.auto-fix == 'true' }}
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+      run: |
+        set -uo pipefail
+        if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+          echo "::warning title=GateTest auto-repair skipped::auto-fix=true but ANTHROPIC_API_KEY is not set. Add the secret to enable auto-repair."
+          exit 0
+        fi
+        if [ -z "${GATETEST_HOME:-}" ]; then
+          echo "::warning title=GateTest auto-repair skipped::GateTest was installed via npm (no source clone) so the AI CI-fixer script is unavailable. Pin to the source-clone install path to enable auto-repair."
+          exit 0
+        fi
+        cd "${{ inputs.working-directory }}"
+        # Run the AI CI-fixer NON-blocking — its own contract is "never block CI".
+        set +e
+        node "$GATETEST_HOME/scripts/ai-ci-fixer.js" 2>&1
+        FIX_EXIT=$?
+        set -e
+        if [ "$FIX_EXIT" -ne 0 ]; then
+          echo "::warning title=GateTest auto-repair exited non-zero::See log above. The gate verdict still stands."
+        fi
+        exit 0
+
+    # ----------------------------------------------------------------------
+    # 5. Final step — propagate the gate verdict as the action's exit code.
+    # This is the LAST step so auto-fix has had its chance to run first.
+    # ----------------------------------------------------------------------
+    - name: Enforce gate verdict
+      shell: bash
+      run: |
+        if [ "${{ steps.gate.outputs.gate-status }}" = "blocked" ]; then
+          echo "GateTest gate blocked: ${{ steps.gate.outputs.error-count }} error(s), ${{ steps.gate.outputs.warning-count }} warning(s)."
+          exit 1
+        fi
+        echo "GateTest gate passed: ${{ steps.gate.outputs.error-count }} error(s), ${{ steps.gate.outputs.warning-count }} warning(s)."

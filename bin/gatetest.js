@@ -49,6 +49,15 @@ const HELP = `
     --junit            Output results in JUnit XML format (for CI)
     --ci-init <type>   Generate CI config: github, gitlab, circleci
     --project <path>   Set project root (default: cwd)
+    --confidence-threshold <0..1>
+                       Confidence threshold below which error-severity
+                       findings are downgraded to "soft errors" (visible
+                       in the report, don't block the gate). Default 0.7.
+                       Lower = stricter (more findings block). Higher =
+                       more lenient (more findings downgrade). Findings
+                       in test files, fixtures, docs, and inside string
+                       literals get a confidence multiplier <1 so they
+                       fall below threshold by default.
     --help, -h         Show this help message
     --doctor           Audit your environment — checks every prerequisite for
                        auto-fix to work (Node version, gh CLI, ANTHROPIC_API_KEY,
@@ -201,6 +210,9 @@ async function main() {
     diffOnly: args.diff || false,
     sarif: args.sarif || false,
     junit: args.junit || false,
+    ...(typeof args.confidenceThreshold === 'number'
+      ? { confidenceThreshold: args.confidenceThreshold }
+      : {}),
   });
 
   gatetest.init();
@@ -579,6 +591,10 @@ function parseArgs(argv) {
     else if (arg === '--sarif') args.sarif = true;
     else if (arg === '--junit') args.junit = true;
     else if (arg === '--ci-init' && argv[i + 1]) args.ciInit = argv[++i];
+    else if (arg === '--confidence-threshold' && argv[i + 1]) {
+      const v = parseFloat(argv[++i]);
+      if (!Number.isNaN(v) && v >= 0 && v <= 1) args.confidenceThreshold = v;
+    }
     else if (arg === '--suite' && argv[i + 1]) args.suite = argv[++i];
     else if (arg === '--module' && argv[i + 1]) args.module = argv[++i];
     else if (arg === '--project' && argv[i + 1]) args.project = argv[++i];

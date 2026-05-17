@@ -5,12 +5,25 @@
  */
 
 const { EventEmitter } = require('events');
+const fs = require('fs');
+const path = require('path');
 
 // AI Fix Engine — injected after all modules run, before the autoFix pass.
 // Adds autoFix closures to any check that has a file path + fix hint but
 // no existing autoFix function. This makes every module AI-fixable.
 let _aiFix;
 try { _aiFix = require('./ai-fix-engine'); } catch { _aiFix = null; }
+
+// Confidence scoring — each finding gets a 0..1 score from context.
+// Low-confidence error-severity findings are soft-blocked (downgraded
+// to warning-equivalent at gate time) so doc-string examples, fixture
+// files, and example data don't cause noise.
+const {
+  DEFAULT_CONFIDENCE,
+  BLOCK_THRESHOLD,
+  scoreFinding,
+  isBlockingFinding,
+} = require('./confidence');
 
 /** Severity levels — only 'error' blocks the gate. */
 const Severity = {
@@ -19,8 +32,38 @@ const Severity = {
   INFO: 'info',
 };
 
+/**
+ * Source cache — lazily reads file contents the first time confidence
+ * scoring asks for it, then reuses for subsequent lookups. Shared
+ * across all TestResult instances in a single run via the runner.
+ */
+class SourceCache {
+  constructor(projectRoot) {
+    this.projectRoot = projectRoot || process.cwd();
+    this.cache = new Map();
+  }
+
+  read(filePath) {
+    if (!filePath) return null;
+    const abs = path.isAbsolute(filePath) ? filePath : path.join(this.projectRoot, filePath);
+    if (this.cache.has(abs)) return this.cache.get(abs);
+    let content = null;
+    try {
+      // Bound by stat — don't load huge minified bundles
+      const st = fs.statSync(abs);
+      if (st.isFile() && st.size <= 2 * 1024 * 1024) {
+        content = fs.readFileSync(abs, 'utf-8');
+      }
+    } catch {
+      content = null;
+    }
+    this.cache.set(abs, content);
+    return content;
+  }
+}
+
 class TestResult {
-  constructor(moduleName) {
+  constructor(moduleName, options = {}) {
     this.module = moduleName;
     this.status = 'pending';  // pending | running | passed | failed | skipped
     this.checks = [];
@@ -29,6 +72,14 @@ class TestResult {
     this.endTime = null;
     this.duration = 0;
     this.error = null;
+    // Confidence-scoring context — injected by the runner. When absent
+    // (e.g. tests that build TestResult directly) confidence defaults
+    // to DEFAULT_CONFIDENCE so callers see the legacy "always block"
+    // behaviour.
+    this._sourceCache = options.sourceCache || null;
+    this._blockThreshold = typeof options.blockThreshold === 'number'
+      ? options.blockThreshold
+      : BLOCK_THRESHOLD;
   }
 
   start() {
@@ -43,16 +94,52 @@ class TestResult {
    * @param {object} details - Additional details
    * @param {string} [details.severity='error'] - Severity: 'error', 'warning', or 'info'
    * @param {string} [details.fix] - Human-readable fix suggestion
-   * @param {Function} [details.autoFix] - Function that auto-fixes the issue. Returns { fixed: boolean, description: string }
+   * @param {Function} [details.autoFix] - Function that auto-fixes the issue
+   * @param {number} [details.confidence] - Explicit confidence 0..1. If
+   *   absent, computed from path + source context. Errors below
+   *   `blockThreshold` (default 0.7) do not block the gate.
    */
   addCheck(name, passed, details = {}) {
     const severity = details.severity || (passed ? Severity.INFO : Severity.ERROR);
+
+    // Compute confidence ONLY for failing error/warning checks — passing
+    // checks and info-level checks don't need scoring (they never block).
+    let confidence;
+    let confidenceSignals;
+    if (typeof details.confidence === 'number') {
+      // Explicit caller value wins
+      confidence = details.confidence;
+      confidenceSignals = details.confidenceSignals || [];
+    } else if (!passed && (severity === Severity.ERROR || severity === Severity.WARNING)) {
+      const filePath = details.file || details.filePath;
+      let sourceText = null;
+      if (filePath && this._sourceCache) {
+        sourceText = this._sourceCache.read(filePath);
+      }
+      const scored = scoreFinding({
+        filePath,
+        ruleKey: name,
+        module: this.module,
+        message: details.message,
+        line: details.line,
+        column: details.column,
+        sourceText,
+      });
+      confidence = scored.confidence;
+      confidenceSignals = scored.signals;
+    } else {
+      confidence = DEFAULT_CONFIDENCE;
+      confidenceSignals = [];
+    }
+
     this.checks.push({
       name,
       passed,
       severity,
       timestamp: Date.now(),
       ...details,
+      confidence,
+      confidenceSignals,
     });
   }
 
@@ -91,6 +178,26 @@ class TestResult {
     return this.checks.filter(c => !c.passed && c.severity === Severity.ERROR);
   }
 
+  /**
+   * Errors that are CONFIDENT enough to actually block the gate.
+   * (severity === 'error' AND confidence >= blockThreshold)
+   */
+  get blockingErrorChecks() {
+    const t = this._blockThreshold;
+    return this.checks.filter(c => isBlockingFinding(c, t));
+  }
+
+  /**
+   * Errors that fell below the confidence threshold — reported but
+   * don't block.
+   */
+  get softErrorChecks() {
+    const t = this._blockThreshold;
+    return this.checks.filter(c =>
+      !c.passed && c.severity === Severity.ERROR && !isBlockingFinding(c, t),
+    );
+  }
+
   /** Checks that failed with severity 'warning' — reported but don't block. */
   get warningChecks() {
     return this.checks.filter(c => !c.passed && c.severity === Severity.WARNING);
@@ -118,6 +225,8 @@ class TestResult {
       passedChecks: this.passedChecks.length,
       failedChecks: this.failedChecks.length,
       errors: this.errorChecks.length,
+      blockingErrors: this.blockingErrorChecks.length,
+      softErrors: this.softErrorChecks.length,
       warnings: this.warningChecks.length,
       fixes: this.fixes.length,
       checks: this.checks,
@@ -139,8 +248,12 @@ class GateTestRunner extends EventEmitter {
       autoFix: false,           // --fix: automatically apply safe fixes
       diffOnly: false,          // --diff: only scan git-changed files
       changedFiles: null,       // list of changed files (populated by diff mode)
+      confidenceThreshold: BLOCK_THRESHOLD,
       ...options,
     };
+    // Shared source cache for confidence scoring across all modules
+    const projectRoot = (config && config.projectRoot) || process.cwd();
+    this._sourceCache = new SourceCache(projectRoot);
   }
 
   register(name, moduleInstance) {
@@ -202,7 +315,10 @@ class GateTestRunner extends EventEmitter {
 
   async _runModule(name) {
     const mod = this.modules.get(name);
-    const result = new TestResult(name);
+    const result = new TestResult(name, {
+      sourceCache: this._sourceCache,
+      blockThreshold: this.options.confidenceThreshold,
+    });
 
     if (!mod) {
       result.skip(`Module "${name}" not registered`);
@@ -221,10 +337,14 @@ class GateTestRunner extends EventEmitter {
       moduleConfig._allResults = this.results;
       await mod.run(result, moduleConfig);
 
-      // Only errors block — warnings are allowed through
-      if (result.errorChecks.length > 0) {
+      // Only CONFIDENT errors block — soft errors (below threshold) are
+      // surfaced in the report but don't fail the module. Warnings always
+      // pass through. This kills the false-positive friction Craig hit
+      // on PR #85: doc-string examples and example fixtures still show
+      // up, they just don't fail CI.
+      if (result.blockingErrorChecks.length > 0) {
         result.fail(
-          `${result.errorChecks.length} error(s): ${result.errorChecks.map(c => c.name).join(', ')}`
+          `${result.blockingErrorChecks.length} error(s): ${result.blockingErrorChecks.map(c => c.name).join(', ')}`
         );
       } else {
         result.pass();
@@ -278,8 +398,9 @@ class GateTestRunner extends EventEmitter {
         }
       }
 
-      // Re-evaluate module status after fixes
-      if (result.status === 'failed' && result.errorChecks.length === 0) {
+      // Re-evaluate module status after fixes — only confident errors
+      // can re-fail the module.
+      if (result.status === 'failed' && result.blockingErrorChecks.length === 0) {
         result.status = 'passed';
         result.error = null;
       }
@@ -369,11 +490,19 @@ class GateTestRunner extends EventEmitter {
     const passedChecks = this.results.reduce((sum, r) => sum + r.passedChecks.length, 0);
     const failedChecks = this.results.reduce((sum, r) => sum + r.failedChecks.length, 0);
     const totalErrors = this.results.reduce((sum, r) => sum + r.errorChecks.length, 0);
+    const totalBlockingErrors = this.results.reduce(
+      (sum, r) => sum + r.blockingErrorChecks.length, 0,
+    );
+    const totalSoftErrors = this.results.reduce(
+      (sum, r) => sum + r.softErrorChecks.length, 0,
+    );
     const totalWarnings = this.results.reduce((sum, r) => sum + r.warningChecks.length, 0);
     const totalFixes = this.results.reduce((sum, r) => sum + r.fixes.length, 0);
 
-    // GATE DECISION: Failed modules or error-severity checks block the gate.
-    const gateStatus = (failed.length === 0 && totalErrors === 0) ? 'PASSED' : 'BLOCKED';
+    // GATE DECISION: only CONFIDENT errors block. Failed modules block
+    // unconditionally (runtime exceptions, module crashes). Soft errors
+    // are visible in the report but don't fail the gate.
+    const gateStatus = (failed.length === 0 && totalBlockingErrors === 0) ? 'PASSED' : 'BLOCKED';
 
     return {
       gateStatus,
@@ -381,6 +510,7 @@ class GateTestRunner extends EventEmitter {
       duration: endTime - startTime,
       diffOnly: this.options.diffOnly,
       changedFiles: this.options.changedFiles,
+      confidenceThreshold: this.options.confidenceThreshold,
       modules: {
         total: this.results.length,
         passed: passed.length,
@@ -392,6 +522,8 @@ class GateTestRunner extends EventEmitter {
         passed: passedChecks,
         failed: failedChecks,
         errors: totalErrors,
+        blockingErrors: totalBlockingErrors,
+        softErrors: totalSoftErrors,
         warnings: totalWarnings,
       },
       fixes: {

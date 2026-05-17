@@ -73,7 +73,12 @@ class ConsoleReporter {
         const prefix = check.autoFixed
           ? `${COLORS.green}+ FIXED${COLORS.reset}`
           : `${COLORS.red}x${COLORS.reset}`;
-        console.log(`    ${prefix} ${COLORS.red}${check.name}${COLORS.reset}`);
+        // Soft-error annotation: low-confidence error doesn't block
+        const isSoft = typeof check.confidence === 'number' && check.confidence < 0.7;
+        const tag = isSoft
+          ? ` ${COLORS.dim}(low confidence: ${check.confidence.toFixed(2)})${COLORS.reset}`
+          : '';
+        console.log(`    ${prefix} ${COLORS.red}${check.name}${COLORS.reset}${tag}`);
         if (check.expected !== undefined) {
           console.log(`      ${COLORS.dim}expected: ${check.expected}, got: ${check.actual}${COLORS.reset}`);
         }
@@ -118,7 +123,13 @@ class ConsoleReporter {
     }
     console.log(`  Modules:  ${summary.modules.passed}/${summary.modules.total} passed`);
     console.log(`  Checks:   ${summary.checks.passed}/${summary.checks.total} passed`);
-    console.log(`  Errors:   ${COLORS.red}${summary.checks.errors}${COLORS.reset}`);
+    const blocking = summary.checks.blockingErrors;
+    const soft = summary.checks.softErrors;
+    if (typeof blocking === 'number' && typeof soft === 'number' && soft > 0) {
+      console.log(`  Errors:   ${COLORS.red}${blocking}${COLORS.reset} blocking, ${COLORS.dim}${soft} soft (low confidence)${COLORS.reset}`);
+    } else {
+      console.log(`  Errors:   ${COLORS.red}${summary.checks.errors}${COLORS.reset}`);
+    }
     console.log(`  Warnings: ${COLORS.yellow}${summary.checks.warnings}${COLORS.reset}`);
     if (summary.fixes.total > 0) {
       console.log(`  Fixed:    ${COLORS.green}${summary.fixes.total}${COLORS.reset}`);

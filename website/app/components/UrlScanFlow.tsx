@@ -37,10 +37,10 @@ import { LiveModuleTicker, ProgressTicker, RuntimePending } from "./url-scan-flo
 import { CopyForClaudeButton } from "./url-scan-flow-export";
 import { consumeSseStream } from "./url-scan-flow-sse";
 
-export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint, placeholderUrl = "https://yoursite.com", brandLabel }: UrlScanFlowProps) {
+export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint, placeholderUrl = "https://yoursite.com", brandLabel, initialUrl = "" }: UrlScanFlowProps) {
   type Phase = "idle" | "scanning" | "results" | "error";
   const [phase, setPhase] = useState<Phase>("idle");
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);

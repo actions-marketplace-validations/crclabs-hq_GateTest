@@ -49,6 +49,49 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+// Remote-store adapter is loaded lazily / defensively so a missing module
+// (during partial cherry-picks, unbundled CLI use, etc.) never breaks the
+// flywheel. The remote store is best-effort; the local JSON store is the
+// authoritative fallback.
+let _remote = null;
+function getRemote() {
+  if (_remote !== null) return _remote;
+  try {
+    _remote = require('./recipe-store-remote');
+  } catch {
+    _remote = {
+      loadRemoteRecipes: async () => null,
+      saveRemoteRecipe:  async () => false,
+      isRemoteConfigured: () => false,
+    };
+  }
+  return _remote;
+}
+
+// In-memory cache of the remote store, keyed by URL. Avoids hammering the
+// HTTP endpoint on every `findMatchingRecipe` call. Cache TTL is per-process
+// (no expiry within a single CI run — fresh runner = fresh cache).
+const _remoteCache = new Map();
+const REMOTE_CACHE_TTL_MS = 30_000;
+
+function readRemoteCache(url) {
+  const entry = _remoteCache.get(url);
+  if (!entry) return null;
+  if (Date.now() - entry.at > REMOTE_CACHE_TTL_MS) {
+    _remoteCache.delete(url);
+    return null;
+  }
+  return entry.recipes;
+}
+
+function writeRemoteCache(url, recipes) {
+  _remoteCache.set(url, { at: Date.now(), recipes });
+}
+
+function clearRemoteCache() {
+  _remoteCache.clear();
+}
+
 // ---------------------------------------------------------------------------
 // Templatey-ness heuristic
 // ---------------------------------------------------------------------------
@@ -276,6 +319,28 @@ function distillClaudeFix({ issue, originalContent, patchedContent, recipeStoreP
 
     store.recipes.push(recipe);
     saveStore(recipeStorePath, store);
+
+    // Best-effort: also push to the remote store if one is configured.
+    // Fire-and-forget — the local write is the authoritative success signal.
+    try {
+      const remote = getRemote();
+      const sourceEnv = (arguments[0] && arguments[0].env) || process.env;
+      const url = (arguments[0] && arguments[0].remoteStoreUrl) ||
+        (sourceEnv && sourceEnv[remote.ENV_URL_KEY || 'GATETEST_RECIPE_STORE_URL']);
+      if (url && remote && typeof remote.saveRemoteRecipe === 'function') {
+        // Bust the cache so the next read picks up our new recipe.
+        clearRemoteCache();
+        const p = remote.saveRemoteRecipe(url, recipe, {
+          token: arguments[0] && arguments[0].remoteStoreToken,
+          transport: arguments[0] && arguments[0].transport,
+          env: sourceEnv,
+        });
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => { /* best-effort */ });
+        }
+      }
+    } catch { /* best-effort */ }
+
     return { written: true, recipe };
   } catch (err) {
     return { written: false, reason: `error:${err && err.message ? err.message : 'unknown'}` };
@@ -283,8 +348,37 @@ function distillClaudeFix({ issue, originalContent, patchedContent, recipeStoreP
 }
 
 /**
+ * Search a list of recipes for one whose (ruleKey, module, fileExt) match
+ * AND whose `before` snippet is present in `content`. Returns the first hit.
+ *
+ * @param {Array<object>} recipes
+ * @param {object} criteria
+ */
+function _searchRecipes(recipes, { ruleKey, module: mod, fileExt, content, includeLowConfidence }) {
+  if (!Array.isArray(recipes)) return null;
+  for (const r of recipes) {
+    if (!r || typeof r !== 'object') continue;
+    if (r.ruleKey !== ruleKey) continue;
+    if (r.module !== mod) continue;
+    if (r.fileExt !== fileExt) continue;
+    if (!includeLowConfidence && r.confidence !== 'stable') continue;
+    if (!r.before || typeof r.before !== 'string') continue;
+    if (typeof content === 'string' && !content.includes(r.before)) continue;
+    return r;
+  }
+  return null;
+}
+
+/**
  * Look up the first matching recipe by ruleKey + module + fileExt whose
  * `before` snippet appears in the given content.
+ *
+ * Consults the REMOTE store first (when configured via
+ * `GATETEST_RECIPE_STORE_URL` or `opts.remoteStoreUrl`), falling back to the
+ * LOCAL JSON store on miss or remote failure. Remote results are cached
+ * in-memory per-URL to avoid re-fetching on every call within a CI run.
+ *
+ * NEVER throws.
  *
  * @param {object} opts
  * @param {string} opts.ruleKey
@@ -292,23 +386,67 @@ function distillClaudeFix({ issue, originalContent, patchedContent, recipeStoreP
  * @param {string} opts.fileExt
  * @param {string} opts.content
  * @param {string} opts.recipeStorePath
- * @param {boolean} [opts.includeLowConfidence] — default true; flywheel
- *   orchestrator may pass false to require stable recipes only
- * @returns {object|null}
+ * @param {boolean} [opts.includeLowConfidence] — default true
+ * @param {string}  [opts.remoteStoreUrl]       — override env URL
+ * @param {string}  [opts.remoteStoreToken]     — override env token
+ * @param {object}  [opts.transport]            — http transport (for tests)
+ * @param {object}  [opts.env]                  — env source (for tests)
+ * @returns {Promise<object|null>}
  */
-function findMatchingRecipe({ ruleKey, module: mod, fileExt, content, recipeStorePath, includeLowConfidence = true }) {
+async function findMatchingRecipe(opts) {
+  try {
+    if (!opts || typeof opts !== 'object') return null;
+    const {
+      ruleKey, module: mod, fileExt, content, recipeStorePath,
+      includeLowConfidence = true,
+      remoteStoreUrl, remoteStoreToken, transport, env,
+    } = opts;
+    if (typeof content !== 'string') return null;
+
+    const criteria = { ruleKey, module: mod, fileExt, content, includeLowConfidence };
+
+    // --- Layer 1: REMOTE store (when configured) ---------------------------
+    const remote = getRemote();
+    const sourceEnv = env || process.env;
+    const url = remoteStoreUrl || (sourceEnv && sourceEnv[remote.ENV_URL_KEY || 'GATETEST_RECIPE_STORE_URL']);
+    if (url && remote && typeof remote.loadRemoteRecipes === 'function') {
+      let cached = readRemoteCache(url);
+      if (cached === null) {
+        const fetched = await remote.loadRemoteRecipes(url, {
+          token: remoteStoreToken,
+          transport,
+          env: sourceEnv,
+        });
+        if (fetched && Array.isArray(fetched.recipes)) {
+          cached = fetched.recipes;
+          writeRemoteCache(url, cached);
+        }
+      }
+      if (cached) {
+        const hit = _searchRecipes(cached, criteria);
+        if (hit) return hit;
+      }
+    }
+
+    // --- Layer 2: LOCAL JSON store -----------------------------------------
+    if (!recipeStorePath) return null;
+    const store = loadStore(recipeStorePath);
+    return _searchRecipes(store.recipes, criteria);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * SYNCHRONOUS variant — local store only. Useful for tests and callers that
+ * cannot wait on a network round-trip. The remote-first variant is the
+ * default `findMatchingRecipe` export.
+ */
+function findMatchingRecipeLocal({ ruleKey, module: mod, fileExt, content, recipeStorePath, includeLowConfidence = true }) {
   try {
     if (!recipeStorePath || typeof content !== 'string') return null;
     const store = loadStore(recipeStorePath);
-    for (const r of store.recipes) {
-      if (r.ruleKey !== ruleKey) continue;
-      if (r.module !== mod) continue;
-      if (r.fileExt !== fileExt) continue;
-      if (!includeLowConfidence && r.confidence !== 'stable') continue;
-      if (!r.before || !content.includes(r.before)) continue;
-      return r;
-    }
-    return null;
+    return _searchRecipes(store.recipes, { ruleKey, module: mod, fileExt, content, includeLowConfidence });
   } catch {
     return null;
   }
@@ -359,9 +497,11 @@ function incrementApplicationCount(idOrRecipe, recipeStorePath) {
 
 module.exports = {
   distillClaudeFix,
-  findMatchingRecipe,
+  findMatchingRecipe,            // async — remote-first, local fallback
+  findMatchingRecipeLocal,       // sync — local only
   applyRecipe,
   incrementApplicationCount,
+  clearRemoteCache,
   // exposed for tests
   isTemplatey,
   diffChangedLines,

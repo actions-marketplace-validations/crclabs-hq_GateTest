@@ -115,9 +115,22 @@ jobs:
         run: bash scripts/install-workspaces.sh
 
       - name: Run quick self-scan against the gatetest repo itself
+        # JsonReporter is always attached — produces
+        # .gatetest/reports/gatetest-report-latest.json which the
+        # publish step parses for the live trust badge.
         run: node bin/gatetest.js --suite quick
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Best-effort publish of the self-scan result to gatetest.ai for
+      # the live trust badge. Fail-soft — `publish-self-scan.js` always
+      # exits 0 so a network blip or missing token never breaks CI.
+      - name: Publish self-scan stats to live badge endpoint
+        if: always()
+        run: node scripts/publish-self-scan.js
+        env:
+          GATETEST_INTERNAL_TOKEN: ${{ secrets.GATETEST_INTERNAL_TOKEN }}
+          SELF_SCAN_STATUS_URL: ${{ vars.SELF_SCAN_STATUS_URL }}
 
   # Pre-merge sweep — every check that would block a hand-merge runs here
   # as a SEPARATE STEP, so one failure doesn't hide three others. Runs on

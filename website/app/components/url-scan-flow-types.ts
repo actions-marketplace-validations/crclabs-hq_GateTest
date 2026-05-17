@@ -58,6 +58,9 @@ export interface UrlScanFlowProps {
   recommendEndpoint?: string;
   placeholderUrl?: string;
   brandLabel?: string;
+  /** Pre-populates the input. Use with a changing `key` prop to remount
+   *  on sample-URL clicks so React re-syncs the controlled value. */
+  initialUrl?: string;
 }
 
 export interface Recommendation {

@@ -217,51 +217,241 @@ describe('auto-distill — findMatchingRecipe + applyRecipe', () => {
   let store;
   beforeEach(() => { store = tmpStore(); });
 
-  it('finds a matching recipe by ruleKey + module + fileExt + content', () => {
+  it('finds a matching recipe by ruleKey + module + fileExt + content', async () => {
+    // Ensure no remote env interferes with the local-only test.
+    const savedUrl = process.env.GATETEST_RECIPE_STORE_URL;
+    delete process.env.GATETEST_RECIPE_STORE_URL;
+    try {
+      distillClaudeFix({
+        issue: { ruleKey: 'js-reject-unauthorized', module: 'tlsSecurity', file: 'src/a.js' },
+        originalContent: REJECT_FIXTURE.before,
+        patchedContent: REJECT_FIXTURE.after,
+        recipeStorePath: store,
+      });
+      const found = await findMatchingRecipe({
+        ruleKey: 'js-reject-unauthorized',
+        module: 'tlsSecurity',
+        fileExt: '.js',
+        content: 'preamble\n' + REJECT_FIXTURE.before + '\ntrailing',
+        recipeStorePath: store,
+      });
+      assert.ok(found);
+      const patched = applyRecipe('preamble\n' + REJECT_FIXTURE.before + '\ntrailing', found);
+      assert.ok(patched.includes('rejectUnauthorized: true'));
+      assert.ok(patched.includes('preamble'));
+      assert.ok(patched.includes('trailing'));
+    } finally {
+      if (savedUrl !== undefined) process.env.GATETEST_RECIPE_STORE_URL = savedUrl;
+    }
+  });
+
+  it('returns null when nothing matches', async () => {
+    const savedUrl = process.env.GATETEST_RECIPE_STORE_URL;
+    delete process.env.GATETEST_RECIPE_STORE_URL;
+    try {
+      const found = await findMatchingRecipe({
+        ruleKey: 'nope', module: 'nope', fileExt: '.js', content: 'x', recipeStorePath: store,
+      });
+      assert.strictEqual(found, null);
+    } finally {
+      if (savedUrl !== undefined) process.env.GATETEST_RECIPE_STORE_URL = savedUrl;
+    }
+  });
+
+  it('honours includeLowConfidence=false', async () => {
+    const savedUrl = process.env.GATETEST_RECIPE_STORE_URL;
+    delete process.env.GATETEST_RECIPE_STORE_URL;
+    try {
+      const w = distillClaudeFix({
+        issue: { ruleKey: 'r', module: 'm', file: 'f.js' },
+        originalContent: 'a = false;',
+        patchedContent:  'a = true;',
+        recipeStorePath: store,
+      });
+      assert.strictEqual(w.recipe.confidence, 'low');
+      const noLow = await findMatchingRecipe({
+        ruleKey: 'r', module: 'm', fileExt: '.js', content: 'a = false;',
+        recipeStorePath: store, includeLowConfidence: false,
+      });
+      assert.strictEqual(noLow, null);
+      const withLow = await findMatchingRecipe({
+        ruleKey: 'r', module: 'm', fileExt: '.js', content: 'a = false;',
+        recipeStorePath: store, includeLowConfidence: true,
+      });
+      assert.ok(withLow);
+    } finally {
+      if (savedUrl !== undefined) process.env.GATETEST_RECIPE_STORE_URL = savedUrl;
+    }
+  });
+});
+
+describe('auto-distill — remote-store integration', () => {
+  const { clearRemoteCache } = require('../website/app/lib/auto-distill');
+  let store;
+  beforeEach(() => {
+    store = tmpStore();
+    clearRemoteCache();
+  });
+
+  it('findMatchingRecipe consults remote first, falls back to local', async () => {
+    // No matching recipe locally.
+    const calls = [];
+    const fakeTransport = makeFakeTransport(calls, [
+      {
+        match: (urlPath) => urlPath === '/recipes',
+        status: 200,
+        body: { recipes: [{
+          id: 'remote-1',
+          ruleKey: 'js-reject-unauthorized',
+          module: 'tlsSecurity',
+          fileExt: '.js',
+          before: 'rejectUnauthorized: false',
+          after:  'rejectUnauthorized: true',
+          confidence: 'stable',
+          applicationCount: 5,
+          provenance: { originalModel: null, originalRuleKey: 'js-reject-unauthorized', createdAt: '2026-01-01', lastAppliedAt: null },
+        }] },
+      },
+    ]);
+
+    const found = await findMatchingRecipe({
+      ruleKey: 'js-reject-unauthorized',
+      module: 'tlsSecurity',
+      fileExt: '.js',
+      content: 'const opts = { rejectUnauthorized: false };',
+      recipeStorePath: store,
+      remoteStoreUrl: 'https://example.test/recipes',
+      transport: fakeTransport,
+    });
+    assert.ok(found, 'expected remote recipe to be found');
+    assert.strictEqual(found.id, 'remote-1');
+    assert.strictEqual(calls.length, 1, 'remote should have been called exactly once');
+  });
+
+  it('falls back to local store when remote returns nothing', async () => {
     distillClaudeFix({
-      issue: { ruleKey: 'js-reject-unauthorized', module: 'tlsSecurity', file: 'src/a.js' },
+      issue: { ruleKey: 'local-only', module: 'tlsSecurity', file: 'src/a.js' },
       originalContent: REJECT_FIXTURE.before,
       patchedContent: REJECT_FIXTURE.after,
       recipeStorePath: store,
     });
-    const found = findMatchingRecipe({
-      ruleKey: 'js-reject-unauthorized',
+    const fakeTransport = makeFakeTransport([], [
+      { match: () => true, status: 200, body: { recipes: [] } },
+    ]);
+    const found = await findMatchingRecipe({
+      ruleKey: 'local-only',
       module: 'tlsSecurity',
       fileExt: '.js',
-      content: 'preamble\n' + REJECT_FIXTURE.before + '\ntrailing',
+      content: REJECT_FIXTURE.before,
       recipeStorePath: store,
+      remoteStoreUrl: 'https://example.test/recipes',
+      transport: fakeTransport,
     });
-    assert.ok(found);
-    const patched = applyRecipe('preamble\n' + REJECT_FIXTURE.before + '\ntrailing', found);
-    assert.ok(patched.includes('rejectUnauthorized: true'));
-    assert.ok(patched.includes('preamble'));
-    assert.ok(patched.includes('trailing'));
+    assert.ok(found, 'should have fallen back to the local store');
+    assert.strictEqual(found.ruleKey, 'local-only');
   });
 
-  it('returns null when nothing matches', () => {
-    const found = findMatchingRecipe({
-      ruleKey: 'nope', module: 'nope', fileExt: '.js', content: 'x', recipeStorePath: store,
+  it('caches remote results across calls in the same process', async () => {
+    const calls = [];
+    const fakeTransport = makeFakeTransport(calls, [
+      { match: () => true, status: 200, body: { recipes: [] } },
+    ]);
+    await findMatchingRecipe({
+      ruleKey: 'k', module: 'm', fileExt: '.js', content: 'x',
+      recipeStorePath: store,
+      remoteStoreUrl: 'https://example.test/recipes',
+      transport: fakeTransport,
     });
-    assert.strictEqual(found, null);
+    await findMatchingRecipe({
+      ruleKey: 'k', module: 'm', fileExt: '.js', content: 'x',
+      recipeStorePath: store,
+      remoteStoreUrl: 'https://example.test/recipes',
+      transport: fakeTransport,
+    });
+    assert.strictEqual(calls.length, 1, `expected exactly 1 remote call across 2 lookups, got ${calls.length}`);
   });
 
-  it('honours includeLowConfidence=false', () => {
-    const w = distillClaudeFix({
+  it('distillClaudeFix writes to remote (best-effort) when configured', async () => {
+    const calls = [];
+    const fakeTransport = makeFakeTransport(calls, [
+      { match: () => true, status: 200, body: { ok: true } },
+    ]);
+    const out = distillClaudeFix({
+      issue: { ruleKey: 'js-reject-unauthorized', module: 'tlsSecurity', file: 'src/foo.js' },
+      originalContent: REJECT_FIXTURE.before,
+      patchedContent: REJECT_FIXTURE.after,
+      recipeStorePath: store,
+      remoteStoreUrl: 'https://example.test/recipes',
+      transport: fakeTransport,
+    });
+    assert.strictEqual(out.written, true, 'local write should have succeeded');
+    // Remote write is fire-and-forget — yield a tick to let it run.
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    assert.strictEqual(calls.length, 1, `expected exactly 1 remote write, got ${calls.length}`);
+    assert.strictEqual(calls[0].method, 'PUT');
+  });
+
+  it('remote failure does not break local-store reads', async () => {
+    distillClaudeFix({
       issue: { ruleKey: 'r', module: 'm', file: 'f.js' },
       originalContent: 'a = false;',
       patchedContent:  'a = true;',
       recipeStorePath: store,
     });
-    assert.strictEqual(w.recipe.confidence, 'low');
-    const noLow = findMatchingRecipe({
+    // Transport that throws — simulate complete network failure.
+    const throwTransport = {
+      request: () => { throw new Error('connection refused'); },
+    };
+    const found = await findMatchingRecipe({
       ruleKey: 'r', module: 'm', fileExt: '.js', content: 'a = false;',
-      recipeStorePath: store, includeLowConfidence: false,
+      recipeStorePath: store,
+      remoteStoreUrl: 'https://example.test/recipes',
+      transport: throwTransport,
     });
-    assert.strictEqual(noLow, null);
-    const withLow = findMatchingRecipe({
-      ruleKey: 'r', module: 'm', fileExt: '.js', content: 'a = false;',
-      recipeStorePath: store, includeLowConfidence: true,
-    });
-    assert.ok(withLow);
+    assert.ok(found, 'local fallback should still succeed when remote throws');
   });
 });
+
+// Local helper for the remote-integration tests — re-uses the same shape as
+// tests/recipe-store-remote.test.js's fakeTransport but lives here for the
+// auto-distill suite to stay self-contained.
+function makeFakeTransport(calls, responses) {
+  return {
+    request(opts, cb) {
+      calls.push({ method: opts.method, path: opts.path });
+      const match = responses.find((r) => {
+        if (typeof r.match === 'function') return r.match(opts.path);
+        if (r.match instanceof RegExp)     return r.match.test(opts.path);
+        if (typeof r.match === 'string')   return opts.path === r.match || opts.path.includes(r.match);
+        return false;
+      });
+      const payload = match || { status: 404, body: { message: 'unmatched' } };
+      const closeListeners = [];
+      setImmediate(() => {
+        const raw = typeof payload.body === 'string' ? payload.body : JSON.stringify(payload.body);
+        const res = {
+          statusCode: payload.status,
+          headers: { 'content-type': 'application/json' },
+          on(event, fn) {
+            if (event === 'data') fn(Buffer.from(raw));
+            if (event === 'end')  fn();
+          },
+        };
+        cb(res);
+        // Fire close listeners so the consumer can clear its timeout timer.
+        setImmediate(() => {
+          for (const fn of closeListeners) {
+            try { fn(); } catch { /* ignore */ }
+          }
+        });
+      });
+      return {
+        on(event, fn) { if (event === 'close') closeListeners.push(fn); },
+        write() {},
+        end() {},
+        destroy() {},
+      };
+    },
+  };
+}

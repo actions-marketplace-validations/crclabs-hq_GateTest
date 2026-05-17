@@ -93,10 +93,33 @@ const scanPlans = [
   },
 ];
 
+// Continuous tier — listed in CLAUDE.md revenue model.
+// Stripe wiring for the subscription product is pending Craig (Boss Rule
+// #6) so the CTA links to the GitHub App install flow rather than a
+// monthly-billing checkout. Price text remains $49/mo as authorised.
+const continuousPlan = {
+  name: "Continuous",
+  price: "$49",
+  period: "/ month",
+  description:
+    "Scan every push. Weekly scheduled deep scan. Email on score regression.",
+  modules: "Subscription · all tiers eligible",
+  features: [
+    "Scan on every push (GitHub App or Gluecron-host)",
+    "Weekly full-suite scheduled scan",
+    "Email + Slack on score regression",
+    "Trend dashboard — see your gate getting greener week-over-week",
+    "Pricing applied on top of a one-shot tier on demand",
+    "Cancel anytime",
+  ],
+  cta: "Install GitHub App",
+  href: "/github/setup",
+};
+
 const comingSoon = [
   "Live browser testing — real browser-powered page testing",
   "Visual regression — screenshot comparison between deploys",
-  "Continuous monitoring — scan on every push, $49/month",
+  "Self-healing CI — agent reads failures and opens fix PRs",
 ];
 
 export default function Pricing() {
@@ -231,6 +254,54 @@ export default function Pricing() {
               </ul>
             </div>
           ))}
+        </div>
+
+        {/* Continuous subscription — separate card, different commercial shape */}
+        <div className="max-w-3xl mx-auto mb-12">
+          <div className="rounded-2xl border-2 border-dashed border-accent/30 bg-gradient-to-br from-accent/[0.04] to-transparent p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+              <div className="flex-1">
+                <div className="text-xs font-semibold text-accent uppercase tracking-wider mb-2">
+                  Subscription
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-1">
+                  {continuousPlan.name}
+                </h3>
+                <div className="flex items-baseline gap-1 mb-2">
+                  <span className="text-3xl font-bold gradient-text">
+                    {continuousPlan.price}
+                  </span>
+                  <span className="text-sm text-muted">
+                    {continuousPlan.period}
+                  </span>
+                </div>
+                <p className="text-sm text-muted">
+                  {continuousPlan.description}
+                </p>
+              </div>
+              <div className="w-full sm:w-auto sm:max-w-md flex-1">
+                <ul className="space-y-1.5 mb-4">
+                  {continuousPlan.features.slice(0, 4).map((f) => (
+                    <li
+                      key={f}
+                      className="flex items-start gap-2 text-xs text-muted"
+                    >
+                      <span className="text-success mt-0.5 shrink-0">
+                        &#10003;
+                      </span>
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <a
+                  href={continuousPlan.href}
+                  className="btn-secondary block w-full text-center py-3 px-5 text-sm font-semibold"
+                >
+                  {continuousPlan.cta} &rarr;
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Coming Soon */}

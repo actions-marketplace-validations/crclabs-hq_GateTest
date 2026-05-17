@@ -157,13 +157,22 @@ async function runRecipeLayer(issue, opts) {
   if (typeof issue.content !== 'string') return null;
   if (!opts.recipeStorePath) return null;
 
-  const recipe = distill.findMatchingRecipe({
-    ruleKey: issue.ruleKey || '',
-    module: issue.module || '',
-    fileExt: fileExtOf(issue.file),
-    content: issue.content,
-    recipeStorePath: opts.recipeStorePath,
-  });
+  // findMatchingRecipe is async (remote-first, local fallback). It may also
+  // be a sync function in older builds — handle both via await.
+  let recipe;
+  try {
+    recipe = await distill.findMatchingRecipe({
+      ruleKey: issue.ruleKey || '',
+      module: issue.module || '',
+      fileExt: fileExtOf(issue.file),
+      content: issue.content,
+      recipeStorePath: opts.recipeStorePath,
+      remoteStoreUrl: opts.remoteStoreUrl,
+      remoteStoreToken: opts.remoteStoreToken,
+    });
+  } catch {
+    recipe = null;
+  }
   if (!recipe) return null;
 
   const patched = distill.applyRecipe(issue.content, recipe);

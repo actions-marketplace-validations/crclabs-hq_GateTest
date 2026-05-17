@@ -1,205 +1,225 @@
 # GateTest
 
-**AI writes fast. GateTest keeps it honest.**
+### One gate. 91 modules. Self-healing CI.
 
-The most advanced QA gate for AI-generated code. 22 test modules scan your entire codebase — security, accessibility, performance, and everything in between. We don't just find bugs. We fix them.
+**AI-powered code quality. Pay only if we fix it.**
 
-[![Scanned by GateTest](https://gatetest.ai/api/badge?status=passing)](https://gatetest.ai)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Modules](https://img.shields.io/badge/modules-22-brightgreen)]()
-[![Node](https://img.shields.io/badge/node-%3E%3D20-green)]()
-
----
-
-## Why GateTest?
-
-Every team using AI coding assistants (Copilot, Claude, Cursor) is duct-taping 8-10 testing tools together. Different configs. Different dashboards. Different billing.
-
-**GateTest replaces them all with one scan, one report, one gate decision: PASS or BLOCKED.**
-
-> **We dogfood this.** GateTest scans itself on every push. Check the [CI workflow](.github/workflows/ci.yml).
-
-| They use | GateTest replaces it with |
-|----------|--------------------------|
-| Jest/Vitest/Mocha | `gatetest --module unitTests` |
-| Cypress / BrowserStack / Sauce Labs | `gatetest --module e2e` |
-| ESLint/Stylelint | `gatetest --module lint` |
-| Snyk/npm audit | `gatetest --module security` |
-| Lighthouse | `gatetest --module performance` |
-| axe/pa11y | `gatetest --module accessibility` |
-| Percy/Chromatic | `gatetest --module visual` |
-| SonarQube | `gatetest --module codeQuality` |
-| git-secrets | `gatetest --module secrets` |
-| broken-link-checker | `gatetest --module links` |
-
-Plus 12 more modules they don't have: AI code review, **fake-fix detector**, mutation testing, chaos testing, autonomous exploration, live crawling, data integrity, documentation validation, compatibility analysis, integration test detection, CI generation, and SARIF output.
+<!-- npm-version badge — re-enable after first `npm publish`:
+[![npm](https://img.shields.io/npm/v/gatetest.svg)](https://www.npmjs.com/package/gatetest)
+-->
+[![CI](https://github.com/ccantynz-alt/gatetest/actions/workflows/ci.yml/badge.svg)](https://github.com/ccantynz-alt/gatetest/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Modules](https://img.shields.io/badge/modules-91-purple.svg)](#what-it-replaces)
+[![Tests](https://img.shields.io/badge/tests-3500%2B-brightgreen.svg)](#real-repo-proofs)
+[![Node](https://img.shields.io/badge/node-%E2%89%A520-339933.svg)](https://nodejs.org/)
+<!-- Marketplace listing — re-enable when the GitHub Marketplace approval lands:
+[![GitHub Marketplace](https://img.shields.io/badge/marketplace-GateTest-2ea44f.svg)](https://github.com/marketplace/gatetest)
+-->
 
 ---
 
-## Quick Start
+## The 30-second pitch
+
+**GateTest is a single CLI plus a composite GitHub Action that runs 91 static-analysis modules against any codebase, then uses Claude to repair the findings it can.** It replaces SonarQube, Snyk, ESLint, Cypress, Lighthouse, axe, pa11y, and twenty-plus other tools with one config, one gate decision, and one report.
+
+**It is different because the cost trends to zero.** Deterministic AST and rule-based layers run first — these are free and ship the fix in milliseconds. Claude only runs on patterns nothing else has seen. Every Claude win is distilled into a reusable recipe, so the next time the same pattern appears anywhere in the network it is handled for free. The longer you run GateTest, the less of it is paid work.
+
+**What you get depends on the tier.** A pull request with the fixes, regression tests pinned to each fix, an architecture-shape critique, a cross-finding attack-chain analysis, and a CTO-readable executive summary — in whichever combination the tier you bought includes. The card is held when you check out and only captured if the scan delivers; if it fails, the hold is released.
+
+---
+
+## Install in 30 seconds
+
+### GitHub Action — recommended for most users
+
+Drop this in `.github/workflows/gatetest.yml`:
+
+```yaml
+name: GateTest Quality Gate
+on: [push, pull_request]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ccantynz-alt/gatetest@v1
+        with:
+          suite: full
+          auto-fix: ${{ github.event_name == 'pull_request' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+The action is a composite — no Docker pull, no container build. It installs GateTest, runs the gate, and if `auto-fix: true` and `ANTHROPIC_API_KEY` is set, runs the AI repair loop on a blocking gate. See [`action.yml`](action.yml) for every input.
+
+### CLI — local development
 
 ```bash
-# Install globally
-npm install -g gatetest
+# Run against the current directory, no install:
+npx github:ccantynz-alt/gatetest --suite quick
 
-# Initialize in your project
-gatetest --init
-
-# Run quick checks (syntax, lint, secrets, code quality)
-gatetest --suite quick
-
-# Run all 22 modules
-gatetest --suite full
-
-# Run with auto-fix (fixes safe issues automatically)
-gatetest --suite full --fix
-
-# Only scan changed files (instant pre-commit)
-gatetest --diff
-
-# Watch mode — re-scan on every file change
-gatetest --watch
-
-# Run a specific module
-gatetest --module security
-gatetest --module accessibility
-gatetest --module aiReview
+# Or clone and run from source:
+git clone https://github.com/ccantynz-alt/gatetest
+cd gatetest && npm install
+node bin/gatetest.js --suite quick
 ```
 
----
+> The package is not yet on npm. `npm install -g gatetest` will work after the first publish — track [issue tracker](https://github.com/ccantynz-alt/gatetest/issues) for the release tag.
 
-## All 22 Modules
+### Website — no install at all
 
-| Module | What It Does |
-|--------|-------------|
-| **syntax** | JS/TS/JSON/YAML/CSS/HTML validation, import resolution, dangling patterns |
-| **lint** | ESLint, Stylelint, Markdownlint integration |
-| **secrets** | 14 patterns: AWS keys, GitHub tokens, Stripe keys, JWTs, private keys, DB connection strings |
-| **codeQuality** | console.log, debugger, TODO/FIXME, eval, function length, file length, complexity |
-| **unitTests** | Auto-detects Jest/Vitest/Mocha/pytest, runs tests, checks coverage |
-| **integrationTests** | Detects API endpoints, DB operations, verifies test coverage |
-| **e2e** | Playwright/Cypress/Puppeteer execution |
-| **visual** | Visual regression, layout shifts, font loading, design tokens |
-| **accessibility** | WCAG 2.2 AAA — 542 lines of checks: alt text, ARIA, focus, contrast, heading hierarchy |
-| **performance** | Bundle budgets, Core Web Vitals, image optimization, memory leak detection |
-| **security** | OWASP patterns, CVE scanning, Docker security, license compliance, .gitignore validation |
-| **seo** | Meta tags, Open Graph, structured data, canonical URLs, sitemaps |
-| **links** | Broken internal + external link detection |
-| **compatibility** | Browser matrix, CSS/JS API compat, vendor prefix checks, polyfill detection |
-| **dataIntegrity** | Migration safety, SQL injection, PII handling, idempotency checks |
-| **documentation** | README, CHANGELOG, JSDoc coverage, license, contributing guide, dead links |
-| **liveCrawler** | Playwright-powered full-site crawl and verification |
-| **explorer** | Autonomous interactive element testing — clicks buttons, fills forms, verifies state |
-| **chaos** | Chaos & resilience testing — slow networks, API failures, missing resources |
-| **mutation** | Mutation testing — modifies source code to verify tests actually catch bugs |
-| **aiReview** | AI-powered code review using Claude — finds real bugs, suggests fixes with corrected code |
-| **fakeFixDetector** | Catches symptom patching, disabled tests, stub functions — dual engine (pattern + AI) |
+Visit [gatetest.ai/web](https://gatetest.ai/web) and paste any URL. You get a free preview and a paid full report. For WordPress sites use [gatetest.ai/wp](https://gatetest.ai/wp).
 
 ---
 
-## Features
-
-- **22 test modules** — More coverage than any single competitor
-- **5 report formats** — Console, JSON, HTML, SARIF (GitHub Security), JUnit XML (CI)
-- **Severity levels** — error (blocks gate), warning (reports), info (informational)
-- **Auto-fix engine** — Modules can automatically repair safe issues
-- **Diff-based scanning** — `--diff` only checks git-changed files (instant pre-commit)
-- **Watch mode** — `--watch` monitors file changes, re-scans continuously
-- **Mutation testing** — Tests the tests themselves
-- **AI code review** — Claude analyzes your code for real bugs, not just patterns
-- **CI/CD generation** — `--ci-init github|gitlab|circleci` bootstraps pipelines
-- **File caching** — SHA-256 hashing skips unchanged files
-- **Zero dependencies** — Pure Node.js. Install and run anywhere.
-- **Resilient GitHub access** — Retry with backoff, circuit breaker, multi-strategy repo access
-
----
-
-## CLI Reference
+## The flywheel — why GateTest gets cheaper over time
 
 ```
-gatetest                          Run standard checks
-gatetest --suite full             Run every module (22 modules)
-gatetest --suite quick            Fast pre-commit checks
-gatetest --module security        Run a single module
-gatetest --diff                   Only scan git-changed files
-gatetest --fix                    Auto-fix safe issues
-gatetest --watch                  Watch mode — re-scan on changes
-gatetest --sarif                  Output SARIF for GitHub Security tab
-gatetest --junit                  Output JUnit XML for CI pipelines
-gatetest --ci-init github         Generate GitHub Actions workflow
-gatetest --ci-init gitlab         Generate GitLab CI config
-gatetest --ci-init circleci       Generate CircleCI config
-gatetest --crawl <url>            Crawl a live website
-gatetest --parallel               Run modules in parallel
-gatetest --stop-first             Stop on first failure
-gatetest --health                 Check GitHub API connectivity
-gatetest --list                   List all available modules
-gatetest --validate               Validate CLAUDE.md file
+                ┌──────────────────────────┐
+   CI BREAKS    │  Failed workflow run     │
+       ──>      └────────────┬─────────────┘
+                             │
+                ┌────────────▼─────────────┐
+                │  AI CI-fixer reads logs  │
+                │  + failing files         │
+                └────────────┬─────────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+         ┌────────┐    ┌────────┐    ┌────────┐
+         │  AST   │ →  │  Rule  │ →  │ Recipe │   ─── ALL FREE ───
+         └────┬───┘    └────┬───┘    └────┬───┘
+              │             │             │   (none matched?)
+              └─────────────┴─────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────┐
+                │ Claude — paid, one shot  │
+                │ Result distilled into a  │
+                │ recipe for next time     │
+                └────────────┬─────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────┐
+                │  PR opens with the fix   │
+                │  + regression test       │
+                └──────────────────────────┘
 ```
 
----
-
-## GitHub App
-
-Install GateTest as a GitHub App to automatically scan every push and PR:
-
-1. Visit [gatetest.ai/github/setup](https://gatetest.ai/github/setup)
-2. Click "Install GateTest on GitHub"
-3. Select your repos
-4. Every push and PR gets scanned automatically
-
-Results appear as commit status checks and detailed PR comments.
+**First time we see a pattern: Claude. Every time after: free.** The longer you run GateTest, the cheaper it gets.
 
 ---
 
-## Turn on auto-fix (one secret, every repo)
+## What it replaces
 
-The gate **finds** issues by default. To also **fix** them automatically and
-open a PR with the fixes, set ONE secret:
+One config, one bill, one gate decision. Twelve-plus tools dissolve into single CLI flags.
 
-1. Go to `https://github.com/organizations/<your-org>/settings/secrets/actions`
-2. Click **New organization secret**
-3. Name: `ANTHROPIC_API_KEY` — Value: your Anthropic API key (`sk-ant-…`)
-4. Repository access: **All repositories**
-5. Save
+| Their tool                                 | GateTest module                                    |
+| ------------------------------------------ | -------------------------------------------------- |
+| Snyk Code, Dependabot, npm audit           | `security`, `dependencies`                         |
+| SonarQube                                  | `codeQuality` + every other module                 |
+| ESLint, Stylelint                          | `lint`                                             |
+| Cypress, BrowserStack, Sauce Labs          | `e2e`                                              |
+| Lighthouse                                 | `performance`                                      |
+| axe, pa11y                                 | `accessibility`                                    |
+| Percy, Chromatic                           | `visual`                                           |
+| git-secrets, TruffleHog                    | `secrets`, `secretRotation`                        |
+| hadolint, dockle                           | `dockerfile`                                       |
+| actionlint, zizmor, StepSecurity           | `ciSecurity`                                       |
+| tfsec, Checkov, Terrascan                  | `terraform`                                        |
+| kube-score, kubeaudit, Polaris             | `kubernetes`                                       |
+| Stryker, Pitest                            | `mutation`                                         |
+| broken-link-checker                        | `links`                                            |
+| _(none — fragmented across ESLint rules)_  | `errorSwallow`, `nPlusOne`, `flakyTests`           |
+| _(none — no static tool exists)_           | `redos`, `moneyFloat`, `logPii`, `tlsSecurity`     |
+| _(none — runtime profilers only)_          | `resourceLeak`, `raceCondition`, `retryHygiene`    |
 
-That's it. Every failing gate run in your org now opens a
-`gatetest/auto-repair-<run-id>` PR with surgical-diff fixes. The fixer never
-touches code outside the issue's exact line range — bytes outside the
-splice are byte-identical to the original by construction.
-
-Disable per-repo: Settings → Secrets and variables → Actions → Variables →
-`GATETEST_AUTOFIX = off`.
-
----
-
-## Paid Scans
-
-Don't want to run it yourself? We'll scan your repo and deliver a full report.
-
-| Tier | Price | What You Get |
-|------|-------|-------------|
-| **Quick Scan** | $29 | 4 modules, instant report |
-| **Full Scan** | $99 | All 22 modules, SARIF + JUnit |
-| **Scan + Fix** | $199 | Full scan + auto-fix PR delivered to your repo |
-| **Nuclear** | $399 | Every module + mutation testing + live crawl + chaos |
-
-**Pay only when the scan completes.** Card hold released if scan fails. Zero risk.
-
-Visit [gatetest.ai](https://gatetest.ai) to get started.
+**Twelve-plus tools. One config. One bill.** Full module catalogue: run `node bin/gatetest.js --list` or read it on [gatetest.ai](https://gatetest.ai).
 
 ---
 
-## Gate Rules
+## Tiers and pricing
 
-1. **Zero Tolerance** — Any error-severity check failure blocks the pipeline
-2. **No Manual Overrides** — Checks pass or the build is rejected
-3. **No Partial Deploys** — Everything passes or nothing ships
-4. **Evidence Required** — Every gate pass produces a timestamped report
-5. **Test the Tests** — Mutation testing validates tests actually catch bugs
+Pay-on-completion. The card is held at checkout and only captured if the scan delivers a report; if it fails, the hold is released.
+
+| Tier              | Price   | What you get                                                                                                                                       |
+| ----------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Quick Scan**    | $29     | 4 modules — syntax, linting, secrets, code quality. Fastest path to a first signal.                                                                |
+| **Full Scan**     | $99     | All 91 modules. Auto-fix PR included. SARIF + JUnit reports.                                                                                       |
+| **Scan + Fix**    | $199    | Everything in Full, plus a second-Claude pair-review critique on every fix and an architecture-shape design-observations report.                   |
+| **Nuclear**       | $399    | Everything in Scan + Fix, plus real Claude diagnosis on every finding, cross-finding attack-chain correlation, mutation testing, chaos / fuzz pass, and a CTO-readable executive summary. |
+
+Live prices and Stripe checkout at [gatetest.ai](https://gatetest.ai).
+
+---
+
+## Honest limits
+
+GateTest is not magic. The things it does not yet do, said out loud:
+
+- **The npm package is not yet published.** Install today is via the GitHub Action (composite, recommended), `npx github:ccantynz-alt/gatetest`, or a `git clone`. The first `npm publish` is queued, not shipped.
+- **Headless-browser modules (`liveCrawler`, `runtimeErrors`, `explorer`, `chaos`) degrade gracefully on Vercel serverless.** Chromium cannot launch inside the function. The modules emit an info-level skip and the rest of the scan continues — full power requires the CLI, a worker, or local dev.
+- **The GitHub Marketplace listing is drafted, not approved.** Approval is in progress (the action itself works regardless — `ccantynz-alt/gatetest@v1` resolves today).
+- **`installation_id` is not persisted across GitHub App installs.** Multi-org customers cannot yet be correlated to a single billing account; this is tracked as Known Issue #22 in [CLAUDE.md](CLAUDE.md).
+- **PR comments are not idempotent.** A busy PR with many pushes will collect duplicate scan comments. Tracked as Known Issue #23.
+
+The full Known Issues table (with severity and status) lives in [CLAUDE.md](CLAUDE.md) — that file is the project's source of truth.
+
+---
+
+## Architecture
+
+**Static engine.** Ninety-one modules, every one extending `BaseModule`. Each module is a self-contained scanner that emits checks at three severity levels (error blocks the gate, warning reports, info is informational). The runner is `EventEmitter`-based, supports parallel execution, diff-mode (`--diff` scans only git-changed files), watch mode, and five output formats (Console, JSON, HTML, SARIF for the GitHub Security tab, JUnit XML for any CI). The gate has zero runtime dependencies aside from one MCP SDK pin — `node bin/gatetest.js --list` runs anywhere Node 20+ runs.
+
+**Website and payments.** [gatetest.ai](https://gatetest.ai) is Next.js 16 with the App Router, Tailwind 4, and Stripe in hold-then-charge mode via Payment Intents with manual capture. All scan state is persisted in Stripe metadata so the serverless functions stay stateless across requests — there is no shared in-memory state and no webhook is required for the critical user flow. The scan executes inside the function response and reports back directly.
+
+**AI layer.** Claude (Anthropic). On the GitHub Action the customer brings their own `ANTHROPIC_API_KEY` and pays Anthropic directly. On the website the key is managed and the cost is folded into the tier price. Every Claude success is distilled into a recipe by the flywheel orchestrator (see [`lib/`](lib/) and the AI CI-fixer at [`scripts/ai-ci-fixer.js`](scripts/ai-ci-fixer.js)) so subsequent runs on the same pattern are deterministic and free.
+
+The codebase ships under MIT, the gate runs locally with no external calls, and every architectural decision is documented inline in [CLAUDE.md](CLAUDE.md).
+
+---
+
+## Real-repo proofs
+
+GateTest is dogfooded against itself on every push, and the team runs the full Nuclear pipeline against external production codebases before shipping changes that touch the deeper tiers. The reports below are reproducible artifacts in this repo:
+
+- **AI CI-fixer end-to-end run** — full orchestrator path exercised (log → parse → Claude → patch → gate → commit → push → PR): [docs/proofs/ai-ci-fixer-real-run.md](docs/proofs/ai-ci-fixer-real-run.md)
+- **GateTest scanning itself** — quick-suite self-scan, 30 of 39 modules pass, 37 errors found and triaged: [docs/proofs/phase-1-self-scan.md](docs/proofs/phase-1-self-scan.md)
+- **Iterative fix loop on the live repo** — one-attempt fix on `src/runtime/alerts.js`, 8.5 seconds wall time, syntax gate green: [docs/proofs/phase-1-self-fix-real.md](docs/proofs/phase-1-self-fix-real.md)
+- **Nuclear scan of Crontech.ai** — Bun + Turbo TypeScript monorepo, 754 errors found, 23 of 39 modules pass, two critical attack chains including a supply-chain CI takeover: [docs/proofs/phase-2-3-crontech-real-customer-grade.md](docs/proofs/phase-2-3-crontech-real-customer-grade.md)
+- **Nuclear scan of Gluecron.com and MarcoReid.com** — 649 errors and three chains on Gluecron (incl. an "operational lock-in" chain neither finding describes alone); 124 errors on MarcoReid with a textbook `parseFloat`-on-money bug in trust-account handling, correlator honestly returned 0 chains: [docs/proofs/phase-2-3-gluecron-marcoreid.md](docs/proofs/phase-2-3-gluecron-marcoreid.md)
+- **Pair-review and architecture annotator on the self-scan** — Phase 2 deliverables exercised end-to-end: [docs/proofs/phase-2-self-pair-review-and-architecture.md](docs/proofs/phase-2-self-pair-review-and-architecture.md)
+- **Full Nuclear pipeline on the self-scan** — 12 of 12 findings diagnosed, four chains including a session-forgery vector: [docs/proofs/phase-3-self-nuclear.md](docs/proofs/phase-3-self-nuclear.md)
+
+Total Anthropic spend across the four external real-repo Nuclear proofs: roughly three to four US dollars. At the $399 Nuclear tier that is a hundred-times-plus margin, before recipe distillation reduces it further on repeat scans.
+
+---
+
+## Develop and contribute
+
+```bash
+git clone https://github.com/ccantynz-alt/gatetest
+cd gatetest
+npm install
+(cd website && npm install)
+node --test tests/*.test.js
+node bin/gatetest.js --list
+```
+
+The Bible — [CLAUDE.md](CLAUDE.md) — is required reading for contributors. It defines the architecture, the quality bar, the forbidden list, the protected platforms, and the authorization rules that apply to anything touching money, user data, or public-facing communication.
+
+Bug reports and feature requests are welcome via [GitHub Issues](https://github.com/ccantynz-alt/gatetest/issues). Small PRs that fix one thing and add a test are merged fastest. The pre-commit and pre-push hooks under [`src/hooks/`](src/hooks/) run the gate locally — running them before pushing keeps CI green.
 
 ---
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
+
+---
+
+<sub>
+GateTest is built and maintained at <a href="https://gatetest.ai">gatetest.ai</a>.
+Talk to the team via the chat on the site. File bugs at <a href="https://github.com/ccantynz-alt/gatetest/issues">GitHub Issues</a>.
+</sub>

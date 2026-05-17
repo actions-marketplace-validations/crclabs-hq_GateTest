@@ -25,6 +25,8 @@ const HELP = `
 
   USAGE
     gatetest [options]
+    gatetest replay <run-url>    Reproduce a failing CI run locally
+                                 (run 'gatetest replay --help' for detail)
 
   OPTIONS
     --suite <name>     Run a test suite: quick, standard, full (default: standard)
@@ -105,7 +107,17 @@ const HELP = `
 `;
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  // Subcommand dispatch — `gatetest replay <run-url>` reproduces a failing
+  // GitHub Actions run locally. Lives in bin/gatetest-replay.js so this
+  // file doesn't grow unbounded.
+  const argv = process.argv.slice(2);
+  if (argv[0] === 'replay') {
+    const replay = require('./gatetest-replay');
+    const code = await replay.main(argv.slice(1));
+    process.exit(code || 0);
+  }
+
+  const args = parseArgs(argv);
 
   if (args.help) {
     console.log(HELP);

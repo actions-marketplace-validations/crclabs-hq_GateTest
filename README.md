@@ -70,6 +70,22 @@ node bin/gatetest.js --suite quick
 
 Visit [gatetest.ai/web](https://gatetest.ai/web) and paste any URL. You get a free preview and a paid full report. For WordPress sites use [gatetest.ai/wp](https://gatetest.ai/wp).
 
+### Replay a failing CI run locally
+
+Reproduce any failing GitHub Actions run on your laptop in seconds:
+
+```bash
+gatetest replay https://github.com/owner/repo/actions/runs/12345
+```
+
+This fetches the run, identifies which steps failed, and runs them locally
+against your current working tree. Output tells you whether the failure
+reproduces, doesn't reproduce (flaky CI), or hits a different error.
+
+Authentication is optional — if you have a `GITHUB_TOKEN` set or `gh` CLI
+installed, replay can read private repo runs. Otherwise it uses the
+unauthenticated rate limit (60 req/hour, fine for a few replays).
+
 ---
 
 ## The flywheel — why GateTest gets cheaper over time

@@ -178,7 +178,7 @@ The thing that doesn't exist anywhere else today.
 
 | Platform     | Repository                                         | Status     |
 | ------------ | -------------------------------------------------- | ---------- |
-| Crontech.ai  | https://github.com/ccantynz-alt/Crontech           | INTEGRATING |
+| Crontech.ai  | https://github.com/Gate-Test/Crontech              | INTEGRATING |
 | Gluecron.com | https://github.com/ccantynz-alt/Gluecron.com       | INTEGRATING |
 
 ### How the integration works

@@ -2,7 +2,7 @@
 
 **Status:** real Claude API calls, against a real Craig-owned production-grade codebase (Crontech.ai). Counts as the **second proof** for both Phase 2.4 and Phase 3.7.
 **Date:** 2026-04-26
-**Target repo:** `ccantynz-alt/Crontech` — a multi-tenant Bun + Turbo TypeScript monorepo (apps/web, apps/api, packages/*, services/*). 6.7 MB, TypeScript-heavy, public.
+**Target repo:** `Gate-Test/Crontech` — a multi-tenant Bun + Turbo TypeScript monorepo (apps/web, apps/api, packages/*, services/*). 6.7 MB, TypeScript-heavy, public.
 **Model:** `claude-sonnet-4-6`
 **Note on detail:** the customer-facing report this run produced contains specific file paths and vulnerability evidence from Crontech's source. That report is kept off-repo (in the session's `/tmp` only) because publishing internal vuln detail in a public docs commit is bad form. The numbers and chain titles below are safe to share.
 
@@ -142,7 +142,7 @@ proof. The third proof for each phase is the only remaining 1.5 / 2.4
 ## Reproduction (for future sessions with credentials)
 
 ```
-git clone https://github.com/ccantynz-alt/Crontech.git /tmp/crontech
+git clone https://github.com/Gate-Test/Crontech.git /tmp/crontech
 cd /tmp/crontech
 node /home/user/GateTest/bin/gatetest.js --suite quick
 # expect: BLOCKED gate, ~750+ errors, ~25s wall time

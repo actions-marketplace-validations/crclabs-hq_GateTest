@@ -206,7 +206,7 @@ function stubOverview() {
     total_fixes_applied_7d: 18,
     repos: [
       {
-        name: 'ccantynz-alt/Crontech',
+        name: 'Gate-Test/Crontech',
         last_scan: iso(30 * 60 * 1000),
         open_issues_by_severity: { critical: 0, high: 1, medium: 3, low: 8 },
         auto_fixes_7d: 12,
@@ -228,7 +228,7 @@ function stubOverview() {
     activity_feed: [
       {
         ts: iso(30 * 60 * 1000),
-        repo: 'ccantynz-alt/Crontech',
+        repo: 'Gate-Test/Crontech',
         event: 'scan_completed',
         detail: '12 issues open, 12 auto-fixes in last 7d',
       },

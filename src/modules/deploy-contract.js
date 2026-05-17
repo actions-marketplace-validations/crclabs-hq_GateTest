@@ -84,7 +84,7 @@ class DeployContractModule extends BaseModule {
 
   _findHealthCheckUrls(root) {
     // Shell scripts + CI YAML files
-    const files = this._glob(root, /\.(sh|yml|yaml|bash)$/, ['node_modules', '.git', '.next', 'dist']);
+    const files = this._glob(root, /\.(sh|yml|yaml|bash)$/, ['node_modules', '.git', '.claude', '.next', 'dist']);
     const found = [];
 
     for (const file of files) {

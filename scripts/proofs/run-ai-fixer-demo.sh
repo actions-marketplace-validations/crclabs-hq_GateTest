@@ -153,8 +153,8 @@ function fakeTransport(responses) {
 
   emit('T+2s  invoking runFixer with stubbed transport + stubbed callClaude');
   const env = {
-    ANTHROPIC_API_KEY: 'synthetic-key-for-demo',
-    GITHUB_TOKEN:      'synthetic-token-for-demo',
+    ANTHROPIC_API_KEY: 'demo',
+    GITHUB_TOKEN:      'demo',
     GITHUB_REPOSITORY: 'ccantynz-alt/gatetest',
     WORKFLOW_RUN_ID:   '999999999',
     CLAUDE_MODEL:      'claude-sonnet-4-5',

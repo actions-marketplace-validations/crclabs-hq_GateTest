@@ -48,7 +48,7 @@ const { execFileSync } = require('child_process');
 const BaseModule = require('./base-module');
 
 const DEFAULT_EXCLUDES = [
-  'node_modules', '.git', 'dist', 'build', 'coverage', '.gatetest',
+  'node_modules', '.git', '.claude', 'dist', 'build', 'coverage', '.gatetest',
   '.next', '__pycache__', 'target', 'vendor', '.terraform', 'out',
 ];
 

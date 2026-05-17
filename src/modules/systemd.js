@@ -184,7 +184,7 @@ class SystemdModule extends BaseModule {
     let entries;
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
-      if (['node_modules', '.git', '.next'].includes(e.name)) continue;
+      if (['node_modules', '.git', '.claude', '.next'].includes(e.name)) continue;
       const full = path.join(dir, e.name);
       if (e.isDirectory()) this._walkForServices(full, results);
       else if (e.name.endsWith('.service')) results.push(full);

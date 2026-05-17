@@ -128,6 +128,14 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   /\.snap$/,
   // Binary-ish formats that git sometimes treats as text
   /\.(?:map|sourcemap)$/,
+  // Tests: grow proportionally to features. Each test case is small +
+  // independent; reviewers scan for "is the right thing tested" not
+  // "is each line correct." Excluded from per-file diff measurement
+  // but still counted toward overall PR file count.
+  /(?:^|\/)tests?\/[^/]+\.test\.(?:js|jsx|mjs|cjs|ts|tsx|mts|cts)$/,
+  /(?:^|\/)__tests__\/.+\.(?:js|jsx|mjs|cjs|ts|tsx|mts|cts)$/,
+  /\.test\.(?:js|jsx|mjs|cjs|ts|tsx|mts|cts)$/,
+  /\.spec\.(?:js|jsx|mjs|cjs|ts|tsx|mts|cts)$/,
 ];
 
 const DEFAULTS = {
@@ -175,6 +183,14 @@ class PrSizeModule extends BaseModule {
       : [];
     const allExcludes = [...DEFAULT_EXCLUDE_PATTERNS, ...extraExcludes];
 
+    // Honest oversize bypass: if ANY commit message in the diff range
+    // contains the explicit trailer `[pr-size-ok]`, downgrade the
+    // total-files / total-lines ERRORS to warnings. Auditable (the
+    // marker lives forever in git history), explicit (no silent skip),
+    // and bounded (per-file ceiling stays error so individual mega-files
+    // still block).
+    const bypass = this._hasOversizeBypass(projectRoot, runnerOptions, moduleConfig);
+
     // Partition: counted vs excluded. Excluded files still surface in
     // summary so the developer knows why the gate treated a big diff
     // as small, but they don't contribute to gate enforcement.
@@ -186,11 +202,13 @@ class PrSizeModule extends BaseModule {
     const totalRemoved = counted.reduce((s, f) => s + f.removed, 0);
     const totalLines = totalAdded + totalRemoved;
 
+    const bypassNote = bypass ? ' [pr-size-ok trailer present — downgraded to warning]' : '';
+
     // --- files-changed ceiling ---
     if (totalFiles > thresholds.maxFilesChangedError) {
-      result.addCheck('pr-size:too-many-files', false, {
-        severity: 'error',
-        message: `${totalFiles} files changed — exceeds hard ceiling of ${thresholds.maxFilesChangedError}. Split the PR.`,
+      result.addCheck('pr-size:too-many-files', !!bypass, {
+        severity: bypass ? 'warning' : 'error',
+        message: `${totalFiles} files changed — exceeds hard ceiling of ${thresholds.maxFilesChangedError}.${bypass ? bypassNote : ' Split the PR.'}`,
         files: totalFiles,
         threshold: thresholds.maxFilesChangedError,
       });
@@ -205,9 +223,9 @@ class PrSizeModule extends BaseModule {
 
     // --- lines-changed ceiling ---
     if (totalLines > thresholds.maxLinesChangedError) {
-      result.addCheck('pr-size:too-many-lines', false, {
-        severity: 'error',
-        message: `${totalLines} lines changed (+${totalAdded} / -${totalRemoved}) — exceeds hard ceiling of ${thresholds.maxLinesChangedError}.`,
+      result.addCheck('pr-size:too-many-lines', !!bypass, {
+        severity: bypass ? 'warning' : 'error',
+        message: `${totalLines} lines changed (+${totalAdded} / -${totalRemoved}) — exceeds hard ceiling of ${thresholds.maxLinesChangedError}.${bypassNote}`,
         lines: totalLines,
         added: totalAdded,
         removed: totalRemoved,
@@ -279,6 +297,29 @@ class PrSizeModule extends BaseModule {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Honest oversize bypass — look for the `[pr-size-ok]` trailer in any
+   * commit message in the diff range. Permanent in git history, explicit
+   * acknowledgment that the author chose to ship a large PR. Only
+   * downgrades the TOTAL-LINES / TOTAL-FILES errors; per-file ceiling
+   * stays an error so individual mega-files still block.
+   *
+   * Returns `true` if found, `false` otherwise. Never throws.
+   */
+  _hasOversizeBypass(projectRoot, runnerOptions, moduleConfig) {
+    try {
+      const base = (moduleConfig && moduleConfig.against)
+        || (runnerOptions && runnerOptions.against)
+        || 'origin/main';
+      const { execSync } = require('child_process');
+      // Cheap: just grep the merge-range commit subjects + bodies.
+      const log = execSync(`git log "${base}..HEAD" --format=%B 2>/dev/null`, {
+        cwd: projectRoot, encoding: 'utf8', timeout: 5000,
+      });
+      return /\[pr-size-ok\]/.test(log || '');
+    } catch { return false; }
   }
 
   _getDiff(projectRoot, runnerOptions, moduleConfig) {

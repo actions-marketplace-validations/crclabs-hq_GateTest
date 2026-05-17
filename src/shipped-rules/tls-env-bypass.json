@@ -1,0 +1,17 @@
+{
+  "id": "ship-tls-envbypass-1",
+  "ruleKey": "tls-security:js-env-bypass",
+  "module": "tlsSecurity",
+  "pattern": "NODE_TLS_REJECT_UNAUTHORIZED\\s*=\\s*[\"']0[\"']",
+  "transform": {
+    "kind": "regex-replace",
+    "find": "^[ \\t]*process\\.env\\.NODE_TLS_REJECT_UNAUTHORIZED\\s*=\\s*[\"']0[\"']\\s*;?\\s*\\r?\\n?",
+    "replace": "",
+    "flags": "gm"
+  },
+  "promotedAt": "2026-05-17T00:00:00Z",
+  "promotedFromCustomers": 4,
+  "winRate": 0.97,
+  "description": "Remove process.env.NODE_TLS_REJECT_UNAUTHORIZED = \"0\" — the global nuclear TLS-validation disable. Same effect as the ast-tls-env-bypass transform, applied as a line-level regex strip for non-AST contexts.",
+  "schemaVersion": 1
+}

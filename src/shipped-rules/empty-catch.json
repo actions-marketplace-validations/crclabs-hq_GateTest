@@ -1,0 +1,17 @@
+{
+  "id": "ship-empty-catch-1",
+  "ruleKey": "error-swallow:empty-catch",
+  "module": "errorSwallow",
+  "pattern": "catch\\s*\\(\\s*[A-Za-z_$][A-Za-z0-9_$]*\\s*\\)\\s*\\{\\s*\\}",
+  "transform": {
+    "kind": "regex-replace",
+    "find": "catch(\\s*)\\(\\s*([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\)(\\s*)\\{\\s*\\}",
+    "replace": "catch$1($2)$3{ throw $2; }",
+    "flags": "g"
+  },
+  "promotedAt": "2026-05-17T00:00:00Z",
+  "promotedFromCustomers": 4,
+  "winRate": 0.85,
+  "description": "Convert a literal empty `catch (err) {}` block to `catch (err) { throw err; }` — surfaces the error instead of swallowing. Conservative: only matches single-identifier param + literally-empty body. Mirrors ast-empty-catch.",
+  "schemaVersion": 1
+}

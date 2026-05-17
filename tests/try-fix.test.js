@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { tryFix } = require('../website/app/lib/try-fix');
+const { tryFix, _resetShippedRulesCache } = require('../website/app/lib/try-fix');
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -353,6 +353,123 @@ describe('try-fix orchestrator', () => {
       assert.strictEqual(store.recipes.length, 1);
       assert.strictEqual(store.recipes[0].ruleKey, 'novel-rule-x');
       assert.strictEqual(store.recipes[0].confidence, 'low');
+    });
+  });
+
+  describe('ShippedRules layer', () => {
+    beforeEach(() => { if (_resetShippedRulesCache) _resetShippedRulesCache(); });
+
+    function shippedRulesDir() {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatetest-tryfix-shipped-'));
+      fs.writeFileSync(path.join(dir, 'rule.json'), JSON.stringify({
+        id: 'test-shipped-rule',
+        ruleKey: 'test-rule-key',
+        module: 'testModule',
+        pattern: 'BROKEN',
+        transform: { kind: 'regex-replace', find: 'BROKEN', replace: 'FIXED', flags: 'g' },
+        promotedAt: '2026-05-17T00:00:00Z',
+        promotedFromCustomers: 5,
+        winRate: 0.95,
+        description: 'test rule',
+        schemaVersion: 1,
+      }));
+      return dir;
+    }
+
+    it('fires when AST + Rule + Recipe all miss and a shipped rule matches', async () => {
+      const issue = {
+        file: 'src/foo.js',
+        content: 'const x = "BROKEN";',
+        severity: 'error',
+        ruleKey: 'test-rule-key',
+        module: 'testModule',
+        message: 'something is BROKEN',
+        line: 1,
+      };
+      const tel = captureTelemetry();
+      const out = await tryFix(issue, {
+        enableClaude: false,
+        shippedRulesDir: shippedRulesDir(),
+        recordFixAttempt: tel.fn,
+      });
+      assert.strictEqual(out.layer, 'shipped');
+      assert.ok(out.patched.includes('FIXED'));
+      assert.strictEqual(out.shippedRuleId, 'test-shipped-rule');
+      assert.ok(tel.records.some((r) => r.layer === 'shipped' && r.success));
+    });
+
+    it('falls through to Claude when no shipped rule matches the (ruleKey, module) pair', async () => {
+      const issue = {
+        file: 'src/foo.txt',
+        content: 'untouched content here',
+        severity: 'warning',
+        ruleKey: 'no-such-rule',
+        module: 'noSuchModule',
+        message: 'x',
+        line: 1,
+      };
+      const claudeCalls = [];
+      const fakeClaude = async () => { claudeCalls.push(1); return { patched: 'CLAUDE-FIXED', costUsd: 0.01, model: 'claude-sonnet-4-6' }; };
+      const out = await tryFix(issue, {
+        enableClaude: true,
+        anthropicApiKey: 'sk-test',
+        shippedRulesDir: shippedRulesDir(),
+        layerOverrides: { claude: fakeClaude },
+      });
+      assert.strictEqual(out.layer, 'claude');
+      assert.strictEqual(claudeCalls.length, 1);
+    });
+
+    it('a crashing shipped-rules layer falls through to Claude gracefully', async () => {
+      const issue = {
+        file: 'src/foo.txt',
+        content: 'whatever',
+        severity: 'warning',
+        ruleKey: 'r',
+        module: 'm',
+        message: 'x',
+        line: 1,
+      };
+      const crashingShipped = async () => { throw new Error('boom in shipped'); };
+      const claudeCalls = [];
+      const fakeClaude = async () => { claudeCalls.push(1); return { patched: 'CLAUDE-FIXED', costUsd: 0.01, model: 'claude-sonnet-4-6' }; };
+      const tel = captureTelemetry();
+      const out = await tryFix(issue, {
+        enableClaude: true,
+        anthropicApiKey: 'sk-test',
+        recordFixAttempt: tel.fn,
+        layerOverrides: { shipped: crashingShipped, claude: fakeClaude },
+      });
+      assert.strictEqual(out.layer, 'claude');
+      const rec = tel.records.find((r) => r.layer === 'shipped');
+      assert.ok(rec);
+      assert.strictEqual(rec.success, false);
+      assert.ok(rec.reason && rec.reason.startsWith('error:'));
+      assert.strictEqual(claudeCalls.length, 1);
+    });
+
+    it('opts.disableShippedRules skips the layer entirely (test escape hatch)', async () => {
+      const issue = {
+        file: 'src/foo.js',
+        content: 'const x = "BROKEN";',
+        severity: 'error',
+        ruleKey: 'test-rule-key',
+        module: 'testModule',
+        message: 'x',
+        line: 1,
+      };
+      const claudeCalls = [];
+      const fakeClaude = async () => { claudeCalls.push(1); return { patched: 'CLAUDE-FIXED', costUsd: 0.01, model: 'claude-sonnet-4-6' }; };
+      const out = await tryFix(issue, {
+        enableClaude: true,
+        anthropicApiKey: 'sk-test',
+        shippedRulesDir: shippedRulesDir(),
+        disableShippedRules: true,
+        layerOverrides: { claude: fakeClaude },
+      });
+      // The shipped layer was disabled → Claude must have been called.
+      assert.strictEqual(out.layer, 'claude');
+      assert.strictEqual(claudeCalls.length, 1);
     });
   });
 

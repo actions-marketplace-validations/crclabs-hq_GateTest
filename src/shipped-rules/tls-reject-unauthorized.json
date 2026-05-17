@@ -1,0 +1,17 @@
+{
+  "id": "ship-tls-rejunauth-1",
+  "ruleKey": "tls-security:js-reject-unauthorized",
+  "module": "tlsSecurity",
+  "pattern": "rejectUnauthorized\\s*:\\s*false",
+  "transform": {
+    "kind": "regex-replace",
+    "find": "rejectUnauthorized(\\s*):(\\s*)false",
+    "replace": "rejectUnauthorized$1:$2true",
+    "flags": "g"
+  },
+  "promotedAt": "2026-05-17T00:00:00Z",
+  "promotedFromCustomers": 5,
+  "winRate": 0.94,
+  "description": "Flip rejectUnauthorized: false to true (re-enable TLS validation). Mirrors the ast-reject-unauthorized AST transform so non-AST-parseable contexts (template strings, JSON config dumps, shell heredocs) still get the fix.",
+  "schemaVersion": 1
+}

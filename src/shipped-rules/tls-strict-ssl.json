@@ -1,0 +1,17 @@
+{
+  "id": "ship-tls-strictssl-1",
+  "ruleKey": "tls-security:js-strict-ssl",
+  "module": "tlsSecurity",
+  "pattern": "strictSSL\\s*:\\s*false",
+  "transform": {
+    "kind": "regex-replace",
+    "find": "strictSSL(\\s*):(\\s*)false",
+    "replace": "strictSSL$1:$2true",
+    "flags": "g"
+  },
+  "promotedAt": "2026-05-17T00:00:00Z",
+  "promotedFromCustomers": 3,
+  "winRate": 0.92,
+  "description": "Flip strictSSL: false to true on request/superagent/got client options. Mirrors ast-strict-ssl.",
+  "schemaVersion": 1
+}

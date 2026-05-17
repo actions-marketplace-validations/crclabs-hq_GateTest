@@ -1,0 +1,17 @@
+{
+  "id": "ship-var-to-const-1",
+  "ruleKey": "lint:prefer-const",
+  "module": "lint",
+  "pattern": "^[ \\t]*var\\s+[A-Za-z_$]",
+  "transform": {
+    "kind": "regex-replace",
+    "find": "^([ \\t]*)var(\\s+[A-Za-z_$])",
+    "replace": "$1const$2",
+    "flags": "gm"
+  },
+  "promotedAt": "2026-05-17T00:00:00Z",
+  "promotedFromCustomers": 3,
+  "winRate": 0.88,
+  "description": "Replace top-level `var` declarations with `const`. Conservative: only matches indent+var+identifier at line start (no destructuring), to avoid the let-is-the-right-choice cases. Mirrors ast-var-to-const.",
+  "schemaVersion": 1
+}

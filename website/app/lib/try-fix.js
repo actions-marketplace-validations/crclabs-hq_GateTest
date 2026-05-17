@@ -3,15 +3,19 @@
  *
  * Tries each fix layer in order, returns the first successful patch:
  *
- *   1. AST    — Babel-based deterministic transforms (zero API cost)
- *   2. Rule   — regex-based fast path             (zero API cost)
- *   3. Recipe — file-backed pattern lookup        (zero API cost)
- *   4. Claude — full LLM call                     (PAID — only if enabled)
+ *   1. AST           — Babel-based deterministic transforms      (zero API cost)
+ *   2. Rule          — regex-based fast path                     (zero API cost)
+ *   3. Recipe        — per-customer learned recipe lookup        (zero API cost)
+ *   4. ShippedRules  — cross-customer promoted deterministic     (zero API cost)
+ *   5. Claude        — full LLM call                             (PAID — only if enabled)
  *
- * Architecture intent: most fixes are served by layers 1-3 (free). Only novel
+ * Architecture intent: most fixes are served by layers 1-4 (free). Only novel
  * patterns hit Claude (paid). When Claude succeeds AND the diff is templatey,
  * `auto-distill` adds a recipe — so the next time the same shape appears, the
- * recipe layer wins. Over time, the Claude ratio drops to single digits.
+ * recipe layer wins. When the SAME recipe shape wins across enough different
+ * customers, `recipe-promotion` promotes it to a shipped rule loaded into
+ * every install (see `src/core/shipped-rules.js`). Over time, the Claude
+ * ratio drops to single digits.
  *
  * CONTRACT:
  *   - Each layer runs inside its own try/catch — a crash in one layer falls
@@ -184,7 +188,70 @@ async function runRecipeLayer(issue, opts) {
 }
 
 // ---------------------------------------------------------------------------
-// Layer 4: Claude
+// Layer 4: ShippedRules — cross-customer-promoted deterministic transforms
+//
+// Loaded from `src/core/shipped-rules/*.json`. These are recipes that won
+// across enough different customer installs to graduate from per-customer
+// learning to a baked-in product capability. Fires BEFORE Claude because
+// these have high-confidence evidence behind them (≥90% win rate across
+// ≥3 customers, ≥5 occurrences) but AFTER local recipes because the
+// per-customer recipe layer is faster (in-memory) and customer-specific.
+// ---------------------------------------------------------------------------
+
+// Module-level cache so we don't re-read the disk for every fix attempt.
+// The cache key is `rulesDir` so callers can swap directories in tests.
+const _shippedRulesCache = new Map();
+
+function loadShippedRulesCached(rulesDir) {
+  const key = rulesDir || '__default__';
+  const hit = _shippedRulesCache.get(key);
+  if (hit) return hit;
+  let loader;
+  try {
+    // Live in the CLI package — load via a path that survives both the
+    // Next.js bundler (server-side) and node-direct require from tests.
+    loader = require('../../../src/core/shipped-rules');
+  } catch {
+    loader = null;
+  }
+  if (!loader || typeof loader.loadShippedRules !== 'function') {
+    const empty = { rules: [], loadedFrom: [], _impl: null };
+    _shippedRulesCache.set(key, empty);
+    return empty;
+  }
+  const out = loader.loadShippedRules(rulesDir ? { rulesDir } : undefined);
+  const wrapped = {
+    rules: Array.isArray(out && out.rules) ? out.rules : [],
+    loadedFrom: Array.isArray(out && out.loadedFrom) ? out.loadedFrom : [],
+    _impl: loader,
+  };
+  _shippedRulesCache.set(key, wrapped);
+  return wrapped;
+}
+
+function _resetShippedRulesCache() { _shippedRulesCache.clear(); }
+
+async function runShippedRulesLayer(issue, opts) {
+  if (opts && opts.disableShippedRules) return null;
+  if (typeof issue.content !== 'string') return null;
+  if (typeof issue.ruleKey !== 'string' || typeof issue.module !== 'string') return null;
+
+  const cache = loadShippedRulesCached(opts && opts.shippedRulesDir);
+  if (!cache._impl || cache.rules.length === 0) return null;
+
+  const rule = cache._impl.findShippedRule(cache.rules, {
+    ruleKey: issue.ruleKey,
+    module: issue.module,
+  });
+  if (!rule) return null;
+
+  const result = cache._impl.applyShippedRule(rule, issue.content);
+  if (!result || !result.applied) return null;
+  return { patched: result.patched, shippedRuleId: rule.id };
+}
+
+// ---------------------------------------------------------------------------
+// Layer 5: Claude
 // ---------------------------------------------------------------------------
 
 const CLAUDE_PROMPT_PREFIX = `You are a code-fixer for GateTest. You receive a single finding and a file. Return ONLY the complete fixed file content. No explanation. No markdown fences. No prose.
@@ -434,7 +501,26 @@ async function tryFix(issue, opts = {}) {
     };
   }
 
-  // -- Layer 4: Claude (only if enabled + key present) --------------------
+  // -- Layer 4: ShippedRules — cross-customer-promoted deterministic ------
+  const shippedResult = await runLayer({
+    name: 'shipped',
+    fn: overrides.shipped || runShippedRulesLayer,
+    issue,
+    opts,
+    telemetryFn,
+    telemetryPath,
+  });
+  if (shippedResult.ok) {
+    return {
+      layer: 'shipped',
+      patched: shippedResult.patched,
+      shippedRuleId: shippedResult.extra && shippedResult.extra.shippedRuleId,
+      durationMs: shippedResult.durationMs,
+      cost: 0,
+    };
+  }
+
+  // -- Layer 5: Claude (only if enabled + key present) --------------------
   if (!opts.enableClaude || !opts.anthropicApiKey) {
     return {
       layer: null,
@@ -489,7 +575,9 @@ module.exports = {
   _runAstLayer: runAstLayer,
   _runRuleLayer: runRuleLayer,
   _runRecipeLayer: runRecipeLayer,
+  _runShippedRulesLayer: runShippedRulesLayer,
   _runClaudeLayer: runClaudeLayer,
+  _resetShippedRulesCache,
   _withTimeout: withTimeout,
   _priceCost: priceCost,
   _stripFences: stripFences,

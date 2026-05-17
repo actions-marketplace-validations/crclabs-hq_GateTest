@@ -1,0 +1,17 @@
+{
+  "id": "ship-parseint-radix-1",
+  "ruleKey": "lint:parseint-radix",
+  "module": "lint",
+  "pattern": "parseInt\\s*\\(\\s*[A-Za-z_$][A-Za-z0-9_$]*\\s*\\)",
+  "transform": {
+    "kind": "regex-replace",
+    "find": "parseInt\\s*\\(\\s*([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\)",
+    "replace": "parseInt($1, 10)",
+    "flags": "g"
+  },
+  "promotedAt": "2026-05-17T00:00:00Z",
+  "promotedFromCustomers": 7,
+  "winRate": 0.99,
+  "description": "Add the explicit radix argument (10) to single-arg parseInt calls. Defensive against legacy octal-leading-zero pre-ES5 behaviour. Mirrors ast-parseint-radix for non-AST callers.",
+  "schemaVersion": 1
+}

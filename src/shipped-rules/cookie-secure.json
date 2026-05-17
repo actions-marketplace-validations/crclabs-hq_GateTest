@@ -1,0 +1,17 @@
+{
+  "id": "ship-cookie-secure-1",
+  "ruleKey": "cookie-security:js-secure-false",
+  "module": "cookieSecurity",
+  "pattern": "\\bsecure\\s*:\\s*false\\b",
+  "transform": {
+    "kind": "regex-replace",
+    "find": "\\bsecure(\\s*):(\\s*)false\\b",
+    "replace": "secure$1:$2true",
+    "flags": "g"
+  },
+  "promotedAt": "2026-05-17T00:00:00Z",
+  "promotedFromCustomers": 5,
+  "winRate": 0.91,
+  "description": "Flip secure: false to true on cookie/session options. Forces TLS-only cookie transport. Mirrors ast-secure-cookie.",
+  "schemaVersion": 1
+}

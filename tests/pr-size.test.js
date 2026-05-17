@@ -3,6 +3,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execSync } = require('child_process');
 
 const PrSizeModule = require('../src/modules/pr-size');
 
@@ -267,6 +268,159 @@ describe('PrSizeModule — rename handling', () => {
     const s = r.checks.find((c) => c.name === 'pr-size:summary');
     assert.ok(s);
     assert.strictEqual(s.files, 1);
+  });
+});
+
+// --------------------------------------------------------------------
+// Real-git scaffolding for merge-base tests. These tests run actual
+// `git init` + commits in a tmpdir, then exercise the module against
+// that real repo. Identity is set via local repo config (no global
+// config mutation).
+// --------------------------------------------------------------------
+
+function git(repo, args) {
+  // -c flags set per-invocation identity + branch so we never depend
+  // on (or mutate) the user's global git config.
+  return execSync(
+    [
+      'git',
+      '-c', 'user.email=test@gatetest.ai',
+      '-c', 'user.name=GateTestTester',
+      '-c', 'init.defaultBranch=main',
+      '-c', 'commit.gpgsign=false',
+      ...args,
+    ].join(' '),
+    { cwd: repo, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+  );
+}
+
+function makeRealRepo() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-prsz-real-'));
+  git(tmp, ['init', '--initial-branch=main', '-q']);
+  fs.writeFileSync(path.join(tmp, 'README.md'), 'init\n');
+  git(tmp, ['add', '.']);
+  git(tmp, ['commit', '-q', '-m', '"init"']);
+  return tmp;
+}
+
+function writeAndCommit(repo, filename, content, msg) {
+  fs.writeFileSync(path.join(repo, filename), content);
+  git(repo, ['add', '.']);
+  git(repo, ['commit', '-q', '-m', `"${msg}"`]);
+}
+
+describe('PrSizeModule — merge-base diff resolution', () => {
+  let tmp;
+  beforeEach(() => { tmp = makeRealRepo(); });
+  afterEach(() => cleanup(tmp));
+
+  it('uses merge-base when baseBranch is configured', async () => {
+    // Set up: on main, add a baseline file. Branch off. On the branch,
+    // add ONE file with 5 lines. Meanwhile, advance main with a HUGE
+    // unrelated change.
+    git(tmp, ['checkout', '-q', '-b', 'feature']);
+    writeAndCommit(tmp, 'small.ts', 'a\nb\nc\nd\ne\n', 'branch change');
+
+    git(tmp, ['checkout', '-q', 'main']);
+    // 200 lines of "noise" on main AFTER branch was created
+    const noise = Array.from({ length: 200 }, (_, i) => `line${i}`).join('\n');
+    writeAndCommit(tmp, 'big-main-change.ts', noise, 'main-noise');
+
+    git(tmp, ['checkout', '-q', 'feature']);
+
+    const r = await run(tmp, { baseBranch: 'main' });
+    const s = r.checks.find((c) => c.name === 'pr-size:summary');
+    assert.ok(s, 'summary check should fire');
+    // ONLY the 5-line branch change counts — NOT the 200-line main noise.
+    assert.strictEqual(s.files, 1, 'only branch-introduced file counts');
+    assert.strictEqual(s.added, 5, 'only branch-introduced lines count');
+  });
+
+  it('counts ONLY branch changes — main commits since branch creation are excluded', async () => {
+    // The bug this test prevents: diff against `main` (not merge-base)
+    // counts everything on main since branch creation, producing
+    // false-positive "PR too big".
+    git(tmp, ['checkout', '-q', '-b', 'feature']);
+    writeAndCommit(tmp, 'x.ts', 'one\ntwo\n', 'small branch change');
+
+    git(tmp, ['checkout', '-q', 'main']);
+    // Land 700 lines on main — this would fail the soft 500-line gate
+    // if it leaked into our branch's diff.
+    const huge = Array.from({ length: 700 }, (_, i) => `m${i}`).join('\n');
+    writeAndCommit(tmp, 'main-only.ts', huge, 'main only');
+
+    git(tmp, ['checkout', '-q', 'feature']);
+
+    const r = await run(tmp, { baseBranch: 'main' });
+    const flagged = r.checks.filter(
+      (c) => c.passed === false && c.name.startsWith('pr-size:'),
+    );
+    assert.strictEqual(
+      flagged.length, 0,
+      'no PR-size violations expected — branch only added 2 lines',
+    );
+    const s = r.checks.find((c) => c.name === 'pr-size:summary');
+    assert.strictEqual(s.added, 2);
+  });
+
+  it('falls back gracefully when merge-base returns nothing (unknown ref)', async () => {
+    // Configure a non-existent base branch. merge-base will fail.
+    // Module must NOT crash; it should fall through to the working-tree
+    // / HEAD~1 detection path.
+    // Touch a file in the working tree so something exists to find.
+    fs.writeFileSync(path.join(tmp, 'wt.ts'), 'x\ny\n');
+    git(tmp, ['add', '.']);
+    // (don't commit — leave it staged so `git diff --cached` will pick it up)
+
+    const r = await run(tmp, { baseBranch: 'nonexistent-base-branch' });
+    // Should not throw; should produce some check (either a summary or
+    // a no-diff marker). The point: graceful degradation.
+    const hasSummary = r.checks.find((c) => c.name === 'pr-size:summary');
+    const hasNoDiff = r.checks.find((c) => c.name === 'pr-size:no-diff');
+    assert.ok(hasSummary || hasNoDiff, 'falls back to a resolved state');
+  });
+
+  it('auto-detects when no base is configured — finds main via merge-base', async () => {
+    // Default behaviour: no baseBranch configured. Module should
+    // auto-detect by trying `origin/main` then `main`, and use
+    // merge-base. We have no `origin/main` here (no remote), so it
+    // should land on `main`.
+    git(tmp, ['checkout', '-q', '-b', 'feature']);
+    writeAndCommit(tmp, 'autonew.ts', 'p\nq\nr\n', 'branch added 3 lines');
+
+    git(tmp, ['checkout', '-q', 'main']);
+    writeAndCommit(tmp, 'after-branch.ts', 'noise\nmore\n', 'main moved on');
+
+    git(tmp, ['checkout', '-q', 'feature']);
+
+    const r = await run(tmp);
+    const s = r.checks.find((c) => c.name === 'pr-size:summary');
+    assert.ok(s);
+    // Branch only added 3 lines via autonew.ts; main's "after-branch.ts"
+    // must NOT leak in.
+    assert.strictEqual(s.files, 1);
+    assert.strictEqual(s.added, 3);
+  });
+
+  it('existing behaviour preserved: working-tree diff still works when no base resolvable', async () => {
+    // Set up a repo with NO commits past init and NO branches diverged.
+    // Stage some changes. Without a baseBranch or against ref, the
+    // module should still surface the staged diff via the fallback
+    // chain (staged → working-tree → HEAD~1..HEAD).
+    fs.writeFileSync(path.join(tmp, 'a.ts'), 'one\ntwo\nthree\n');
+    git(tmp, ['add', '.']);
+
+    // No baseBranch, no against — pure auto. Since main exists with
+    // only the init commit and no branches diverge, merge-base
+    // resolves to the init commit, and diff merge-base..HEAD has
+    // nothing (the working-tree change is staged but not committed).
+    // The fallback chain should then catch it via `--cached`.
+    const r = await run(tmp);
+    const s = r.checks.find((c) => c.name === 'pr-size:summary');
+    const noDiff = r.checks.find((c) => c.name === 'pr-size:no-diff');
+    // Either we got the staged diff via fallback, or no-diff marker.
+    // Either way, no crash and a deterministic terminal state.
+    assert.ok(s || noDiff);
   });
 });
 

@@ -437,6 +437,318 @@ test('runFixer returns no-files when log has no parseable file references', asyn
   assert.equal(result.status, 'no-files');
 });
 
+// ── Task 2: exponential backoff on Claude 429 / 529 / network errors ───────
+
+/**
+ * Build a fake transport that returns a configurable sequence of responses.
+ * `entries` is an array; each entry shapes the next request's response:
+ *   { status, body, headers, throwOnRequest: true, errorCode: 'ECONNRESET' }
+ */
+function sequencedClaudeTransport(entries) {
+  let i = 0;
+  return {
+    request(opts, cb) {
+      const entry = entries[Math.min(i, entries.length - 1)];
+      i++;
+      const fakeReq = {
+        _errCb: null, _closeCb: null,
+        on(event, fn) {
+          if (event === 'error') this._errCb = fn;
+          if (event === 'close') this._closeCb = fn;
+        },
+        write() {},
+        end() {},
+        destroy() { if (this._closeCb) this._closeCb(); },
+      };
+      if (entry.errorCode) {
+        setImmediate(() => {
+          const err = new Error(`fake net error ${entry.errorCode}`);
+          err.code = entry.errorCode;
+          if (fakeReq._errCb) fakeReq._errCb(err);
+        });
+        return fakeReq;
+      }
+      setImmediate(() => {
+        const status = entry.status || 200;
+        const body = entry.body != null
+          ? (typeof entry.body === 'string' ? entry.body : JSON.stringify(entry.body))
+          : JSON.stringify({ content: [{ text: 'OK_TEXT' }] });
+        const res = {
+          statusCode: status,
+          headers: { 'content-type': 'application/json', ...(entry.headers || {}) },
+          on(event, fn) {
+            if (event === 'data') fn(Buffer.from(body));
+            if (event === 'end')  fn();
+          },
+        };
+        cb(res);
+        setImmediate(() => { if (fakeReq._closeCb) fakeReq._closeCb(); });
+      });
+      return fakeReq;
+    },
+    _count: () => i,
+  };
+}
+
+test('callClaude retries on 429 then succeeds', async () => {
+  const transport = sequencedClaudeTransport([
+    { status: 429, body: { error: 'rate limited' } },
+    { status: 200, body: { content: [{ text: 'fixed' }] } },
+  ]);
+  const sleeps = [];
+  const fakeSleep = (ms) => { sleeps.push(ms); return Promise.resolve(); };
+  const result = await fixer.callClaude({
+    apiKey: 'k', model: 'm', system: 's', user: 'u',
+    transport, sleep: fakeSleep, timeoutMs: 5_000,
+  });
+  assert.equal(result, 'fixed');
+  assert.equal(transport._count(), 2, 'expected exactly 2 HTTP attempts');
+  assert.equal(sleeps.length, 1);
+  assert.equal(sleeps[0], 1_000, 'first backoff delay should be 1s');
+});
+
+test('callClaude exhausts retries on persistent 529 and throws', async () => {
+  const transport = sequencedClaudeTransport([
+    { status: 529, body: { error: 'overloaded' } },
+    { status: 529, body: { error: 'overloaded' } },
+    { status: 529, body: { error: 'overloaded' } },
+  ]);
+  const sleeps = [];
+  const fakeSleep = (ms) => { sleeps.push(ms); return Promise.resolve(); };
+  await assert.rejects(
+    fixer.callClaude({
+      apiKey: 'k', model: 'm', system: 's', user: 'u',
+      transport, sleep: fakeSleep, timeoutMs: 5_000,
+    }),
+    /529/
+  );
+  assert.equal(transport._count(), 3, 'expected exactly 3 HTTP attempts');
+  assert.deepEqual(sleeps, [1_000, 3_000], 'expected backoff ladder 1s, 3s before final attempt');
+});
+
+test('callClaude retries on ECONNRESET network error then succeeds', async () => {
+  const transport = sequencedClaudeTransport([
+    { errorCode: 'ECONNRESET' },
+    { status: 200, body: { content: [{ text: 'recovered' }] } },
+  ]);
+  const sleeps = [];
+  const result = await fixer.callClaude({
+    apiKey: 'k', model: 'm', system: 's', user: 'u',
+    transport, sleep: (ms) => { sleeps.push(ms); return Promise.resolve(); },
+    timeoutMs: 5_000,
+  });
+  assert.equal(result, 'recovered');
+  assert.equal(transport._count(), 2);
+  assert.equal(sleeps.length, 1);
+});
+
+test('callClaude honors Retry-After header (numeric seconds)', async () => {
+  const transport = sequencedClaudeTransport([
+    { status: 429, body: { error: 'rl' }, headers: { 'retry-after': '5' } },
+    { status: 200, body: { content: [{ text: 'ok' }] } },
+  ]);
+  const sleeps = [];
+  await fixer.callClaude({
+    apiKey: 'k', model: 'm', system: 's', user: 'u',
+    transport, sleep: (ms) => { sleeps.push(ms); return Promise.resolve(); },
+    timeoutMs: 5_000,
+  });
+  assert.equal(sleeps[0], 5_000, 'Retry-After: 5 should override the 1s backoff');
+});
+
+test('callClaude does NOT retry on 400 (non-retryable)', async () => {
+  const transport = sequencedClaudeTransport([
+    { status: 400, body: { error: 'bad request' } },
+  ]);
+  await assert.rejects(
+    fixer.callClaude({
+      apiKey: 'k', model: 'm', system: 's', user: 'u',
+      transport, sleep: () => Promise.resolve(), timeoutMs: 5_000,
+    }),
+    /400/
+  );
+  assert.equal(transport._count(), 1, 'should NOT retry on 400');
+});
+
+test('callClaude does NOT retry on 401 (non-retryable)', async () => {
+  const transport = sequencedClaudeTransport([
+    { status: 401, body: { error: 'unauthorized' } },
+  ]);
+  await assert.rejects(
+    fixer.callClaude({
+      apiKey: 'k', model: 'm', system: 's', user: 'u',
+      transport, sleep: () => Promise.resolve(), timeoutMs: 5_000,
+    }),
+    /401/
+  );
+  assert.equal(transport._count(), 1);
+});
+
+test('_isRetryableClaudeError classifies status codes correctly', () => {
+  assert.equal(fixer._isRetryableClaudeError({ _status: 429 }), true);
+  assert.equal(fixer._isRetryableClaudeError({ _status: 529 }), true);
+  assert.equal(fixer._isRetryableClaudeError({ _status: 503 }), true);
+  assert.equal(fixer._isRetryableClaudeError({ _status: 400 }), false);
+  assert.equal(fixer._isRetryableClaudeError({ _status: 401 }), false);
+  assert.equal(fixer._isRetryableClaudeError({ _status: 500 }), false);
+  assert.equal(fixer._isRetryableClaudeError({ code: 'ECONNRESET' }), true);
+  assert.equal(fixer._isRetryableClaudeError({ _code: 'ETIMEDOUT' }), true);
+  assert.equal(fixer._isRetryableClaudeError({ _code: 'ENOENT' }), false);
+  assert.equal(fixer._isRetryableClaudeError(null), false);
+});
+
+test('_parseRetryAfter handles numeric seconds and bad input', () => {
+  assert.equal(fixer._parseRetryAfter('5'),   5_000);
+  assert.equal(fixer._parseRetryAfter('30'),  30_000);
+  assert.equal(fixer._parseRetryAfter('0'),   0);
+  assert.equal(fixer._parseRetryAfter(''),    null);
+  assert.equal(fixer._parseRetryAfter(null),  null);
+  assert.equal(fixer._parseRetryAfter(undefined), null);
+  // garbage input
+  assert.equal(fixer._parseRetryAfter('not-a-number'), null);
+  // HTTP-date (rough): a date 5s in the future should be ~5s
+  const future = new Date(Date.now() + 5_000).toUTCString();
+  const ms = fixer._parseRetryAfter(future);
+  if (ms != null) assert.ok(ms >= 1_000 && ms <= 10_000);
+});
+
+// ── Task 3: structured per-step log parser ─────────────────────────────────
+
+test('parseStepsFromLog splits on ##[group] markers', () => {
+  const log = `##[group]Setup
+Setting up Node
+##[endgroup]
+##[group]Typecheck
+tsc --noEmit
+##[error]src/foo.ts:42:1 — Type 'string' is not assignable to 'number'
+##[endgroup]
+##[group]Test
+ok
+##[endgroup]`;
+  const steps = fixer.parseStepsFromLog(log);
+  assert.equal(steps.length, 3);
+  assert.equal(steps[0].name, 'Setup');
+  assert.equal(steps[0].failed, false);
+  assert.equal(steps[1].name, 'Typecheck');
+  assert.equal(steps[1].failed, true);
+  assert.equal(steps[2].name, 'Test');
+  assert.equal(steps[2].failed, false);
+});
+
+test('parseStepsFromLog identifies a single failing step', () => {
+  const log = `##[group]Build
+##[error]Compilation failed
+##[endgroup]`;
+  const steps = fixer.parseStepsFromLog(log);
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].failed, true);
+});
+
+test('parseStepsFromLog returns [] when no group markers present', () => {
+  const log = `error: something broke at src/foo.js:10`;
+  const steps = fixer.parseStepsFromLog(log);
+  assert.deepEqual(steps, []);
+});
+
+test('parseStepsFromLog identifies a failing step in the middle of the log', () => {
+  const log = `##[group]A
+ok
+##[endgroup]
+##[group]B
+##[error]boom
+##[endgroup]
+##[group]C
+also ok
+##[endgroup]`;
+  const steps = fixer.parseStepsFromLog(log);
+  assert.equal(steps.length, 3);
+  assert.equal(steps[1].name, 'B');
+  assert.equal(steps[1].failed, true);
+  assert.equal(steps[0].failed, false);
+  assert.equal(steps[2].failed, false);
+});
+
+test('parseStepsFromLog detects "exit code N" non-zero markers', () => {
+  const log = `##[group]Test
+running tests...
+Process completed with exit code 1
+##[endgroup]`;
+  const steps = fixer.parseStepsFromLog(log);
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].failed, true);
+});
+
+test('parseStepsFromLog treats "exit code 0" as success', () => {
+  const log = `##[group]Test
+running tests...
+Process completed with exit code 0
+##[endgroup]`;
+  const steps = fixer.parseStepsFromLog(log);
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].failed, false);
+});
+
+test('parseStepsFromLog reports no failures when every step succeeds', () => {
+  const log = `##[group]A
+done
+##[endgroup]
+##[group]B
+done
+##[endgroup]`;
+  const steps = fixer.parseStepsFromLog(log);
+  assert.equal(steps.filter((s) => s.failed).length, 0);
+});
+
+test('parseStepsFromLog handles malformed input (no endgroup) without crashing', () => {
+  const log = `##[group]Unterminated
+some content here
+##[error]boom`;
+  const steps = fixer.parseStepsFromLog(log);
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].failed, true);
+});
+
+test('parseStepsFromLog handles null/empty input', () => {
+  assert.deepEqual(fixer.parseStepsFromLog(null), []);
+  assert.deepEqual(fixer.parseStepsFromLog(''), []);
+  assert.deepEqual(fixer.parseStepsFromLog(undefined), []);
+});
+
+test('extractFailingFiles uses the failing-step body when group markers present', () => {
+  const dir = makeTmpDir();
+  try {
+    const log = `##[group]Setup
+##[endgroup]
+##[group]Typecheck
+    at ${dir}/src/failing.ts:42
+##[error]Type error
+##[endgroup]
+##[group]Build (skipped after typecheck)
+    at ${dir}/src/never-touched.js:1
+##[endgroup]`;
+    const files = fixer.extractFailingFiles(log, dir);
+    // Should ONLY pull from the failing Typecheck step, not from Build.
+    assert.ok(files.includes('src/failing.ts'));
+    assert.equal(files.includes('src/never-touched.js'), false,
+      'should NOT include files from passing steps');
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('extractFailingFiles falls back to whole-log scan when no group markers exist', () => {
+  const dir = makeTmpDir();
+  try {
+    // No ##[group] markers — old-style runner log.
+    const log = `something failed
+    at ${dir}/src/broken.js:1`;
+    const files = fixer.extractFailingFiles(log, dir);
+    assert.ok(files.includes('src/broken.js'));
+  } finally {
+    cleanup(dir);
+  }
+});
+
 test('buildPrBody and buildIssueBody render the expected content', () => {
   const pr = fixer.buildPrBody({
     runUrl:     'http://example/run/1',

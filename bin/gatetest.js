@@ -34,6 +34,8 @@ const HELP = `
                                      (same as running gatetest with no
                                      subcommand). Useful for unambiguous
                                      scripts.
+    gatetest replay <run-url>        Reproduce a failing CI run locally
+                                     (run 'gatetest replay --help' for detail)
 
   OPTIONS
     --suite <name>     Run a test suite: quick, standard, full (default: standard)
@@ -118,6 +120,7 @@ const HELP = `
 async function main() {
   // Subcommand routing (backwards-compatible).
   //   gatetest sweep [...]   → run the Bible's pre-merge sweep locally
+  //   gatetest replay <url>  → reproduce a failing GitHub Actions run locally
   //   gatetest scan  [...]   → alias for the default scan flow (current
   //                            behavior; the word "scan" is consumed and the
   //                            rest of the flags are parsed as usual)
@@ -126,11 +129,16 @@ async function main() {
   //                            every existing invocation keeps working.
   const rawArgs = process.argv.slice(2);
   const first = rawArgs[0];
-  const KNOWN_SUBCOMMANDS = new Set(['sweep', 'scan']);
+  const KNOWN_SUBCOMMANDS = new Set(['sweep', 'replay', 'scan']);
   if (first === 'sweep') {
     const { runSweep } = require('./gatetest-sweep');
     const code = await runSweep(rawArgs.slice(1));
     process.exit(code);
+  }
+  if (first === 'replay') {
+    const replay = require('./gatetest-replay');
+    const code = await replay.main(rawArgs.slice(1));
+    process.exit(code || 0);
   }
   // 'scan' is an explicit alias for the default behavior. Consume it.
   const effectiveArgv = first === 'scan' ? rawArgs.slice(1) : rawArgs;

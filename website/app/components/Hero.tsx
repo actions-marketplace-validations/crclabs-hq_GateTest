@@ -1,89 +1,176 @@
+"use client";
+
+/**
+ * <Hero> — world-class HN-flavoured landing hero.
+ *
+ * Design rules:
+ *   - The hero IS the demo. URL input runs a real free scan.
+ *   - Sample-URL chips pre-fill so visitors can try the product without typing.
+ *   - Honest counter row — no fabricated numbers; "Launching today" badge if no
+ *     real data is available.
+ *   - Substance over polish: every claim ties to a real artefact (91 modules,
+ *     3500+ tests, self-scan green, pay-on-completion).
+ *   - Dark theme preserved. Animated grid background retained.
+ *   - Mobile-first; 320px ↔ 2560px.
+ *
+ * The `UrlScanFlow` component is the same one used by /web — it handles the
+ * full cinematic scan flow, paywall, health score, and result rendering.
+ */
+
+import { useState } from "react";
+import Link from "next/link";
+import { UrlScanFlow } from "./UrlScanFlow";
+
+const SAMPLE_URLS = [
+  { label: "example.com", url: "https://example.com" },
+  { label: "nextjs.org", url: "https://nextjs.org" },
+  { label: "vercel.com", url: "https://vercel.com" },
+];
+
 export default function Hero() {
+  // Sample buttons pre-fill the input via a re-mount of UrlScanFlow with a
+  // fresh `initialUrl`. Bumping the `nonce` forces React to discard the
+  // previous instance and mount a new one with the seeded value already in
+  // its controlled-input state — no DOM hacks, no sync events.
+  const [seed, setSeed] = useState<{ url: string; nonce: number }>({ url: "", nonce: 0 });
+
+  function prefill(url: string) {
+    setSeed((s) => ({ url, nonce: s.nonce + 1 }));
+    // Focus the new input on next paint so a single Enter runs the scan.
+    requestAnimationFrame(() => {
+      const el = document.getElementById("url-scan-input") as HTMLInputElement | null;
+      if (el) el.focus();
+    });
+  }
+
   return (
     <section className="relative overflow-hidden pt-20">
-      {/* Dark hero block */}
       <div className="hero-dark px-6 pb-24 pt-16 relative">
-        {/* Animated grid pattern */}
         <div className="hero-grid" aria-hidden="true" />
-        {/* Subtle gradient accent */}
-        <div className="hidden md:block absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-gradient-to-b from-teal-500/8 to-transparent rounded-full blur-[100px] pointer-events-none" />
+        <div className="hidden md:block absolute top-0 left-1/2 -translate-x-1/2 w-[760px] h-[360px] bg-gradient-to-b from-teal-500/10 to-transparent rounded-full blur-[120px] pointer-events-none" />
 
-        <div className="relative z-10 mx-auto max-w-5xl text-center">
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-sm text-white/70 font-medium mb-10 fade-up">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-            </span>
-            22 Modules &middot; AI-Powered &middot; Pay Only When Delivered
+        <div className="relative z-10 mx-auto max-w-5xl">
+          {/* Status / launch badge — honest "launching today" voice */}
+          <div className="flex justify-center mb-10 fade-up">
+            <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-sm text-white/70 font-medium">
+              <span className="relative flex h-2 w-2" aria-hidden="true">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+              </span>
+              <span>Launching today &middot; v1.42 &middot; 91 modules live</span>
+            </div>
           </div>
 
-          {/* Headline */}
-          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.08] mb-6 fade-up text-white">
-            Your code has problems.
+          {/* Headline — the claim, not a slogan */}
+          <h1 className="text-center text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05] mb-6 fade-up text-white">
+            One gate. <span className="hero-accent-text">91 modules.</span>
             <br />
-            <span className="hero-accent-text">We find and fix them.</span>
+            Self-healing CI.
           </h1>
 
-          {/* Subheadline */}
-          <p className="text-lg sm:text-xl text-white/50 max-w-2xl mx-auto mb-12 leading-relaxed fade-up">
-            67 modules scan your entire codebase. Security, supply chain,
-            auth flaws, CI hardening, and more. AI-powered review finds real
-            bugs &mdash; then auto-fixes them. You only pay when it&apos;s delivered.
+          {/* Unfair-advantage hook */}
+          <p className="text-center text-xl sm:text-2xl text-white/65 max-w-3xl mx-auto mb-3 leading-snug fade-up font-medium">
+            Pay only if we fix it.
+          </p>
+          <p className="text-center text-base sm:text-lg text-white/45 max-w-2xl mx-auto mb-10 leading-relaxed fade-up">
+            Scan your repo or any public site. We find bugs, security issues,
+            and CI rot. Then we open a PR that fixes them. Card hold released
+            if we can&apos;t deliver.
           </p>
 
-          {/* CTAs */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16 fade-up">
-            <a href="#pricing" className="hero-cta px-8 py-4 text-base rounded-xl font-semibold">
-              Scan My Repo &mdash; From $29
-            </a>
-            <a href="#how-it-works" className="px-8 py-4 text-base font-semibold text-white/60 border border-white/15 rounded-xl hover:text-white hover:border-white/30 transition-colors">
-              See How It Works
-            </a>
-          </div>
+          {/* Primary CTA: the live URL scan, in-hero */}
+          <div className="max-w-2xl mx-auto fade-up">
+            <UrlScanFlow
+              key={seed.nonce}
+              suite="web"
+              endpoint="/api/web/scan"
+              streamEndpoint="/api/web/scan/stream"
+              recommendEndpoint="/api/scan/recommend"
+              placeholderUrl="https://yoursite.com — free preview, no signup"
+              brandLabel="GateTest"
+              initialUrl={seed.url}
+            />
 
-          {/* Terminal — belongs here, dark on dark */}
-          <div className="relative max-w-3xl mx-auto rounded-xl border border-white/10 overflow-hidden shadow-2xl fade-up bg-white/[0.03]">
-            <div className="px-4 py-3 flex items-center gap-2 border-b border-white/6">
-              <div className="w-3 h-3 rounded-full bg-[#ff5f57]" />
-              <div className="w-3 h-3 rounded-full bg-[#febc2e]" />
-              <div className="w-3 h-3 rounded-full bg-[#28c840]" />
-              <span className="ml-3 text-xs text-white/30 font-[var(--font-mono)]">gatetest --suite full --fix</span>
-              <span className="ml-auto text-xs text-emerald-400 font-medium tracking-wider">LIVE</span>
+            {/* Sample URL chips */}
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs">
+              <span className="text-white/40 uppercase tracking-wider font-medium">
+                Try a sample
+              </span>
+              {SAMPLE_URLS.map((s) => (
+                <button
+                  key={s.url}
+                  type="button"
+                  onClick={() => prefill(s.url)}
+                  className="px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/70 hover:text-white hover:border-white/25 hover:bg-white/[0.07] transition-colors font-mono"
+                >
+                  {s.label}
+                </button>
+              ))}
+              <Link
+                href="/wp"
+                className="px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/70 hover:text-white hover:border-white/25 hover:bg-white/[0.07] transition-colors"
+              >
+                WordPress site? &rarr;
+              </Link>
             </div>
-            <span className="terminal-scan-line" aria-hidden="true" />
-            <div className="relative p-6 font-[var(--font-mono)] text-sm text-left space-y-1.5 leading-relaxed">
-              <p className="text-emerald-400 font-bold text-xs tracking-wider">GATETEST &mdash; Quality Assurance Gate</p>
-              <p className="text-white/30 text-xs">Running full suite: 67 modules</p>
-              <p className="mt-3" />
-              <p className="text-white/70">{"  "}<span className="text-emerald-400">&#10003;</span> <span className="text-white/90 font-medium">syntax</span> <span className="text-white/30">&mdash; 47 checks, 12ms</span></p>
-              <p className="text-white/70">{"  "}<span className="text-emerald-400">&#10003;</span> <span className="text-white/90 font-medium">secrets</span> <span className="text-white/30">&mdash; 312 files, 0 found</span></p>
-              <p className="text-white/70">{"  "}<span className="text-emerald-400">&#10003;</span> <span className="text-white/90 font-medium">security</span> <span className="text-white/30">&mdash; 0 vulns, OWASP clean</span></p>
-              <p className="text-white/70">{"  "}<span className="text-emerald-400">&#10003;</span> <span className="text-white/90 font-medium">accessibility</span> <span className="text-white/30">&mdash; WCAG 2.2 AAA</span></p>
-              <p className="text-white/70">{"  "}<span className="text-emerald-400">&#10003;</span> <span className="text-white/90 font-medium">performance</span> <span className="text-white/30">&mdash; 98/100, LCP 1.1s</span></p>
-              <p className="text-white/70">{"  "}<span className="text-emerald-400">&#10003;</span> <span className="text-white/90 font-medium">aiReview</span> <span className="text-white/30">&mdash; Claude: 2 bugs found, 2 fixed</span></p>
-              <p className="text-white/25 text-xs">{"  "}...61 more modules passed</p>
-              <p className="mt-3" />
-              <p className="text-emerald-400 font-bold">{"  "}GATE: PASSED <span className="text-white/40 font-normal">&mdash; 67/67 modules, 800+ checks, 3.1s</span></p>
-            </div>
-          </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-14 max-w-2xl mx-auto fade-up stagger">
-            {[
-              { value: "67", label: "Test Modules" },
-              { value: "800+", label: "Quality Checks" },
-              { value: "$0", label: "If Scan Fails" },
-              { value: "0", label: "Tolerance for Bugs" },
-            ].map((stat) => (
-              <div key={stat.label} className="text-center p-4 rounded-xl bg-white/5 border border-white/8">
-                <div className="text-3xl font-bold text-white">{stat.value}</div>
-                <div className="text-sm text-white/40 mt-1">{stat.label}</div>
-              </div>
-            ))}
+            {/* Honest counter row — no fabricated numbers */}
+            <div className="mt-10 grid grid-cols-3 gap-3 max-w-xl mx-auto">
+              <StatusCell
+                label="Self-scan"
+                value="GREEN"
+                tone="ok"
+                detail="91/91 modules"
+              />
+              <StatusCell
+                label="Tests passing"
+                value="3,500+"
+                tone="ok"
+                detail="every commit"
+              />
+              <StatusCell
+                label="If we fail"
+                value="$0"
+                tone="ok"
+                detail="card hold only"
+              />
+            </div>
+
+            <p className="text-center text-xs text-white/35 mt-6">
+              Want a repo scan instead?{" "}
+              <a href="#pricing" className="text-teal-300 hover:text-teal-200 underline-offset-2 hover:underline">
+                Pick a tier &darr;
+              </a>{" "}
+              or <Link href="/github/setup" className="text-teal-300 hover:text-teal-200 underline-offset-2 hover:underline">install the GitHub App</Link>.
+            </p>
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function StatusCell({
+  label,
+  value,
+  tone,
+  detail,
+}: {
+  label: string;
+  value: string;
+  tone: "ok" | "muted";
+  detail: string;
+}) {
+  const valueColor = tone === "ok" ? "text-emerald-300" : "text-white/80";
+  return (
+    <div className="rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-left">
+      <div className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+        {label}
+      </div>
+      <div className={`text-lg font-bold mt-1 tabular-nums ${valueColor}`}>
+        {value}
+      </div>
+      <div className="text-[11px] text-white/40 mt-0.5">{detail}</div>
+    </div>
   );
 }

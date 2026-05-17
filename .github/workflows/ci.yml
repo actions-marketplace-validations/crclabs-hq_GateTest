@@ -28,8 +28,8 @@ jobs:
           cache: 'npm'
           cache-dependency-path: website/package-lock.json
 
-      - name: Install website dependencies
-        run: cd website && npm ci
+      - name: Install all workspaces
+        run: bash scripts/install-workspaces.sh
 
       - name: Run tsc --noEmit
         run: cd website && npx tsc --noEmit
@@ -45,8 +45,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install all workspaces
+        run: bash scripts/install-workspaces.sh
 
       - name: Install website dependencies (some tests require @babel/* via website helpers)
         run: cd website && npm ci
@@ -71,8 +71,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install all workspaces
+        run: bash scripts/install-workspaces.sh
 
       - name: Run GateTest quick scan
         run: node bin/gatetest.js --suite quick --sarif --junit
@@ -94,6 +94,93 @@ jobs:
           path: .gatetest/reports/
           retention-days: 30
 
+  # Self-scan gate — the SAME quick scan we sell to customers must pass on
+  # OUR repo before any merge. Catches the "shipped a scanner that flags
+  # itself" bug class. Bible Forbidden #24 — NO continue-on-error on the
+  # gate step. If the gate is BLOCKED, this job fails the workflow.
+  self-scan:
+    name: GateTest Self-Scan (Dogfood Gate)
+    runs-on: ubuntu-latest
+    needs: gatetest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install all workspaces
+        run: bash scripts/install-workspaces.sh
+
+      - name: Run quick self-scan against the gatetest repo itself
+        run: node bin/gatetest.js --suite quick
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Pre-merge sweep — every check that would block a hand-merge runs here
+  # as a SEPARATE STEP, so one failure doesn't hide three others. Runs on
+  # every PR. This is the "did the sweep actually pass?" enforcement.
+  pre-merge-sweep:
+    name: Pre-Merge Sweep
+    runs-on: ubuntu-latest
+    needs: typecheck
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install all workspaces
+        run: bash scripts/install-workspaces.sh
+
+      - name: All tests pass
+        run: node --test tests/*.test.js
+
+      - name: Website builds clean
+        run: cd website && npx next build
+
+      - name: All modules load (assert >= 90)
+        run: |
+          OUTPUT="$(node bin/gatetest.js --list)"
+          echo "$OUTPUT"
+          LINES="$(printf '%s\n' "$OUTPUT" | wc -l)"
+          echo "module list line count: $LINES"
+          if [ "$LINES" -lt 90 ]; then
+            echo "FAIL: expected at least 90 module-list lines, got $LINES" >&2
+            exit 1
+          fi
+
+      - name: Self-scan green
+        run: node bin/gatetest.js --suite quick
+
+      - name: No committed secrets in tracked files
+        run: |
+          # Look for high-shape secret patterns in tracked files, excluding
+          # docs/tests/examples paths and the .gitignore itself.
+          PATTERN='AKIA[0-9A-Z]{16}|AKIB[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|sk_live_[0-9a-zA-Z]{24,}|sk_test_[0-9a-zA-Z]{24,}|ghp_[0-9a-zA-Z]{36,}|github_pat_[0-9a-zA-Z_]{60,}|glpat-[0-9a-zA-Z_-]{20,}|SG\.[0-9a-zA-Z_-]{22,}\.[0-9a-zA-Z_-]{43,}'
+          FILES="$(git ls-files | grep -Ev '^(\.gitignore|\.env\.example|tests/|docs/)' || true)"
+          if [ -z "$FILES" ]; then
+            echo "no tracked files to scan"
+            exit 0
+          fi
+          HITS="$(printf '%s\n' "$FILES" | xargs -d '\n' grep -EnH "$PATTERN" 2>/dev/null || true)"
+          if [ -n "$HITS" ]; then
+            echo "FAIL: secret-shape strings found in tracked files:" >&2
+            printf '%s\n' "$HITS" >&2
+            exit 1
+          fi
+          echo "no secret-shape strings found"
+
+      - name: TODO/FIXME count (informational, never fails)
+        run: |
+          COUNT="$(git grep -EnI 'TODO|FIXME' -- 'src/**/*.js' 'src/**/*.ts' 'website/app/**/*.ts' 'website/app/**/*.tsx' 'website/app/**/*.js' 2>/dev/null | wc -l || echo 0)"
+          echo "TODO/FIXME occurrences in src/ and website/app/: $COUNT"
+
   gatetest-full:
     name: GateTest Full Scan (Push to main)
     runs-on: ubuntu-latest
@@ -109,8 +196,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install all workspaces
+        run: bash scripts/install-workspaces.sh
 
       - name: Run GateTest full scan
         run: node bin/gatetest.js --suite full --sarif --junit

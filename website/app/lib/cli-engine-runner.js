@@ -268,7 +268,9 @@ async function runFullEngine({ fileContents, suite = DEFAULT_SUITE, deadlineMs, 
     // Best-effort cleanup. Vercel /tmp is per-invocation anyway so this is
     // belt-and-braces — leftover files don't survive the function instance.
     try { fs.rmSync(workspaceRoot, { recursive: true, force: true }); }
-    catch (err) { console.warn(`[cli-engine-runner] cleanup failed: ${err.message || err}`); }
+    catch (err) { // error-ok — Vercel /tmp is per-invocation; leftover files don't survive instance teardown
+      console.warn(`[cli-engine-runner] cleanup failed: ${err.message || err}`);
+    }
   }
 }
 

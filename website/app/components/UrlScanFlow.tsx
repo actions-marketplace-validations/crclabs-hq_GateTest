@@ -1,694 +1,41 @@
 "use client";
 
 /**
- * <UrlScanFlow>
+ * <UrlScanFlow> — paste-URL → scan → results, shared by /web and /wp.
  *
- * The customer-facing flow for paste-URL → scan → results, shared by the
- * /web (any public site) and /wp (WordPress-specific) landing pages. Both
- * pages render this component with different suite props.
+ * Sub-components live in sibling files to keep this orchestrator under the
+ * file-length budget:
+ *   - url-scan-flow-types.ts     — shared types + constants
+ *   - url-scan-flow-cards.tsx    — HealthScore, Stat, Finding, Recommendation, Paywall
+ *   - url-scan-flow-progress.tsx — LiveModule, Progress, RuntimePending tickers
+ *   - url-scan-flow-export.tsx   — Copy-for-Claude prompt formatter + button
+ *   - url-scan-flow-sse.ts       — text/event-stream parser
  *
  * Design rules:
- *   - Bible: "the scan experience must be CINEMATIC." So we show a live
- *     module-by-module ticker during the ~10-30s the scan takes, animate
- *     the health-score reveal, and stagger the findings cards in.
- *   - Health score (0-100) is the centerpiece — big number, letter grade,
- *     colour-coded by severity. Customer wants a verdict, not a list.
- *   - Findings are CLUSTERS (1 missing CSP header = 1 row), not raw
- *     findings. Instance count surfaces next to the title.
- *   - Severity badges: error red, warning amber, info gray. High-signal
- *     clusters carry a 🔥 flag.
- *   - Runtime status: hide entirely when "unavailable". Show progress
- *     when "queued" (poll until "completed"), then render runtime findings
- *     inline with the static ones.
- *   - Paywall CTA appears below the findings when preview === true.
+ *   - Bible: "the scan experience must be CINEMATIC." Module-by-module
+ *     ticker, animated score reveal, staggered finding cards.
+ *   - Findings are CLUSTERS (1 missing CSP header = 1 row).
+ *   - Runtime status: hide entirely when "unavailable".
+ *   - Paywall CTA appears below findings when preview === true.
  *
- * Accessibility:
- *   - All interactive elements keyboard-focusable + visible focus rings.
- *   - aria-live region announces scan state changes.
- *   - Findings expand/collapse via <details>/<summary> (no JS state needed).
- *   - Color is never the only signal — severity also carries a label.
- *
- * Mobile: stacks cleanly at 320px. No horizontal scroll. Big touch targets.
+ * Accessibility: all interactive elements keyboard-focusable, aria-live
+ * region for state changes, findings expand via <details>/<summary>.
  */
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-
-type Severity = "error" | "warning" | "info";
-
-interface Finding {
-  severity: Severity;
-  title: string;
-  body: string;
-  module: string;
-  ruleKey: string;
-  instanceCount?: number;
-  highSignal?: boolean;
-}
-
-interface HealthScore {
-  score: number;
-  grade: "A" | "B" | "C" | "D" | "F";
-  summary: string;
-}
-
-interface RuntimeBlock {
-  status: "queued" | "completed" | "failed" | "unavailable";
-  jobId?: string | null;
-  reason?: string | null;
-  pollUrl?: string | null;
-  payload?: {
-    status?: string;
-    durationMs?: number;
-    findings?: Array<{ name: string; severity: Severity; passed: boolean; message: string }>;
-    error?: string;
-  };
-}
-
-interface ScanResult {
-  scanId?: string;
-  targetUrl: string;
-  scannedAt: string;
-  duration: number;
-  healthScore: HealthScore;
-  totalFindings: number;
-  totalClusters: number;
-  errorCount: number;
-  warningCount: number;
-  infoCount: number;
-  preview: boolean;
-  findings: Finding[];
-  runtime?: RuntimeBlock | null;
-  paywall: {
-    remainingCount: number;
-    fullReportPriceUsd: number;
-    fullReportCadence: string;
-    ctaUrl: string;
-  } | null;
-}
-
-interface UrlScanFlowProps {
-  suite: "web" | "wp";
-  endpoint: string;
-  /**
-   * Optional streaming endpoint. When set, the component opens an SSE
-   * stream and updates a live module-by-module ticker as the scan runs.
-   * Falls back to the non-streaming endpoint if the stream errors.
-   */
-  streamEndpoint?: string;
-  /**
-   * Optional recommend endpoint. When set, the component probes the URL
-   * after a short debounce and shows a "we detected X, recommend Y"
-   * card under the form so customers can sanity-check the scan suite
-   * before they commit.
-   */
-  recommendEndpoint?: string;
-  placeholderUrl?: string;
-  brandLabel?: string;
-}
-
-interface Recommendation {
-  detected: { cms?: string | null; framework?: string | null; cdn?: string | null; server?: string | null; language?: string | null; hints?: string[] } | null;
-  recommendation: {
-    suite: "web" | "wp";
-    tier: "quick" | "full" | "scan_fix" | "nuclear";
-    emphasis: string[];
-    reasoning: string[];
-    ctaUrl: string;
-    suiteDescription: string;
-    tierDescription: string;
-    priceUsd: number;
-  };
-}
-
-interface ModuleProgress {
-  name: string;
-  state: "queued" | "running" | "done" | "skipped";
-  errors?: number;
-  warnings?: number;
-  duration?: number;
-}
-
-const MODULE_TICKER: Record<"web" | "wp", string[]> = {
-  web: [
-    "Checking HTTPS / TLS certificate",
-    "Reading security headers (CSP, HSTS, X-Frame-Options)",
-    "Inspecting cookies for Secure / HttpOnly flags",
-    "Crawling links for broken pages",
-    "Measuring page performance",
-    "Auditing accessibility",
-    "Sweeping for SEO issues",
-    "Queueing live-browser runtime check",
-  ],
-  wp: [
-    "Probing for exposed sensitive files",
-    "Looking up WordPress version disclosure",
-    "Testing XML-RPC endpoint",
-    "Checking plugin CVE database",
-    "Scanning for malware patterns",
-    "Testing user enumeration",
-    "Auditing admin endpoint protection",
-    "Checking PHP version end-of-life",
-    "Reading security headers (CSP, HSTS, X-Frame-Options)",
-    "Inspecting cookies for Secure / HttpOnly flags",
-    "Auditing accessibility",
-    "Sweeping for SEO issues",
-    "Queueing live-browser runtime check",
-  ],
-};
-
-const GRADE_COLORS: Record<"A" | "B" | "C" | "D" | "F", { bar: string; text: string; bg: string; ring: string }> = {
-  A: { bar: "bg-emerald-500", text: "text-emerald-600", bg: "bg-emerald-50", ring: "ring-emerald-300" },
-  B: { bar: "bg-lime-500", text: "text-lime-700", bg: "bg-lime-50", ring: "ring-lime-300" },
-  C: { bar: "bg-amber-500", text: "text-amber-700", bg: "bg-amber-50", ring: "ring-amber-300" },
-  D: { bar: "bg-orange-500", text: "text-orange-700", bg: "bg-orange-50", ring: "ring-orange-300" },
-  F: { bar: "bg-rose-500", text: "text-rose-700", bg: "bg-rose-50", ring: "ring-rose-300" },
-};
-
-const SEVERITY_STYLES: Record<Severity, { badge: string; text: string; dot: string; label: string }> = {
-  error: {
-    badge: "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200",
-    text: "text-rose-700",
-    dot: "bg-rose-500",
-    label: "Error",
-  },
-  warning: {
-    badge: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200",
-    text: "text-amber-700",
-    dot: "bg-amber-500",
-    label: "Warning",
-  },
-  info: {
-    badge: "bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200",
-    text: "text-slate-600",
-    dot: "bg-slate-400",
-    label: "Info",
-  },
-};
-
-function HealthScoreCard({ score, grade, summary }: HealthScore) {
-  const colors = GRADE_COLORS[grade];
-  const [displayScore, setDisplayScore] = useState(0);
-
-  useEffect(() => {
-    let current = 0;
-    const target = score;
-    const stepMs = 18;
-    const steps = 40;
-    const inc = target / steps;
-    const id = setInterval(() => {
-      current += inc;
-      if (current >= target) {
-        current = target;
-        clearInterval(id);
-      }
-      setDisplayScore(Math.round(current));
-    }, stepMs);
-    return () => clearInterval(id);
-  }, [score]);
-
-  return (
-    <div className={`rounded-3xl border border-border ${colors.bg} p-8 sm:p-10 ring-1 ${colors.ring}`}>
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-8">
-        <div className="flex flex-col items-center sm:items-start shrink-0">
-          <p className="text-sm font-medium uppercase tracking-wider text-muted mb-1">Health Score</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-7xl sm:text-8xl font-bold tabular-nums tracking-tight text-foreground">
-              {displayScore}
-            </span>
-            <span className="text-2xl font-semibold text-muted">/ 100</span>
-          </div>
-        </div>
-
-        <div className="flex-1 w-full">
-          <div className="flex items-center gap-3 mb-3">
-            <span
-              className={`inline-flex items-center justify-center w-12 h-12 rounded-full text-2xl font-bold ${colors.bar} text-white shadow-md`}
-              aria-label={`Grade ${grade}`}
-            >
-              {grade}
-            </span>
-            <div>
-              <p className="text-lg font-semibold text-foreground">Grade {grade}</p>
-              <p className="text-sm text-muted">
-                {grade === "A" && "Excellent — your site is well-hardened"}
-                {grade === "B" && "Good — a few hardening opportunities"}
-                {grade === "C" && "Fair — meaningful issues need attention"}
-                {grade === "D" && "Poor — significant security & quality gaps"}
-                {grade === "F" && "Critical — multiple urgent issues found"}
-              </p>
-            </div>
-          </div>
-
-          {/* Score bar */}
-          <div className="w-full h-3 rounded-full bg-white/60 overflow-hidden shadow-inner">
-            <div
-              className={`h-full ${colors.bar} transition-all duration-1000 ease-out`}
-              style={{ width: `${score}%` }}
-              aria-hidden
-            />
-          </div>
-
-          <p className="text-sm text-muted mt-3">{summary}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value, accent }: { label: string; value: number | string; accent: "rose" | "amber" | "slate" | "teal" }) {
-  const accentMap = {
-    rose: "text-rose-600",
-    amber: "text-amber-600",
-    slate: "text-slate-600",
-    teal: "text-accent",
-  };
-  return (
-    <div className="rounded-2xl border border-border bg-white p-5">
-      <p className="text-xs font-medium uppercase tracking-wider text-muted">{label}</p>
-      <p className={`text-3xl font-bold tabular-nums mt-1 ${accentMap[accent]}`}>{value}</p>
-    </div>
-  );
-}
-
-function FindingRow({ finding, index }: { finding: Finding; index: number }) {
-  const sev = SEVERITY_STYLES[finding.severity];
-  const showCount = finding.instanceCount && finding.instanceCount > 1;
-  return (
-    <details
-      className="group rounded-2xl border border-border bg-white overflow-hidden transition-shadow hover:shadow-sm"
-      style={{ animationDelay: `${index * 60}ms` }}
-    >
-      <summary className="list-none cursor-pointer p-5 flex items-start gap-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
-        <span className={`shrink-0 mt-1 w-2.5 h-2.5 rounded-full ${sev.dot}`} aria-hidden />
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2 mb-1.5">
-            <span className={`text-xs font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md ${sev.badge}`}>
-              {sev.label}
-            </span>
-            {finding.highSignal && (
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-200">
-                🔥 High signal
-              </span>
-            )}
-            {showCount && (
-              <span className="text-xs font-medium text-muted">
-                {finding.instanceCount} occurrence{finding.instanceCount! > 1 ? "s" : ""}
-              </span>
-            )}
-            <span className="text-xs font-mono text-muted truncate">{finding.module}</span>
-          </div>
-          <h3 className="font-semibold text-foreground leading-snug">{finding.title}</h3>
-        </div>
-        <svg
-          className="shrink-0 w-5 h-5 text-muted transition-transform group-open:rotate-180 mt-1"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          aria-hidden
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </summary>
-      <div className="px-5 pb-5 -mt-2">
-        <div className="border-t border-border pt-4 text-sm text-muted whitespace-pre-line leading-relaxed">
-          {finding.body || "No additional detail."}
-        </div>
-        <p className="mt-3 text-xs font-mono text-muted">Rule: <span className="text-foreground">{finding.ruleKey}</span></p>
-      </div>
-    </details>
-  );
-}
-
-/**
- * Render all findings as a markdown prompt suitable for pasting into a
- * Claude Code session. The prompt asks Claude to fix the issues in the
- * customer's own codebase. Includes the scanned URL, health score,
- * grouped findings with severity, rule key, body, and per-rule
- * suggested action.
- */
-function formatFindingsForClaude(result: ScanResult): string {
-  const lines: string[] = [];
-  lines.push(`# GateTest scan report — paste-ready for Claude Code`);
-  lines.push("");
-  lines.push(`**Site scanned:** ${result.targetUrl}`);
-  lines.push(`**Health Score:** ${result.healthScore.score} / 100 (Grade ${result.healthScore.grade})`);
-  lines.push(`**Summary:** ${result.healthScore.summary}`);
-  lines.push("");
-  lines.push(`## Task for Claude`);
-  lines.push(`Investigate the codebase that powers \`${result.targetUrl}\` and fix the issues below. Where the source of an issue isn't obvious, search for the relevant file. Group fixes by root cause where possible — many of these findings collapse to a single configuration change.`);
-  lines.push("");
-
-  const bySev: Record<Severity, Finding[]> = { error: [], warning: [], info: [] };
-  for (const f of result.findings) {
-    bySev[f.severity].push(f);
-  }
-
-  for (const sev of ["error", "warning", "info"] as Severity[]) {
-    const items = bySev[sev];
-    if (items.length === 0) continue;
-    const label = sev === "error" ? "🔴 Errors" : sev === "warning" ? "🟡 Warnings" : "⚪ Info";
-    lines.push(`## ${label} (${items.length})`);
-    lines.push("");
-    items.forEach((f, i) => {
-      const flag = f.highSignal ? " 🔥 HIGH-SIGNAL" : "";
-      const count = f.instanceCount && f.instanceCount > 1 ? ` × ${f.instanceCount}` : "";
-      lines.push(`### ${i + 1}. ${f.title}${flag}${count}`);
-      lines.push(`- **Module:** \`${f.module}\``);
-      lines.push(`- **Rule:** \`${f.ruleKey}\``);
-      if (f.body) {
-        const body = f.body.split("\n").map((l) => `  ${l}`).join("\n");
-        lines.push("");
-        lines.push(body.trimEnd());
-      }
-      lines.push("");
-    });
-  }
-
-  lines.push(`---`);
-  lines.push(`_Generated by GateTest — https://gatetest.ai_`);
-  return lines.join("\n");
-}
-
-function CopyForClaudeButton({ result }: { result: ScanResult }) {
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState(false);
-
-  async function copy() {
-    const text = formatFindingsForClaude(result);
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        // Fallback for non-https / non-clipboard envs (e.g. older browsers)
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.left = "-9999px";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      }
-      setCopied(true);
-      setError(false);
-      setTimeout(() => setCopied(false), 2400);
-    } catch {
-      setError(true);
-      setTimeout(() => setError(false), 2400);
-    }
-  }
-
-  return (
-    <div className="rounded-2xl border border-accent/20 bg-accent/5 p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-      <div className="flex-1">
-        <p className="font-semibold text-foreground leading-tight">
-          Hand this report to Claude
-        </p>
-        <p className="text-sm text-muted mt-1 leading-relaxed">
-          Copy the findings as a structured prompt ready to paste into any Claude Code or chat session.
-          Claude will know the URL, the issues, the severity, and what to fix.
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={copy}
-        className={`shrink-0 inline-flex items-center gap-2 px-5 py-3 rounded-xl font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-          copied
-            ? "bg-emerald-600 text-white"
-            : error
-            ? "bg-rose-600 text-white"
-            : "bg-accent text-white hover:bg-accent-hover"
-        }`}
-        aria-live="polite"
-      >
-        {copied ? (
-          <>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-            </svg>
-            Copied
-          </>
-        ) : error ? (
-          <>Copy failed — try again</>
-        ) : (
-          <>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1m-6-13h6a2 2 0 012 2v6a2 2 0 01-2 2h-6a2 2 0 01-2-2V7a2 2 0 012-2z" />
-            </svg>
-            Copy findings for Claude
-          </>
-        )}
-      </button>
-    </div>
-  );
-}
-
-function RecommendationCard({ rec }: { rec: Recommendation }) {
-  const detected = rec.detected || {};
-  const detectedBits: string[] = [];
-  if (detected.cms) detectedBits.push(detected.cms);
-  if (detected.framework) detectedBits.push(detected.framework);
-  if (detected.cdn && detected.cdn !== detected.server) detectedBits.push(detected.cdn);
-  if (detected.server) detectedBits.push(detected.server);
-  if (detected.language) detectedBits.push(detected.language);
-  return (
-    <div className="mt-6 max-w-2xl mx-auto rounded-2xl border border-accent/20 bg-accent/5 p-5">
-      <div className="flex items-start gap-3">
-        <span className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full bg-accent/15 text-accent text-sm font-bold">✦</span>
-        <div className="flex-1">
-          <div className="flex flex-wrap items-baseline gap-2 mb-2">
-            <p className="font-semibold text-foreground">Detected</p>
-            {detectedBits.length > 0 ? (
-              <p className="text-sm text-muted">
-                {detectedBits.map((d, i) => (
-                  <span key={d}>
-                    {i > 0 && <span className="mx-1.5 text-muted/60">·</span>}
-                    <span className="text-foreground font-medium">{d}</span>
-                  </span>
-                ))}
-              </p>
-            ) : (
-              <p className="text-sm text-muted">No specific framework — generic web site</p>
-            )}
-          </div>
-          <p className="text-sm text-foreground/90 leading-relaxed">
-            <span className="font-semibold">Recommended:</span>{" "}
-            {rec.recommendation.suiteDescription.toLowerCase()} at{" "}
-            <span className="font-semibold capitalize">{rec.recommendation.tier.replace("_", " + ")}</span> tier
-            {rec.recommendation.tier !== "quick" && (
-              <span className="text-muted"> (${rec.recommendation.priceUsd})</span>
-            )}
-            .
-          </p>
-          {rec.recommendation.reasoning[0] && (
-            <p className="text-sm text-muted leading-relaxed mt-1">
-              {rec.recommendation.reasoning[0]}
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PaywallCard({ paywall, targetUrl }: { paywall: NonNullable<ScanResult["paywall"]>; targetUrl: string }) {
-  return (
-    <div className="rounded-3xl bg-foreground text-background p-8 sm:p-10">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-        <div className="flex-1">
-          <p className="text-sm font-medium uppercase tracking-wider text-background/60 mb-2">Free preview ends here</p>
-          <h3 className="text-2xl sm:text-3xl font-bold leading-tight mb-2">
-            {paywall.remainingCount} more issues hidden behind the full report
-          </h3>
-          <p className="text-background/80 leading-relaxed">
-            See every finding, plain-English fix instructions, and the full health-score breakdown.
-            One-shot purchase, no subscription, no signup. Pay only if you want the details.
-          </p>
-        </div>
-        <Link
-          href={`${paywall.ctaUrl}&url=${encodeURIComponent(targetUrl)}`}
-          className="shrink-0 inline-flex items-center justify-center gap-2 px-7 py-4 rounded-xl bg-accent text-white font-semibold hover:bg-accent-hover transition-colors text-lg"
-        >
-          Unlock for ${paywall.fullReportPriceUsd}
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-          </svg>
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Real-module ticker — renders the actual modules the engine is running.
- * When the SSE stream is feeding `liveModules`, we render those state
- * transitions directly. Falls back to the suite-specific fake list when
- * the caller hasn't wired streaming yet.
- */
-function LiveModuleTicker({ modules, elapsedSec }: { modules: ModuleProgress[]; elapsedSec: number }) {
-  return (
-    <div className="rounded-3xl border border-border bg-white p-6 sm:p-8" role="status" aria-live="polite">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-3">
-          <span className="w-3 h-3 rounded-full bg-accent animate-pulse" aria-hidden />
-          <p className="font-semibold text-foreground">Live scan in progress…</p>
-        </div>
-        <p className="text-sm text-muted font-mono tabular-nums">{elapsedSec.toFixed(1)}s</p>
-      </div>
-      <ul className="space-y-2.5 max-h-[400px] overflow-y-auto pr-2">
-        {modules.map((m) => {
-          const done = m.state === "done";
-          const skipped = m.state === "skipped";
-          const running = m.state === "running";
-          const hasIssues = (m.errors || 0) + (m.warnings || 0) > 0;
-          return (
-            <li key={m.name} className="flex items-center gap-3 text-sm">
-              <span
-                className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center ${
-                  done && hasIssues
-                    ? "bg-amber-500 text-white"
-                    : done
-                    ? "bg-emerald-500 text-white"
-                    : skipped
-                    ? "bg-slate-200 text-slate-500"
-                    : running
-                    ? "bg-accent/15 text-accent"
-                    : "bg-slate-100 text-slate-400"
-                }`}
-                aria-hidden
-              >
-                {done ? (
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : skipped ? (
-                  <span className="text-[10px] font-bold">—</span>
-                ) : running ? (
-                  <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-                ) : null}
-              </span>
-              <span className={`flex-1 ${done ? "text-foreground" : running ? "text-foreground font-medium" : "text-muted"}`}>
-                {m.name}
-              </span>
-              {done && hasIssues && (
-                <span className="text-xs font-mono text-amber-700">
-                  {m.errors ? `${m.errors}E` : ""}
-                  {m.errors && m.warnings ? " · " : ""}
-                  {m.warnings ? `${m.warnings}W` : ""}
-                </span>
-              )}
-              {done && !hasIssues && <span className="text-xs font-mono text-emerald-700">clean</span>}
-              {skipped && <span className="text-xs text-muted italic">skipped</span>}
-              {done && typeof m.duration === "number" && m.duration > 100 && (
-                <span className="text-xs font-mono text-muted tabular-nums">{(m.duration / 1000).toFixed(1)}s</span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-function ProgressTicker({ suite, elapsedSec }: { suite: "web" | "wp"; elapsedSec: number }) {
-  const items = MODULE_TICKER[suite];
-  const activeIndex = Math.min(items.length - 1, Math.floor(elapsedSec / 1.6));
-  return (
-    <div className="rounded-3xl border border-border bg-white p-6 sm:p-8" role="status" aria-live="polite">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-3">
-          <span className="w-3 h-3 rounded-full bg-accent animate-pulse" aria-hidden />
-          <p className="font-semibold text-foreground">Scanning your site...</p>
-        </div>
-        <p className="text-sm text-muted font-mono tabular-nums">{elapsedSec.toFixed(1)}s</p>
-      </div>
-      <ul className="space-y-2.5">
-        {items.map((label, i) => {
-          const done = i < activeIndex;
-          const active = i === activeIndex;
-          return (
-            <li
-              key={label}
-              className={`flex items-center gap-3 text-sm transition-opacity ${
-                i > activeIndex + 2 ? "opacity-30" : ""
-              }`}
-            >
-              <span
-                className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center ${
-                  done ? "bg-emerald-500 text-white" : active ? "bg-accent/15 text-accent" : "bg-slate-100 text-slate-400"
-                }`}
-                aria-hidden
-              >
-                {done ? (
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : active ? (
-                  <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-                ) : null}
-              </span>
-              <span className={done ? "text-foreground" : active ? "text-foreground font-medium" : "text-muted"}>
-                {label}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-function RuntimePending({ pollUrl, onComplete }: { pollUrl: string; onComplete: (rt: RuntimeBlock["payload"]) => void }) {
-  const [elapsed, setElapsed] = useState(0);
-  const onCompleteRef = useRef(onComplete);
-  useEffect(() => {
-    onCompleteRef.current = onComplete;
-  }, [onComplete]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const start = Date.now();
-    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 500);
-    const poll = setInterval(async () => {
-      try {
-        const r = await fetch(pollUrl, { cache: "no-store" });
-        if (!r.ok) return;
-        const data = await r.json();
-        if (cancelled) return;
-        if (data?.runtime?.status === "completed" || data?.runtime?.status === "failed") {
-          onCompleteRef.current(data.runtime.payload);
-          clearInterval(poll);
-          clearInterval(tick);
-        }
-      } catch {
-        /* keep polling */
-      }
-    }, 3000);
-    return () => {
-      cancelled = true;
-      clearInterval(poll);
-      clearInterval(tick);
-    };
-  }, [pollUrl]);
-
-  return (
-    <div className="rounded-2xl border border-border bg-blue-50 p-5 ring-1 ring-blue-100">
-      <div className="flex items-start gap-3">
-        <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-blue-500/15 flex items-center justify-center">
-          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" aria-hidden />
-        </span>
-        <div className="flex-1">
-          <p className="font-semibold text-blue-900 leading-tight">Live browser check running…</p>
-          <p className="text-sm text-blue-800/80 mt-1">
-            We&apos;re loading your site in a real Chromium and watching for JavaScript errors,
-            hydration mismatches, CSP violations and broken network requests. Usually 10-30 seconds. <span className="font-mono tabular-nums">{elapsed}s elapsed.</span>
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
+import type {
+  Finding,
+  ModuleProgress,
+  Recommendation,
+  RuntimeBlock,
+  ScanResult,
+  UrlScanFlowProps,
+} from "./url-scan-flow-types";
+import { HealthScoreCard, StatCard, FindingRow, RecommendationCard, PaywallCard } from "./url-scan-flow-cards";
+import { LiveModuleTicker, ProgressTicker, RuntimePending } from "./url-scan-flow-progress";
+import { CopyForClaudeButton } from "./url-scan-flow-export";
+import { consumeSseStream } from "./url-scan-flow-sse";
 
 export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint, placeholderUrl = "https://yoursite.com", brandLabel }: UrlScanFlowProps) {
   type Phase = "idle" | "scanning" | "results" | "error";
@@ -703,15 +50,13 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
   const abortRef = useRef<AbortController | null>(null);
   const recAbortRef = useRef<AbortController | null>(null);
 
-  // Debounced pre-scan recommendation fetch. Triggers when the URL looks
-  // valid AND hasn't changed for 600ms. Aborts any in-flight previous
-  // recommendation when the URL changes. Failures are silent — the
-  // recommendation card just doesn't appear; the scan flow still works.
+  // Debounced pre-scan recommendation fetch. Fires when URL looks valid
+  // and hasn't changed for 600ms. Aborts any in-flight previous fetch.
+  // Failures are silent — the card just doesn't appear.
   useEffect(() => {
     if (!recommendEndpoint || phase !== "idle") return;
     const trimmed = url.trim();
     if (!trimmed) { setRecommendation(null); return; }
-    // Very loose URL shape check — avoid pinging for "https://"
     if (!/^https?:\/\/[^/\s.]+\.[^/\s]+/i.test(trimmed) && !/^[^/\s.]+\.[^/\s.]+/.test(trimmed)) {
       setRecommendation(null);
       return;
@@ -755,57 +100,6 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
     };
   }, [phase]);
 
-  /**
-   * Read an SSE stream line by line and dispatch each event to onEvent.
-   * Implements a minimal text/event-stream parser — enough for our shape
-   * (event: ... \n data: ... \n \n). Keep-alive comment lines (":...") are
-   * ignored. Returns when the server closes the stream.
-   */
-  async function consumeSseStream(
-    res: Response,
-    onEvent: (event: string, data: unknown) => void,
-    signal: AbortSignal
-  ): Promise<void> {
-    if (!res.body) throw new Error("Stream response had no body");
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let currentEvent = "message";
-    let currentData = "";
-    const flush = () => {
-      if (currentData) {
-        try {
-          const parsed = JSON.parse(currentData);
-          onEvent(currentEvent, parsed);
-        } catch {
-          onEvent(currentEvent, currentData);
-        }
-      }
-      currentEvent = "message";
-      currentData = "";
-    };
-    while (true) {
-      if (signal.aborted) {
-        try { await reader.cancel(); } catch { /* ignore */ }
-        return;
-      }
-      const { done, value } = await reader.read();
-      if (done) {
-        if (currentData) flush();
-        return;
-      }
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        if (line.startsWith(":")) continue;            // keep-alive comment
-        if (line === "") { flush(); continue; }
-        if (line.startsWith("event:")) currentEvent = line.slice(6).trim();
-        else if (line.startsWith("data:")) currentData += (currentData ? "\n" : "") + line.slice(5).trim();
-      }
-    }
-  }
-
   async function runStreaming(targetUrl: string, abort: AbortController) {
     if (!streamEndpoint) throw new Error("no-stream-endpoint");
     const res = await fetch(streamEndpoint, {
@@ -815,7 +109,6 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
       signal: abort.signal,
     });
     if (!res.ok) {
-      // Server returned an error JSON instead of a stream
       let errMsg = `Scan failed (HTTP ${res.status})`;
       try {
         const j = await res.json();
@@ -901,7 +194,6 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
       setPhase("results");
     } catch (err) {
       if ((err as Error)?.name === "AbortError") {
-        // User cancelled — return to idle
         setPhase("idle");
         return;
       }
@@ -949,14 +241,11 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
 
   return (
     <div className="w-full">
-      {/* Form is always visible at the top so the customer can re-scan */}
       <form
         onSubmit={handleSubmit}
         className="flex flex-col sm:flex-row items-stretch justify-center gap-3 max-w-xl mx-auto"
       >
-        <label className="sr-only" htmlFor="url-scan-input">
-          Website URL to scan
-        </label>
+        <label className="sr-only" htmlFor="url-scan-input">Website URL to scan</label>
         <input
           id="url-scan-input"
           type="url"
@@ -988,10 +277,6 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
         </>
       )}
 
-      {/* SCANNING STATE — cinematic progress ticker.
-          Streaming endpoint feeds the real module list; otherwise a
-          suite-appropriate fake ticker animates while the non-streaming
-          scan returns. */}
       {phase === "scanning" && (
         <div className="mt-10 max-w-2xl mx-auto">
           {streamEndpoint && liveModules.length > 0 ? (
@@ -1002,7 +287,6 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
         </div>
       )}
 
-      {/* ERROR STATE — helpful, not scary */}
       {phase === "error" && (
         <div className="mt-10 max-w-2xl mx-auto">
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 ring-1 ring-rose-100" role="alert">
@@ -1018,10 +302,8 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
         </div>
       )}
 
-      {/* RESULTS STATE */}
       {phase === "results" && result && (
         <div className="mt-12 max-w-4xl mx-auto space-y-8">
-          {/* Scanned URL banner */}
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
             <p className="text-muted">
               Scanned <span className="font-mono text-foreground">{result.targetUrl}</span> in{" "}
@@ -1036,10 +318,8 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
             </button>
           </div>
 
-          {/* Health score hero */}
           <HealthScoreCard {...result.healthScore} />
 
-          {/* Stat row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <StatCard label="Errors" value={result.errorCount} accent="rose" />
             <StatCard label="Warnings" value={result.warningCount} accent="amber" />
@@ -1047,12 +327,10 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
             <StatCard label="Raw findings" value={result.totalFindings} accent="slate" />
           </div>
 
-          {/* Runtime status — ONLY when queued or completed; hidden when unavailable */}
           {showRuntime && result.runtime?.status === "queued" && result.runtime.pollUrl && (
             <RuntimePending pollUrl={result.runtime.pollUrl} onComplete={applyRuntimePayload} />
           )}
 
-          {/* Findings list */}
           {result.findings.length > 0 ? (
             <div>
               <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -1071,8 +349,6 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
                 ))}
               </div>
 
-              {/* Copy-for-Claude — paste-ready prompt customer can drop into
-                  any Claude Code session to get the issues fixed in code. */}
               <div className="mt-6">
                 <CopyForClaudeButton result={result} />
               </div>
@@ -1086,12 +362,10 @@ export function UrlScanFlow({ suite, endpoint, streamEndpoint, recommendEndpoint
             </div>
           )}
 
-          {/* Paywall CTA */}
           {result.paywall && result.paywall.remainingCount > 0 && (
             <PaywallCard paywall={result.paywall} targetUrl={result.targetUrl} />
           )}
 
-          {/* Sub-footer */}
           <div className="text-center pt-4">
             <p className="text-xs text-muted">
               Powered by the{" "}

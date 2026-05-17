@@ -20,6 +20,19 @@
  *   - Nothing enforces `max lines changed per file` AND
  *     `max total files` AND `mixed-concerns` simultaneously.
  *
+ * Diff-resolution strategy (in priority order):
+ *   1. Explicit `config.prSize.diff` or `runnerOptions.diff` (tests/CI).
+ *   2. `config.prSize.baseBranch` configured (default `origin/main`,
+ *      fallback `main`) → resolves merge-base with HEAD and diffs
+ *      `<merge-base>..HEAD`. This is the bulletproof path: long-running
+ *      feature branches only count the changes introduced ON the branch,
+ *      not changes merged into main since the branch was created.
+ *   3. Legacy `config.prSize.against` / `runnerOptions.against` → kept
+ *      for backward compatibility; uses three-dot range `against...HEAD`
+ *      which git interprets as merge-base..HEAD anyway.
+ *   4. Auto-detect: try `origin/main`, then `main` merge-base; if neither
+ *      resolves, fall back to staged → working-tree → `HEAD~1..HEAD`.
+ *
  * Rules:
  *
  *   error:   PR exceeds the hard files-changed ceiling (default 100).
@@ -55,7 +68,14 @@
  *   info:    Always — `pr-size:summary` with files / adds / removes counts.
  *
  * Config (modules.prSize):
- *   against:                 base ref to diff against (default: auto)
+ *   baseBranch:              base branch to find merge-base against
+ *                            (default: auto — tries `origin/main` then
+ *                            `main`). When set, the module diffs
+ *                            `<merge-base>..HEAD` so only changes
+ *                            introduced on this branch count.
+ *   against:                 legacy base ref to diff against — uses
+ *                            three-dot range `against...HEAD`. Prefer
+ *                            `baseBranch` for new configs.
  *   maxFilesChangedWarning:  soft file ceiling (default 50)
  *   maxFilesChangedError:    hard file ceiling (default 100)
  *   maxLinesChangedWarning:  soft line ceiling (default 500)
@@ -262,26 +282,85 @@ class PrSizeModule extends BaseModule {
   }
 
   _getDiff(projectRoot, runnerOptions, moduleConfig) {
-    // Explicit diff provided (tests / CI).
+    // 1. Explicit diff provided (tests / CI).
     if (moduleConfig.diff != null) return moduleConfig.diff;
     if (runnerOptions.diff != null) return runnerOptions.diff;
 
-    const against = moduleConfig.against || runnerOptions.against;
-    const commands = against
-      ? [`git diff --numstat ${against}...HEAD`]
-      : [
-          'git diff --numstat --cached',
-          'git diff --numstat',
-          'git diff --numstat HEAD~1 HEAD',
-        ];
+    // 2. baseBranch configured → resolve merge-base, diff
+    //    `<merge-base>..HEAD`. This is the bulletproof path for
+    //    long-running feature branches: it counts ONLY the changes
+    //    introduced on this branch, not changes merged into main
+    //    since the branch was created.
+    const explicitBase =
+      moduleConfig.baseBranch || runnerOptions.baseBranch || null;
+    if (explicitBase) {
+      const diff = this._diffSinceMergeBase(projectRoot, explicitBase);
+      if (diff !== null) return diff;
+      // explicitly configured base failed to resolve — fall through
+      // to other strategies rather than silently producing no output.
+    }
 
-    for (const cmd of commands) {
+    // 3. Legacy `against` ref (three-dot range, equivalent to
+    //    merge-base..HEAD).
+    const against = moduleConfig.against || runnerOptions.against;
+    if (against) {
+      const { stdout, exitCode } = this._exec(
+        `git diff --numstat ${against}...HEAD`,
+        { cwd: projectRoot },
+      );
+      if (exitCode === 0 && stdout && stdout.trim()) return stdout;
+      // fall through to auto-detect on failure
+    }
+
+    // 4. Auto-detect: try origin/main → main merge-base first (the
+    //    "long-running feature branch" case), then fall back to
+    //    staged / working-tree / HEAD~1..HEAD (the "local pre-push"
+    //    case).
+    if (!explicitBase && !against) {
+      for (const candidate of ['origin/main', 'main']) {
+        const diff = this._diffSinceMergeBase(projectRoot, candidate);
+        if (diff) return diff;
+      }
+    }
+
+    const fallbackCommands = [
+      'git diff --numstat --cached',
+      'git diff --numstat',
+      'git diff --numstat HEAD~1 HEAD',
+    ];
+    for (const cmd of fallbackCommands) {
       const { stdout, exitCode } = this._exec(cmd, { cwd: projectRoot });
       if (exitCode === 0 && stdout && stdout.trim()) {
         return stdout;
       }
     }
     return '';
+  }
+
+  /**
+   * Resolve `git merge-base HEAD <base>` and return the numstat diff
+   * for `<merge-base>..HEAD`. Returns:
+   *   - non-empty string: the diff (success)
+   *   - empty string:     merge-base found but no changes on the
+   *                       branch (success — caller can use as-is)
+   *   - null:             merge-base could not be resolved (shallow
+   *                       clone, unknown ref, unrelated branch).
+   *                       Caller should fall through to next strategy.
+   */
+  _diffSinceMergeBase(projectRoot, base) {
+    const mergeBaseRes = this._exec(`git merge-base HEAD ${base}`, {
+      cwd: projectRoot,
+    });
+    if (mergeBaseRes.exitCode !== 0) return null;
+    const mergeBase = (mergeBaseRes.stdout || '').trim();
+    if (!mergeBase) return null;
+
+    const diffRes = this._exec(
+      `git diff --numstat ${mergeBase}..HEAD`,
+      { cwd: projectRoot },
+    );
+    if (diffRes.exitCode !== 0) return null;
+    return diffRes.stdout || '';
   }
 
   // ------------------------------------------------------------------

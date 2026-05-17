@@ -43,33 +43,33 @@ My pick: the first one. The "doesn't reformat your code" hook directly counters 
 ## Body — ~300 words, plain HN style
 
 ```
-Hi HN. I'm Craig, solo dev from NZ. I built GateTest because every AI 
-auto-fixer I tried — Copilot Autofix, Sweep, Claude in Cursor — kept 
-"improving" code I didn't ask them to touch. One fix to a null check 
-would come back with 40 lines of reformat. Reviewing the PR took 
+Hi HN. I'm Craig, solo dev from NZ. I built GateTest because every AI
+auto-fixer I tried — Copilot Autofix, Sweep, Claude in Cursor — kept
+"improving" code I didn't ask them to touch. One fix to a null check
+would come back with 40 lines of reformat. Reviewing the PR took
 longer than fixing the bug manually.
 
-GateTest takes a different approach. When it fixes an issue at line 
-138, it sends Claude ONLY lines 118-158 of the file. Never the whole 
-file. Then it splices the replacement back in. Lines 1-117 and 159-end 
-are byte-identical to the original because they were never sent. The 
+GateTest takes a different approach. When it fixes an issue at line
+138, it sends Claude ONLY lines 118-158 of the file. Never the whole
+file. Then it splices the replacement back in. Lines 1-117 and 159-end
+are byte-identical to the original because they were never sent. The
 reformat problem becomes structurally impossible.
 
-It also reads your project's own conventions (CLAUDE.md, AGENTS.md, 
-ARCHITECTURE.md, README.md, .cursorrules — first 2KB each) and 
-prepends them to every fix prompt. So Claude stops suggesting Mongo 
+It also reads your project's own conventions (CLAUDE.md, AGENTS.md,
+ARCHITECTURE.md, README.md, .cursorrules — first 2KB each) and
+prepends them to every fix prompt. So Claude stops suggesting Mongo
 when your README says Postgres.
 
-90 scanning modules in one CLI / API / web run — security, 
-accessibility, supply-chain, IaC, AI code review, mutation testing, 
-plus a "fake-fix detector" that catches symptom-patching. Replaces 
-Snyk + ESLint + axe + Lighthouse + Semgrep + Dependabot 
+90 scanning modules in one CLI / API / web run — security,
+accessibility, supply-chain, IaC, AI code review, mutation testing,
+plus a "fake-fix detector" that catches symptom-patching. Replaces
+Snyk + ESLint + axe + Lighthouse + Semgrep + Dependabot
 in a single gate decision: PASS or BLOCKED.
 
-Pricing: $29 Quick Scan, $99 Full Scan (all 90 modules), $199 Scan+Fix 
-(adds pair-review + architecture annotations), $399 Nuclear (real 
-Claude diagnosis + cross-finding attack-chain correlation). Card hold 
-at checkout, only charged after delivery. CLI is free (BYO Anthropic 
+Pricing: $29 Quick Scan, $99 Full Scan (all 90 modules), $199 Scan+Fix
+(adds pair-review + architecture annotations), $399 Nuclear (real
+Claude diagnosis + cross-finding attack-chain correlation). Card hold
+at checkout, only charged after delivery. CLI is free (BYO Anthropic
 key).
 
 Standard install:
@@ -91,24 +91,24 @@ The "honest caveats" comment kills the worst HN takedowns before they start:
 ```
 A few things I want to call out before HN beats me to it:
 
-- The surgical-diff mode is one week old. ~10 real fixes have run 
-  through it across 4 customer repos. I'm watching closely for edge 
+- The surgical-diff mode is one week old. ~10 real fixes have run
+  through it across 4 customer repos. I'm watching closely for edge
   cases. If you find one, file an issue and I'll fix it tonight.
 
-- The 90-module count includes modules at different maturity levels. 
-  ~60 are "I'd bet my company on this." ~25 are "good and improving." 
-  ~5 are "infant — pattern-match level only." Module list is at 
+- The 90-module count includes modules at different maturity levels.
+  ~60 are "I'd bet my company on this." ~25 are "good and improving."
+  ~5 are "infant — pattern-match level only." Module list is at
   gatetest.ai/modules with maturity tags.
 
-- Pricing is per-scan, not per-month. The Continuous tier is on the 
+- Pricing is per-scan, not per-month. The Continuous tier is on the
   roadmap but not built — don't sign up for that yet.
 
-- I'm solo. Expect ~4 hour response time during NZ daylight, longer 
-  overnight. If GateTest opens a broken PR on your repo, I'll personally 
-  refund and fix it myself. Pay-on-completion means you've taken on 
+- I'm solo. Expect ~4 hour response time during NZ daylight, longer
+  overnight. If GateTest opens a broken PR on your repo, I'll personally
+  refund and fix it myself. Pay-on-completion means you've taken on
   near-zero risk to try it.
 
-- BYOK CLI is free forever — if you don't want to pay, install via 
+- BYOK CLI is free forever — if you don't want to pay, install via
   npm and pay Anthropic directly for your fix budget.
 
 Ask anything.

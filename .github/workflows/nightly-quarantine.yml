@@ -1,0 +1,155 @@
+name: Nightly Quarantine Sweep
+
+# Catches the rot where renamed `*.test.skip.js` files accumulate forever
+# and nobody notices when the underlying impl ships. Every night, we run
+# every quarantined test. If any of them now PASS, we open (or update) an
+# issue asking a human to un-skip it. Silent otherwise.
+
+on:
+  schedule:
+    # 06:00 UTC daily.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  quarantine-sweep:
+    name: Run quarantined tests and flag any that pass
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install all workspaces
+        run: bash scripts/install-workspaces.sh
+
+      - name: Find quarantined tests
+        id: find
+        run: |
+          # `find` returns 0 even with no matches; capture the list into a file.
+          mkdir -p .quarantine
+          find tests -maxdepth 3 -type f -name '*.test.skip.js' 2>/dev/null | sort > .quarantine/files.txt
+          COUNT="$(wc -l < .quarantine/files.txt | tr -d ' ')"
+          echo "Found $COUNT quarantined test file(s)"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Run each quarantined test and record passes
+        if: steps.find.outputs.count != '0'
+        run: |
+          mkdir -p .quarantine/results
+          PASSED_ANY=0
+          while IFS= read -r FILE; do
+            [ -z "$FILE" ] && continue
+            BASENAME="$(basename "$FILE")"
+            OUTFILE=".quarantine/results/${BASENAME}.log"
+            echo "===> Running quarantined test: $FILE"
+            if node --test "$FILE" > "$OUTFILE" 2>&1; then
+              echo "PASS: $FILE — this test was quarantined but now passes!"
+              echo "$FILE" >> .quarantine/passing.txt
+              PASSED_ANY=1
+            else
+              echo "still-failing: $FILE (expected)"
+            fi
+          done < .quarantine/files.txt
+          if [ "$PASSED_ANY" = "0" ]; then
+            echo "All quarantined tests still failing — nothing to flag."
+          fi
+
+      - name: Open or update issue for each newly-passing test
+        if: steps.find.outputs.count != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const passingPath = '.quarantine/passing.txt';
+            if (!fs.existsSync(passingPath)) {
+              core.info('No newly-passing quarantined tests detected. Exiting silently.');
+              return;
+            }
+            const passing = fs.readFileSync(passingPath, 'utf8')
+              .split('\n')
+              .map(s => s.trim())
+              .filter(Boolean);
+
+            if (passing.length === 0) {
+              core.info('passing.txt empty. Exiting silently.');
+              return;
+            }
+
+            for (const file of passing) {
+              const basename = path.basename(file);
+              const title = `Quarantined test now passes: ${basename}`;
+              const logPath = path.join('.quarantine/results', `${basename}.log`);
+              let logContents = '(no output captured)';
+              try {
+                logContents = fs.readFileSync(logPath, 'utf8');
+              } catch (err) {
+                core.warning(`Could not read log for ${file}: ${err.message}`);
+              }
+
+              // Truncate log to keep issue body reasonable.
+              const maxLogChars = 12000;
+              const trimmedLog = logContents.length > maxLogChars
+                ? logContents.slice(0, maxLogChars) + '\n\n... (truncated, full log in workflow run)'
+                : logContents;
+
+              const body = [
+                `Nightly quarantine sweep on ${new Date().toISOString().slice(0, 10)} ` +
+                `found that the quarantined test \`${file}\` now **passes** when run with ` +
+                '`node --test`.',
+                '',
+                'This file was renamed `*.test.skip.js` to unblock CI at some point. ' +
+                'The underlying implementation may have been completed since then. ' +
+                'Action: rename the file back to `*.test.js` (or fix any remaining stale ' +
+                'assertions) and let CI verify.',
+                '',
+                '### Test output',
+                '',
+                '```',
+                trimmedLog,
+                '```',
+                '',
+                `Workflow run: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+              ].join('\n');
+
+              // Search for an existing open issue with the same title so we
+              // update instead of opening duplicates each night.
+              const { data: existing } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                labels: 'tech-debt,ci',
+                per_page: 100,
+              });
+
+              const match = existing.find(i => i.title === title);
+
+              if (match) {
+                core.info(`Updating existing issue #${match.number} for ${file}`);
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: match.number,
+                  body: `Still passing as of ${new Date().toISOString()}.\n\n` +
+                    '<details><summary>Latest test output</summary>\n\n' +
+                    '```\n' + trimmedLog + '\n```\n\n</details>',
+                });
+              } else {
+                core.info(`Opening new issue for ${file}`);
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body,
+                  labels: ['tech-debt', 'ci'],
+                });
+              }
+            }

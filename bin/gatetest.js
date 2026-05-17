@@ -489,8 +489,10 @@ async function runAutoPr(summary, projectRoot, args) {
       } else {
         console.log(`  [\x1b[33m~\x1b[0m] ${finding.file}: ${finding.checkName} (skipped: ${result.description?.slice(0, 60) || 'no-fix'})`);
       }
-    } catch (err) {
-      console.log(`  [\x1b[31m✗\x1b[0m] ${finding.file}: ${err.message?.slice(0, 80) || err}`);
+    } catch (err) { // error-ok — per-finding failure is logged + tracked in fixesAttempted; one bad finding shouldn't halt the batch
+      const reason = err && err.message ? err.message.slice(0, 80) : String(err);
+      console.log(`  [\x1b[31m✗\x1b[0m] ${finding.file}: ${reason}`);
+      fixesAttempted.push({ ...finding, fixed: false, description: `error: ${reason}` });
     }
   }
 

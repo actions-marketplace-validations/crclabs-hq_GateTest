@@ -280,6 +280,16 @@ class SyntaxModule extends BaseModule {
     const allErrors = [];
 
     for (const dir of tscDirs) {
+      // Skip subprojects whose deps aren't installed. `tsc --noEmit` against
+      // a directory without node_modules emits "Cannot find type definition
+      // for X" noise that has nothing to do with the user's code. The CI
+      // workflow installs deps in the workspaces that matter (website/, the
+      // root); leaf packages without their own node_modules (vscode-extension/,
+      // mcp-server stubs, etc.) are intentionally not type-checked here.
+      const isRoot = dir === projectRoot;
+      const hasOwnDeps = fs.existsSync(path.join(dir, 'node_modules'));
+      const inheritsRootDeps = isRoot && fs.existsSync(path.join(projectRoot, 'node_modules'));
+      if (!hasOwnDeps && !inheritsRootDeps) continue;
       anyRan = true;
       const { exitCode, stdout, stderr } = this._exec('npx tsc --noEmit 2>&1', {
         cwd: dir,

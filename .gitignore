@@ -11,3 +11,6 @@ website/.next/
 website/node_modules/
 website/test-results/
 website/playwright-report/
+
+# Sub-agent worktrees (Agent tool with isolation: "worktree")
+.claude/worktrees/

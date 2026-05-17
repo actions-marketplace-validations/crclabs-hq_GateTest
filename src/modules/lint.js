@@ -96,26 +96,41 @@ class LintModule extends BaseModule {
   }
 
   _runEslint(projectRoot, result) {
+    // Run without --max-warnings so the gate only blocks on actual errors.
+    // Warnings still surface in the report (with their own severity)
+    // but don't fail the gate — that's what the severity system is for.
     const { exitCode, stdout, stderr } = this._exec(
-      'npx eslint . --format json --max-warnings 0 2>/dev/null',
+      'npx eslint . --format json 2>/dev/null',
       { cwd: projectRoot, timeout: 120000 }
     );
 
-    if (exitCode === 0) {
-      result.addCheck('lint:eslint', true, { message: 'ESLint passed with zero warnings' });
-    } else {
-      let errorCount = 0;
-      let warningCount = 0;
-      try {
-        const results = JSON.parse(stdout);
-        for (const fileResult of results) {
-          errorCount += fileResult.errorCount;
-          warningCount += fileResult.warningCount;
-        }
-      } catch {
-        errorCount = -1; // Unknown
+    let errorCount = 0;
+    let warningCount = 0;
+    try {
+      const results = JSON.parse(stdout);
+      for (const fileResult of results) {
+        errorCount += fileResult.errorCount;
+        warningCount += fileResult.warningCount;
       }
+    } catch {
+      // ESLint exited non-zero AND we couldn't parse JSON — config error
+      // or eslint crash. Treat as a genuine failure.
+      if (exitCode !== 0) {
+        result.addCheck('lint:eslint', false, {
+          message: `ESLint crashed (exit ${exitCode}). stderr: ${(stderr || '').slice(0, 200)}`,
+          suggestion: 'Run "npx eslint ." manually to diagnose',
+        });
+        return;
+      }
+    }
 
+    if (errorCount === 0) {
+      result.addCheck('lint:eslint', true, {
+        message: warningCount > 0
+          ? `ESLint passed (0 errors, ${warningCount} warning(s) — non-blocking)`
+          : 'ESLint passed with zero issues',
+      });
+    } else {
       result.addCheck('lint:eslint', false, {
         message: `ESLint: ${errorCount} error(s), ${warningCount} warning(s)`,
         suggestion: 'Run "npx eslint . --fix" to auto-fix, then manually resolve remaining issues',

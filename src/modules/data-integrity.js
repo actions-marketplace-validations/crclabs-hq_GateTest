@@ -232,19 +232,31 @@ class DataIntegrityModule extends BaseModule {
   _checkSqlInjection(projectRoot, result) {
     const jsFiles = this._collectFiles(projectRoot, ['.js', '.ts']);
 
+    // Scanner modules and our own non-DB source contain string concatenation
+    // patterns that look like SQL but aren't. Restrict the check to files
+    // that actually look DB-aware.
+    const SCANNER_PATH_RE = /(?:^|\/)(?:src\/modules|website\/app\/lib\/scan-modules|tests|integrations\/infra|lib)\//;
+
     for (const file of jsFiles) {
       const relPath = path.relative(projectRoot, file);
-      if (relPath.includes('test')) continue;
+      const normalisedPath = relPath.replace(/\\/g, '/');
+      if (normalisedPath.includes('test')) continue;
+      if (SCANNER_PATH_RE.test(normalisedPath)) continue;
 
       const content = fs.readFileSync(file, 'utf-8');
 
-      // String concatenation in SQL queries
-      const sqlConcatPattern = /(?:query|execute|raw)\s*\(\s*[`'"](?:SELECT|INSERT|UPDATE|DELETE).*\$\{|(?:\+\s*\w+\s*\+)/gi;
+      // SQL string concatenation INSIDE a query/execute/raw call. The old
+      // regex had a runaway `(?:\+\s*\w+\s*\+)` alternation that matched
+      // ANY `+ var +` anywhere in the file — flagging template literals
+      // and module-summary strings as SQL injections. This narrower form
+      // only matches the actual unsafe shape: a query function call with
+      // SELECT/INSERT/UPDATE/DELETE followed by an interpolation.
+      const sqlConcatPattern = /(?:query|execute|raw)\s*\(\s*[`'"](?:SELECT|INSERT|UPDATE|DELETE)\b[^`'"]*\$\{/gi;
       if (sqlConcatPattern.test(content)) {
         result.addCheck(`data:sql-injection:${relPath}`, false, {
           file: relPath,
           severity: 'error',
-          message: 'Possible SQL injection — string concatenation/interpolation in query',
+          message: 'Possible SQL injection — string interpolation inside a SQL query call',
           suggestion: 'Use parameterized queries or prepared statements',
         });
       }

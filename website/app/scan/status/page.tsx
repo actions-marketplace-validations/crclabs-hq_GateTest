@@ -612,7 +612,7 @@ export default function ScanStatus() {
                     <p className="text-xs text-muted">Scan + Fix + Claude diagnosis per finding + attack-chain correlation + board-ready CISO report.</p>
                   </Link>
                 </div>
-                <p className="mt-4 text-xs text-muted">Pay-on-completion via Stripe. Refunds available if the scan didn&apos;t deliver.</p>
+                <p className="mt-4 text-xs text-muted">Pay-on-completion via Stripe. Card hold only — released if the scan can&apos;t complete.</p>
               </div>
             )}
 

@@ -36,6 +36,15 @@ const eslintConfig = defineConfig([
       "@next/next/no-assign-module-variable": "off",
     },
   },
+  {
+    // Sentry config files require the CJS scrubber module to share the same
+    // scrub logic with the rest of the app. Keep these surfaces consistent
+    // with the other lib-interop exceptions above.
+    files: ["sentry.*.config.ts", "instrumentation*.ts"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
   globalIgnores([
     ".next/**",
     "out/**",

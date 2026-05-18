@@ -12,6 +12,10 @@
 // implicitly authorised by Craig running `npx @sentry/wizard` directly.
 
 import * as Sentry from "@sentry/nextjs";
+// Shared scrubber — see sentry.server.config.ts for full contract.
+// Client-side captures can leak DOM-extracted data (form fields, URL
+// query strings, localStorage), so the same redaction rules apply.
+import { scrubEvent, scrubBreadcrumb } from "./app/lib/sentry-scrubber";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -34,6 +38,30 @@ Sentry.init({
   ],
 
   release: process.env.NEXT_PUBLIC_SENTRY_RELEASE,
+
+  beforeSend(event) {
+    try {
+      return scrubEvent(event) as typeof event;
+    } catch {
+      return null;
+    }
+  },
+
+  beforeSendTransaction(event) {
+    try {
+      return scrubEvent(event) as typeof event;
+    } catch {
+      return null;
+    }
+  },
+
+  beforeBreadcrumb(breadcrumb) {
+    try {
+      return scrubBreadcrumb(breadcrumb) as typeof breadcrumb;
+    } catch {
+      return null;
+    }
+  },
 });
 
 // Hook into App Router navigation transitions so client-side route

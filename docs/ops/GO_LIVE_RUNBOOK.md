@@ -1,7 +1,7 @@
 # GateTest Go-Live Runbook
 
 ## You are here
-Code is ready. 909 tests pass. 67 modules load. All the hard stuff is done.
+Code is ready. 909 tests pass. 102 modules load. All the hard stuff is done.
 This runbook gets you from "code ready" to "first $29 scan paid" in 9 steps.
 
 Work top-to-bottom. Do not skip. Each step has a clear "done" signal before

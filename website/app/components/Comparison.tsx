@@ -73,7 +73,7 @@ export default function Comparison() {
               <div className="h-10 rounded-md glow-border overflow-hidden">
                 <div className="h-full bg-accent/20 rounded-md flex items-center px-3 w-full">
                   <span className="text-sm text-accent-light font-semibold">
-                    22/22 — Everything. All of it. One gate.
+                    102/102 — Everything. All of it. One gate.
                   </span>
                 </div>
               </div>

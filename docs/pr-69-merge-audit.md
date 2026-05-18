@@ -53,7 +53,7 @@ Ships the WordPress side product (v1+v2+v3 = 10 WP-specific modules), plus the c
 
 ### Module count
 
-- Registry: 91 → 101 modules
+- Registry: 91 → 102 modules
 - `wp` suite (new): 18 modules tuned for live-URL probing
 
 ### Documentation
@@ -91,7 +91,7 @@ Merging this PR does NOT trigger any of those — they're separate manual action
 
 1. **Vercel build fails because of the @lib/ alias bug** — already fixed in this PR (commit `9248cba`), AND in PR #70. Either-or both is fine.
 2. **Visual regression on the homepage footer** — StackBar adds height. If you don't like the look, edit `StackBar.tsx`; no engine code touched.
-3. **Module count discrepancy in marketing copy** — Hero / Pricing components still say "67 modules" in some places. Should be updated to 101. (Not in this PR — a follow-up.)
+3. **Module count discrepancy in marketing copy** — Hero / Pricing components still say "102 modules" in some places. Should be updated to 101. (Not in this PR — a follow-up.)
 
 **No engine logic changed.** Worst case rollback is `git revert` on the merge commit.
 

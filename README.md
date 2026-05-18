@@ -1,15 +1,15 @@
 # GateTest
 
-### One gate. 91 modules. Self-healing CI.
+### One gate. 102 modules. Self-healing CI.
 
-**AI-powered code quality. Pay only if we fix it.**
+**AI-powered code quality. Pay only when the scan delivers.**
 
 <!-- npm-version badge — re-enable after first `npm publish`:
 [![npm](https://img.shields.io/npm/v/gatetest.svg)](https://www.npmjs.com/package/gatetest)
 -->
 [![CI](https://github.com/ccantynz-alt/gatetest/actions/workflows/ci.yml/badge.svg)](https://github.com/ccantynz-alt/gatetest/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Modules](https://img.shields.io/badge/modules-91-purple.svg)](#what-it-replaces)
+[![Modules](https://img.shields.io/badge/modules-102-purple.svg)](#what-it-replaces)
 [![Tests](https://img.shields.io/badge/tests-3500%2B-brightgreen.svg)](#real-repo-proofs)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-339933.svg)](https://nodejs.org/)
 <!-- Marketplace listing — re-enable when the GitHub Marketplace approval lands:
@@ -180,7 +180,7 @@ Pay-on-completion. The card is held at checkout and only captured if the scan de
 | Tier              | Price   | What you get                                                                                                                                       |
 | ----------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Quick Scan**    | $29     | 4 modules — syntax, linting, secrets, code quality. Fastest path to a first signal.                                                                |
-| **Full Scan**     | $99     | All 91 modules. Auto-fix PR included. SARIF + JUnit reports.                                                                                       |
+| **Full Scan**     | $99     | All 102 modules. Auto-fix PR included. SARIF + JUnit reports.                                                                                      |
 | **Scan + Fix**    | $199    | Everything in Full, plus a second-Claude pair-review critique on every fix and an architecture-shape design-observations report.                   |
 | **Nuclear**       | $399    | Everything in Scan + Fix, plus real Claude diagnosis on every finding, cross-finding attack-chain correlation, mutation testing, chaos / fuzz pass, and a CTO-readable executive summary. |
 

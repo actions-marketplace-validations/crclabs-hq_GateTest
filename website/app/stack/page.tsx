@@ -140,10 +140,10 @@ const PRODUCTS = [
     badgeColor: "bg-accent",
     tagline: "AI writes fast. GateTest keeps it honest.",
     body:
-      "QA + security audit for your codebase OR your live website. 101 modules covering security, performance, accessibility, SEO, supply chain, AI safety. Pay per scan, not per seat.",
+      "QA + security audit for your codebase OR your live website. 102 modules covering security, performance, accessibility, SEO, supply chain, AI safety. Pay per scan, not per seat.",
     bullets: [
       "Free preview shows your top 3 issues",
-      "Pay-per-scan from $49 — no subscription required",
+      "Pay-per-scan from $29 — no subscription required",
       "Same engine scans your code AND your live URL",
       "Plain-language report you can hand to anyone",
     ],

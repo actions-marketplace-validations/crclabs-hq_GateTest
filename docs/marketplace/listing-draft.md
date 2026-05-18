@@ -7,7 +7,7 @@
 
 ## Tagline
 
-> AI-powered CI that self-heals — 91 modules, one gate, zero fragmentation
+> AI-powered CI that self-heals — 102 modules, one gate, zero fragmentation
 
 (80 chars exactly — the Marketplace maximum.)
 
@@ -17,7 +17,7 @@
 
 GateTest replaces SonarQube, Snyk, ESLint, Cypress orchestration, Lighthouse, axe, broken-link-checker and seven other QA tools with a single composite GitHub Action.
 
-One `uses:` line. 91 modules. One verdict.
+One `uses:` line. 102 modules. One verdict.
 
 ### What it does
 
@@ -41,7 +41,7 @@ Existing autofixers patch single findings. GateTest runs a self-healing flywheel
 3. Claude fills the remaining gap — Anthropic API spend is only spent on the long tail.
 4. Every successful Claude-driven fix is distilled into a new recipe, so the deterministic layers grow over time.
 
-The pricing tiers reflect depth, not module count: every paid tier scans the full 91 modules. The higher tiers add iterative fix loops, pair-review of every fix by a second Claude pass, architecture annotations, cross-finding correlation, mutation testing, and a CTO-readable executive summary.
+The pricing tiers reflect depth, not module count: every paid tier scans the full 102 modules. The higher tiers add iterative fix loops, pair-review of every fix by a second Claude pass, architecture annotations, cross-finding correlation, mutation testing, and a CTO-readable executive summary.
 
 ### How to install
 
@@ -60,7 +60,7 @@ That is the entire install. The action sets up Node, installs GateTest, runs the
 
 - Free for public open-source repos via the open-source workflow.
 - $29 per Quick Scan (4 critical modules).
-- $99 per Full Scan (all 91 modules).
+- $99 per Full Scan (all 102 modules).
 - $199 per Scan + Fix (full scan plus iterative fix loop, pair-review, architecture annotations).
 - $399 per Nuclear (full scan plus per-finding Claude diagnosis, attack-chain correlation, mutation testing, chaos/fuzz, executive summary).
 - $49/month Continuous for unlimited push-triggered scans.
@@ -69,7 +69,7 @@ Pricing is unified at https://gatetest.ai/pricing.
 
 ### Trust signals
 
-- 91 modules. Single binary. Zero external dependencies on the customer side.
+- 102 modules. Single binary. Zero external dependencies on the customer side.
 - 3500+ unit tests pass on every commit.
 - Used in production by Crontech and Gluecron (Craig-owned platforms protected via the same engine).
 - Pay-on-completion: customers are only charged once a scan delivers.

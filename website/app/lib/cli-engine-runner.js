@@ -5,7 +5,7 @@
  *
  * Bridges the gap between the website (which has files in memory) and the
  * full CLI engine in `src/index.js` (which expects a real filesystem with
- * a git repo). Closes the "91 vs 22 modules" honesty gap — the website now
+ * a git repo). Closes the "102 vs 22 modules" honesty gap — the website now
  * runs the SAME engine the CLI runs.
  *
  * Flow:

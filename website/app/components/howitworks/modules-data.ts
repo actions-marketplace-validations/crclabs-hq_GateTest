@@ -87,7 +87,7 @@ export const MODULE_CATEGORIES: ModuleCategory[] = [
     title: "Web & UX",
     blurb: "Surfacing the user-visible problems static analysis usually pretends don't exist.",
     modules: [
-      { name: "accessibility", description: "WCAG 2.2 AAA — missing alt text, ARIA labels, keyboard traps, heading hierarchy.", example: "Heading skip h1 → h3 at /pricing (WCAG 1.3.1)" },
+      { name: "accessibility", description: "WCAG 2.2 automated audit (AA + AAA-aligned) — missing alt text, ARIA labels, keyboard traps, heading hierarchy.", example: "Heading skip h1 → h3 at /pricing (WCAG 1.3.1)" },
       { name: "performance", description: "Dependency count, bundle size analysis, image optimisation checks.", example: "Hero image 3.4MB unoptimised — LCP penalty" },
       { name: "visual", description: "Visual & UI Regression Testing.", example: "Hero CTA shifted 14px between deploys" },
       { name: "seo", description: "Meta tags, Open Graph, structured data, robots.txt, canonical URLs.", example: "Missing canonical on /compare/snyk" },

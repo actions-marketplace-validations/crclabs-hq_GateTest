@@ -6,7 +6,7 @@
 
 ## Recommended title
 
-**Show HN: GateTest – 101 modules. One scan. Auto-fix PR on every error.**
+**Show HN: GateTest – 102 modules. One scan. Auto-fix PR on every error.**
 
 ### Alternative titles (pick one)
 
@@ -25,7 +25,7 @@ Hi HN,
 GateTest scans your code or your live site, finds bugs + security
 issues + performance problems + accessibility gaps + SEO issues +
 broken links + supply-chain risks, and opens a PR with the AI-driven
-fixes. Same scan, 101 modules, plain-language report.
+fixes. Same scan, 102 modules, plain-language report.
 
 Try it free in 30 seconds — no signup, no install:
 https://gatetest.ai
@@ -50,7 +50,7 @@ What's different from the alternatives:
   paid. You can hook your own Anthropic key if you'd rather pay them
   directly.
 
-What it covers (the 101 modules) — among other things:
+What it covers (the 102 modules) — among other things:
 
   Security:     SSRF, secrets, hardcoded URLs, taint flow, TLS config,
                 cookie hardening, web headers, XML-RPC exposure,
@@ -190,7 +190,7 @@ Author here. Five objections I expect (and the honest answers):
 
 The post should sound like a confident craftsman, not a hype merchant.
 HN can smell marketing copy from kilometres away. Specifics > superlatives:
-"101 modules, 22-second scan" beats "industry-leading comprehensive
+"102 modules, 22-second scan" beats "industry-leading comprehensive
 analysis." Numbers and runnable URLs win.
 
 When you're ready to post, paste the title + body into HN, hit submit,

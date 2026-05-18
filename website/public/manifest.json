@@ -1,7 +1,7 @@
 {
   "name": "GateTest",
   "short_name": "GateTest",
-  "description": "AI-powered QA platform. 90 modules scan your entire codebase.",
+  "description": "AI-powered QA platform. 102 modules scan your entire codebase.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

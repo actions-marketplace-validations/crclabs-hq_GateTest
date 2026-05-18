@@ -34,7 +34,7 @@ jobs:
 const CLI_BLOCK = `# scan a single repo locally
 $ npx gatetest --suite quick
 
-# all 91 modules, blocking gate
+# all 102 modules, blocking gate
 $ npx gatetest --suite full
 
 # scan a public website
@@ -115,7 +115,7 @@ export default function HomeCode() {
           >
             on GitHub
           </a>{" "}
-          — Apache-2.0. The CLI itself is free; the auto-fix tiers are paid.
+          — MIT-licensed. The CLI itself is free; the auto-fix tiers are paid.
         </p>
       </div>
     </section>

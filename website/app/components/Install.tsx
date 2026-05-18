@@ -14,7 +14,7 @@ export default function Install() {
             Two ways to get the gate <span className="gradient-text">on your repo</span>.
           </h2>
           <p className="text-muted text-lg max-w-2xl mx-auto">
-            Pick the install path that fits your stack. Both run the same 90 modules
+            Pick the install path that fits your stack. Both run the same 102 modules
             against every push.
           </p>
         </div>

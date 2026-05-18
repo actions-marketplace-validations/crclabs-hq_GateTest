@@ -8,7 +8,7 @@ const scanners = [
   { name: "Lighthouse Full Audit", frequency: "Daily", description: "Performance, accessibility, SEO, and best practices scoring" },
   { name: "Broken Link Crawl", frequency: "Daily", description: "Crawls your entire site for 404s and broken references" },
   { name: "OWASP ZAP Scan", frequency: "Weekly", description: "Full automated penetration testing against staging" },
-  { name: "WCAG Compliance Audit", frequency: "Monthly", description: "Complete WCAG 2.2 AAA accessibility audit" },
+  { name: "WCAG Accessibility Audit", frequency: "Monthly", description: "WCAG 2.2 automated audit (AA + AAA-aligned)" },
 ];
 
 export default function ContinuousScanning() {

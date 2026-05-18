@@ -4,7 +4,7 @@
  *
  * Section order:
  *   1. Navbar
- *   2. Hero  — live URL scan, "One gate. 91 modules. Self-healing CI."
+ *   2. Hero  — live URL scan, "One gate. 102 modules. Self-healing CI."
  *   3. HomeKills  — what 12 tools we replace, with flip tiles + full table
  *   4. HomeFlywheel — 4-layer fix flow (AST -> Rule -> Recipe -> Claude)
  *   5. HomeSelfScan — "GREEN" trust badge with module list

@@ -13,7 +13,7 @@ app, no external infrastructure required.
 - **Four tools exposed:**
   - `scan_local` — scan a directory with any suite or specific modules
   - `run_module` — run one module (e.g. `secrets`, `tlsSecurity`, `importCycle`)
-  - `list_modules` — list all 67 modules with descriptions
+  - `list_modules` — list all 102 modules with descriptions
   - `check_health` — verify the engine is operational
 
 ---
@@ -101,7 +101,7 @@ echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
 |---|---|---|
 | `quick` | 4 core modules | Fast gate, <5s |
 | `standard` | ~20 modules | Default, balanced |
-| `full` | All 67 modules | Pre-deploy, thorough |
+| `full` | All 102 modules | Pre-deploy, thorough |
 
 Or pass `modules: ["secrets", "tlsSecurity", "importCycle"]` to run specific
 modules only.

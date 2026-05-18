@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "GateTest vs Snyk — Beyond Dependency Scanning in 2026",
+  title: "GateTest vs Snyk — One config, every QA tool in 2026",
   description:
-    "Snyk only scans dependencies. GateTest scans your actual code — 90 modules covering security, quality, performance, accessibility, and AI safety. Auto-fixes included.",
+    "Snyk ships separate Open Source, Code, Container, and IaC products. GateTest unifies those plus quality, performance, accessibility, and AI safety into a single config and a single bill — 102 modules, pay-on-completion.",
   keywords: [
     "Snyk alternative",
     "Snyk vs GateTest",
@@ -18,9 +18,9 @@ export const metadata: Metadata = {
     canonical: "https://gatetest.ai/compare/snyk",
   },
   openGraph: {
-    title: "GateTest vs Snyk — Beyond Dependency Scanning in 2026",
+    title: "GateTest vs Snyk — One config, every QA tool in 2026",
     description:
-      "Snyk only scans dependencies. GateTest scans your actual code — 90 modules covering security, quality, performance, accessibility, and AI safety.",
+      "Snyk ships separate Open Source, Code, Container, and IaC products. GateTest unifies them — plus quality, performance, accessibility, and AI safety — into a single config and a single bill (102 modules).",
     url: "https://gatetest.ai/compare/snyk",
     siteName: "GateTest",
     type: "website",
@@ -29,20 +29,20 @@ export const metadata: Metadata = {
 
 const faqItems = [
   {
-    q: "What does Snyk miss that GateTest catches?",
-    a: "Snyk focuses on known CVEs in third-party packages. GateTest scans your actual source code for: SSRF vulnerabilities, N+1 query bugs, race conditions, resource leaks, TLS validation bypasses, PII logged to console, hardcoded localhost URLs, cookie misconfigurations, prompt injection in AI apps, and 50+ more patterns that no dependency scanner can find because they live in code you wrote.",
+    q: "How does GateTest compare to Snyk's product family?",
+    a: "Snyk covers dependencies (Open Source), code (Snyk Code SAST), containers (Snyk Container), and IaC (Snyk Infrastructure as Code) as four separately-licensed products. GateTest unifies those four areas into a single config plus a single bill, and adds the categories Snyk does not currently ship: AI code review for logic bugs, accessibility, performance, SEO, runtime-error capture, mutation testing, and chaos / fuzz scenarios.",
   },
   {
-    q: "Does GateTest also scan dependencies like Snyk?",
-    a: "Yes — GateTest includes a polyglot dependency scanner covering npm, pip, Pipenv, Poetry, go.mod, Cargo, Bundler, Composer, Maven, and Gradle. It flags wildcard pins, 'latest' dependencies, missing lockfiles, and deprecated packages. Dependency scanning is one module out of 90.",
+    q: "Does GateTest also scan dependencies?",
+    a: "Yes — GateTest includes a polyglot dependency scanner covering npm, pip, Pipenv, Poetry, go.mod, Cargo, Bundler, Composer, Maven, and Gradle. It flags wildcard pins, 'latest' dependencies, missing lockfiles, and deprecated packages. Dependency scanning is one module out of 102.",
   },
   {
     q: "How does GateTest pricing compare to Snyk?",
-    a: "Snyk charges per developer seat per month — pricing scales with headcount and enterprise contracts can reach thousands monthly. GateTest charges per scan: $99 for all 90 modules. No seat licensing, no annual contracts, no per-developer billing. A 100-person team pays the same per scan as a solo developer.",
+    a: "Snyk charges per developer seat per month — pricing scales with headcount and enterprise contracts can reach thousands monthly. GateTest charges per scan: $99 for all 102 modules. No seat licensing, no annual contracts, no per-developer billing. A 100-person team pays the same per scan as a solo developer.",
   },
   {
-    q: "Does GateTest include AI safety and prompt injection scanning like Snyk doesn't?",
-    a: "Yes. GateTest's promptSafety module catches: browser-bundled API keys (NEXT_PUBLIC_* / VITE_* with AI keys), OpenAI/Anthropic calls without max_tokens limits (cost DoS vector), user-input interpolation in prompt templates without delimiters (injection surface), and deprecated AI models (claude-v1, text-davinci-*). Snyk has no AI safety coverage.",
+    q: "Does GateTest include AI-app safety scanning?",
+    a: "Yes. GateTest's promptSafety module catches: browser-bundled API keys (NEXT_PUBLIC_* / VITE_* with AI keys), OpenAI/Anthropic calls without max_tokens limits (cost DoS vector), user-input interpolation in prompt templates without delimiters (injection surface), and deprecated AI models (claude-v1, text-davinci-*). Snyk does not advertise a dedicated AI / LLM safety SKU at time of writing.",
   },
   {
     q: "Can GateTest fix vulnerabilities automatically?",
@@ -54,21 +54,27 @@ const faqItems = [
   },
 ];
 
+// Comparison rows — kept narrow to claims that are publicly verifiable
+// against Snyk's current product pages (May 2026). Snyk Code does ship
+// SAST and Snyk Container ships container scanning — both marked
+// "competitor: true" below. The differentiator is unification and price
+// model, not "Snyk has nothing."
 const comparisonRows = [
-  { feature: "Source code security analysis", gatetest: true, competitor: false },
+  { feature: "Source code SAST", gatetest: true, competitor: true },
   { feature: "Dependency / SCA scanning", gatetest: true, competitor: true },
-  { feature: "AI code review (finds logic bugs)", gatetest: true, competitor: false },
-  { feature: "Auto-fix pull requests for code bugs", gatetest: true, competitor: false },
-  { feature: "Prompt injection / AI safety scanning", gatetest: true, competitor: false },
-  { feature: "SSRF / URL-validation gap detection", gatetest: true, competitor: false },
+  { feature: "Container scanning", gatetest: true, competitor: true },
+  { feature: "IaC scanning (Terraform / K8s)", gatetest: true, competitor: true },
+  { feature: "AI code review for logic bugs (Claude-based)", gatetest: true, competitor: false },
+  { feature: "Auto-fix PRs for non-dependency code bugs", gatetest: true, competitor: false },
+  { feature: "Prompt injection / AI-app safety scanning", gatetest: true, competitor: false },
   { feature: "N+1 query detection", gatetest: true, competitor: false },
   { feature: "Race condition / TOCTOU detection", gatetest: true, competitor: false },
-  { feature: "TLS validation bypass detection", gatetest: true, competitor: false },
   { feature: "PII-in-logs detection", gatetest: true, competitor: false },
-  { feature: "Accessibility scanning (WCAG 2.2 AAA)", gatetest: true, competitor: false },
+  { feature: "Accessibility (WCAG 2.2 automated audit)", gatetest: true, competitor: false },
   { feature: "Performance analysis", gatetest: true, competitor: false },
+  { feature: "Mutation testing (Nuclear tier)", gatetest: true, competitor: false },
+  { feature: "Single config, single bill across all categories", gatetest: true, competitor: false },
   { feature: "Pay per scan (not per seat)", gatetest: true, competitor: false },
-  { feature: "Known CVE detection in packages", gatetest: true, competitor: true },
   { feature: "PR / commit status integration", gatetest: true, competitor: true },
 ];
 
@@ -233,8 +239,8 @@ export default function SnykPage() {
                 body: "Snyk can open a PR to bump a dependency version. GateTest writes a fix for the source code bug — adds the SSRF validation guard, removes the TLS bypass, restructures the N+1 query into a batched lookup — and opens the PR for your review.",
               },
               {
-                title: "One bill, 90 modules",
-                body: "Snyk's seat-based pricing means security costs scale with team size. GateTest is $99 for all 90 modules per scan. Run it daily on a 100-person team or run it once before a major release — the price is the same.",
+                title: "One bill, 102 modules",
+                body: "Snyk's seat-based pricing means security costs scale with team size. GateTest is $99 for all 102 modules per scan. Run it daily on a 100-person team or run it once before a major release — the price is the same.",
               },
             ].map((card) => (
               <div
@@ -269,11 +275,11 @@ export default function SnykPage() {
         {/* CTA */}
         <section className="rounded-2xl border border-teal-500/20 p-10 text-center" style={{ background: "rgba(20,184,166,0.05)" }}>
           <h2 className="text-3xl font-bold text-white mb-4">
-            Scan your code, not just your packages.
+            One config across every QA category.
           </h2>
           <p className="text-white/60 mb-8 max-w-xl mx-auto">
-            Get 90 modules of source code analysis — security, quality, performance, accessibility —
-            in one scan. Pay only when results are delivered.
+            Get 102 modules — dependencies, code, containers, IaC, AI safety, accessibility, performance,
+            and more — in a single scan. Pay only when results are delivered.
           </p>
           <Link
             href="/"

@@ -4,7 +4,7 @@
  * GET /api/badge?status=passing       → green "GateTest | passing" badge
  * GET /api/badge?status=failing       → red "GateTest | failing" badge
  * GET /api/badge?status=scanning      → yellow "GateTest | scanning" badge
- * GET /api/badge?modules=22           → "GateTest | 90 modules" badge
+ * GET /api/badge?modules=102          → "GateTest | 102 modules" badge
  * GET /api/badge                      → default "GateTest | quality gate" badge
  *
  * Returns SVG with Cache-Control headers for CDN caching.

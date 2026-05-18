@@ -6,6 +6,12 @@
 
 import * as Sentry from "@sentry/nextjs";
 
+// Shared scrubber — see sentry.server.config.ts for full contract.
+const { scrubEvent, scrubBreadcrumb } = require("@/app/lib/sentry-scrubber") as {
+  scrubEvent: (event: unknown) => unknown;
+  scrubBreadcrumb: (bc: unknown) => unknown;
+};
+
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
 
@@ -16,4 +22,28 @@ Sentry.init({
   enableLogs: true,
 
   release: process.env.SENTRY_RELEASE,
+
+  beforeSend(event) {
+    try {
+      return scrubEvent(event) as typeof event;
+    } catch {
+      return null;
+    }
+  },
+
+  beforeSendTransaction(event) {
+    try {
+      return scrubEvent(event) as typeof event;
+    } catch {
+      return null;
+    }
+  },
+
+  beforeBreadcrumb(breadcrumb) {
+    try {
+      return scrubBreadcrumb(breadcrumb) as typeof breadcrumb;
+    } catch {
+      return null;
+    }
+  },
 });

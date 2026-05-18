@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function Installed() {
   return (
-    <div className="min-h-screen grid-bg flex items-center justify-center px-6 py-24">
+    <main className="min-h-screen grid-bg flex items-center justify-center px-6 py-24">
       <div className="max-w-xl w-full text-center">
         {/* Success state */}
         <div className="w-20 h-20 rounded-full bg-success/10 border-2 border-success/30 flex items-center justify-center mx-auto mb-8">
@@ -61,7 +61,7 @@ export default function Installed() {
 
         {/* Upgrade CTA */}
         <div className="p-6 rounded-xl border border-accent/30 bg-accent/5 max-w-md mx-auto mb-8">
-          <h3 className="font-bold mb-2">Want auto-fixes too?</h3>
+          <h2 className="font-bold mb-2">Want auto-fixes too?</h2>
           <p className="text-sm text-muted mb-4">
             Upgrade to Scan + Fix and GateTest will automatically create PRs
             that fix the issues it finds. From $199 per scan.
@@ -81,6 +81,6 @@ export default function Installed() {
           &larr; Back to gatetest.ai
         </Link>
       </div>
-    </div>
+    </main>
   );
 }

@@ -139,6 +139,8 @@ export default async function ScorePage({
                 <img
                   src={data.badge}
                   alt="GateTest score badge"
+                  width={120}
+                  height={20}
                   className="mb-3"
                 />
               </div>

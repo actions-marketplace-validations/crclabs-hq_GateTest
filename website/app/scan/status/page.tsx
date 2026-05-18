@@ -264,7 +264,7 @@ export default function ScanStatus() {
   const displayProgress = scanResult ? 100 : Math.min(Math.round((animIndex / Math.max(animModules.length, 1)) * 95) + 5, 95);
 
   return (
-    <div className="min-h-screen bg-background px-6 py-12">
+    <main className="min-h-screen bg-background px-6 py-12">
       <div className={`${isComplete && (scanResult?.totalIssues || 0) > 0 ? "max-w-4xl" : "max-w-3xl"} mx-auto transition-all duration-300`}>
         {/* Header */}
         <div className="text-center mb-8">
@@ -681,6 +681,6 @@ export default function ScanStatus() {
           </p>
         )}
       </div>
-    </div>
+    </main>
   );
 }

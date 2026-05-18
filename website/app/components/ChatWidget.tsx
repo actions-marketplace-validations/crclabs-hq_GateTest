@@ -286,13 +286,13 @@ export function ChatWidget() {
             )}
 
             {messages.map((m, i) => (
-              <MessageBubble key={i} role={m.role} content={m.content} />
+              <MessageBubble key={i} speaker={m.role} content={m.content} />
             ))}
 
             {/* Streaming assistant reply — appears while tokens arrive */}
             {isThinking && (
               <MessageBubble
-                role="assistant"
+                speaker="assistant"
                 content={streamingReply || ""}
                 streaming
               />
@@ -344,8 +344,8 @@ export function ChatWidget() {
   );
 }
 
-function MessageBubble({ role, content, streaming = false }: { role: Role; content: string; streaming?: boolean }) {
-  const isUser = role === "user";
+function MessageBubble({ speaker, content, streaming = false }: { speaker: Role; content: string; streaming?: boolean }) {
+  const isUser = speaker === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div

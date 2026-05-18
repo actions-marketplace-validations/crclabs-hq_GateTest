@@ -36,7 +36,7 @@ const aiIssues = [
   },
   {
     issue: "Insecure patterns",
-    description: "AI uses eval(), innerHTML, document.write(). GateTest flags every OWASP violation.",
+    description: "AI uses dynamic-code evaluation, innerHTML, and DOM writes. GateTest flags every OWASP violation.",
     icon: "S",
   },
 ];

@@ -206,7 +206,7 @@ const PAINKILLERS = [
   {
     title: "Broken links + dead images",
     pain: "Broken images crater conversion rates. Broken outbound links damage SEO authority.",
-    what: "Every <a href> and <img src> on your homepage and 10 deepest-linked pages.",
+    what: "Every link (anchor href) and image source on your homepage and 10 deepest-linked pages.",
   },
 ];
 

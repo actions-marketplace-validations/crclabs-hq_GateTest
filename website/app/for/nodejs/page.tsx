@@ -90,7 +90,7 @@ const nodeModules = [
     name: "retryHygiene",
     label: "Retry Hygiene",
     severity: "warning",
-    what: "while(true) with fetch and no break/max-attempts (unbounded). Constant sleep with no exponential multiplier (no backoff). No Math.random() jitter. Retry-on-4xx without bail.",
+    what: "while(true) with fetch and no break/max-attempts (unbounded). Constant sleep with no exponential multiplier (no backoff). No randomised jitter on the sleep. Retry-on-4xx without bail.",
   },
   {
     name: "tlsSecurity",

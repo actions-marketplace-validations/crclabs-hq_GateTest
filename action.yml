@@ -46,6 +46,26 @@ inputs:
     description: 'When true, warning-severity findings also block the gate (default is errors-only).'
     required: false
     default: 'false'
+  mutation:
+    description: 'Run mutation testing after the gate (Nuclear tier or opt-in). Requires the customer test suite to run.'
+    required: false
+    default: 'false'
+  chaos:
+    description: 'Run live-browser chaos / runtime checks against a URL (Nuclear tier or opt-in). Requires playwright.'
+    required: false
+    default: 'false'
+  chaos-url:
+    description: 'Live URL to chaos-test (deployed staging or prod, NOT localhost). Required when chaos: true.'
+    required: false
+    default: ''
+  mutation-blocks-merge:
+    description: 'When true, a failing mutation score blocks the merge. Default false — mutation is coaching, not a gate.'
+    required: false
+    default: 'false'
+  chaos-blocks-merge:
+    description: 'When true, chaos / runtime failures block the merge. Default false — chaos surfaces resilience gaps as warnings.'
+    required: false
+    default: 'false'
 
 outputs:
   gate-status:
@@ -201,8 +221,71 @@ runs:
         exit 0
 
     # ----------------------------------------------------------------------
-    # 5. Final step — propagate the gate verdict as the action's exit code.
-    # This is the LAST step so auto-fix has had its chance to run first.
+    # 5a. Optional mutation testing. Runs only when explicitly enabled,
+    # regardless of gate verdict, because mutation testing is a TEST-quality
+    # signal — it tells you whether your tests actually catch bugs.
+    # Mutation testing requires running the customer's test runner, which
+    # is why it lives in the Action (CI side) not on Vercel serverless.
+    # By default a failing mutation score does NOT block the merge —
+    # it's coaching feedback. Flip `mutation-blocks-merge: true` to gate.
+    # ----------------------------------------------------------------------
+    - name: Mutation testing
+      if: ${{ inputs.mutation == 'true' && always() }}
+      shell: bash
+      run: |
+        echo "Running mutation testing — this exercises the customer test runner"
+        cd "${{ inputs.working-directory }}"
+        set +e
+        ${GATETEST_BIN} --module mutation
+        MUTATION_EXIT=$?
+        set -e
+        if [ "$MUTATION_EXIT" -ne 0 ] && [ "${{ inputs.mutation-blocks-merge }}" = "true" ]; then
+          echo "::error title=GateTest mutation::Mutation score below threshold and mutation-blocks-merge=true."
+          exit "$MUTATION_EXIT"
+        elif [ "$MUTATION_EXIT" -ne 0 ]; then
+          echo "::warning title=GateTest mutation::Mutation score below threshold. Set mutation-blocks-merge=true to gate."
+        fi
+        exit 0
+      env:
+        NODE_ENV: test
+
+    # ----------------------------------------------------------------------
+    # 5b. Optional chaos / runtime testing. Runs only when explicitly
+    # enabled AND a chaos-url is supplied. Chaos testing drives a real
+    # browser (Playwright + Chromium) against a deployed URL, so it
+    # cannot run on Vercel serverless — that's why it lives in the
+    # Action. Failures are surfaced as warnings by default because
+    # runtime resilience is a sliding scale, not a binary gate.
+    # Flip `chaos-blocks-merge: true` to block on runtime failures.
+    # ----------------------------------------------------------------------
+    - name: Chaos / runtime testing
+      if: ${{ inputs.chaos == 'true' && inputs.chaos-url != '' && always() }}
+      shell: bash
+      run: |
+        echo "Installing Playwright Chromium binary..."
+        npx playwright install --with-deps chromium
+        echo "Running chaos / runtime checks against ${{ inputs.chaos-url }}"
+        cd "${{ inputs.working-directory }}"
+        set +e
+        ${GATETEST_BIN} --module chaos
+        CHAOS_EXIT=$?
+        set -e
+        if [ "$CHAOS_EXIT" -ne 0 ] && [ "${{ inputs.chaos-blocks-merge }}" = "true" ]; then
+          echo "::error title=GateTest chaos::Runtime checks failed and chaos-blocks-merge=true."
+          exit "$CHAOS_EXIT"
+        elif [ "$CHAOS_EXIT" -ne 0 ]; then
+          echo "::warning title=GateTest chaos::Runtime checks surfaced issues. Set chaos-blocks-merge=true to gate."
+        fi
+        exit 0
+      env:
+        GATETEST_CHAOS_URL: ${{ inputs.chaos-url }}
+
+    # ----------------------------------------------------------------------
+    # 6. Final step — propagate the gate verdict as the action's exit code.
+    # This is the LAST step so auto-fix + optional mutation/chaos have had
+    # their chance to run first. Mutation / chaos failures do NOT change
+    # the gate verdict on their own — they have their own opt-in
+    # `*-blocks-merge` toggles which exit non-zero before we reach here.
     # ----------------------------------------------------------------------
     - name: Enforce gate verdict
       shell: bash

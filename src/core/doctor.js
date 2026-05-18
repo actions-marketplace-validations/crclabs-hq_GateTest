@@ -205,7 +205,7 @@ async function runDoctor(opts = {}) {
   if (!wf.present) {
     record('warn',
       'GateTest workflow file not found in .github/workflows/',
-      `Install: curl -sSL https://raw.githubusercontent.com/ccantynz-alt/gatetest/main/integrations/scripts/install.sh | bash`);
+      `Install: curl -sSL https://raw.githubusercontent.com/crclabs-hq/gatetest/main/integrations/scripts/install.sh | bash`);
   } else if (wf.error) {
     record('warn', `workflow file present but unreadable: ${wf.error}`, '');
   } else if (wf.hasAutoPrFlag) {

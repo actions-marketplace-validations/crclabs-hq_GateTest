@@ -20,8 +20,8 @@ const {
 // ── parseRunUrl ─────────────────────────────────────────────────────────────
 
 test('parseRunUrl — happy path full URL', () => {
-  const r = parseRunUrl('https://github.com/ccantynz-alt/gatetest/actions/runs/26002454347');
-  assert.equal(r.owner, 'ccantynz-alt');
+  const r = parseRunUrl('https://github.com/crclabs-hq/gatetest/actions/runs/26002454347');
+  assert.equal(r.owner, 'crclabs-hq');
   assert.equal(r.repo, 'gatetest');
   assert.equal(r.runId, '26002454347');
   assert.equal(r.jobId, undefined);

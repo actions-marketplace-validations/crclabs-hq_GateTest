@@ -68,7 +68,7 @@ export default function Cta() {
             See All Pricing
           </a>
           <a
-            href="https://github.com/ccantynz-alt/GateTest"
+            href="https://github.com/crclabs-hq/GateTest"
             target="_blank"
             rel="noopener noreferrer"
             className="px-8 py-4 text-base font-semibold rounded-xl border border-border hover:border-accent/50 text-foreground transition-all"

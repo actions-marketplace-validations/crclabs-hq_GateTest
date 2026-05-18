@@ -14,7 +14,7 @@ most of it waiting for DNS and SSL.
 
 1. Log into [vercel.com](https://vercel.com) with your GitHub account.
 2. Click **Add New… → Project**.
-3. Import `ccantynz-alt/GateTest` from the repo list (click **Import**).
+3. Import `crclabs-hq/GateTest` from the repo list (click **Import**).
 4. On the configuration screen:
    - **Framework Preset:** Next.js (should auto-detect).
    - **Root Directory:** click **Edit** and set to `website`.

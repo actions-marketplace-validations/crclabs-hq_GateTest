@@ -35,10 +35,10 @@ export default function Footer() {
           <div>
             <h4 className="font-semibold text-sm mb-4">Resources</h4>
             <ul className="space-y-2">
-              <li><a href="https://github.com/ccantynz-alt/GateTest#readme" target="_blank" rel="noopener noreferrer" className="text-sm text-muted hover:text-foreground transition-colors">Documentation</a></li>
-              <li><a href="https://github.com/ccantynz-alt/GateTest" target="_blank" rel="noopener noreferrer" className="text-sm text-muted hover:text-foreground transition-colors">GitHub</a></li>
-              <li><a href="https://github.com/ccantynz-alt/GateTest/releases" target="_blank" rel="noopener noreferrer" className="text-sm text-muted hover:text-foreground transition-colors">Changelog</a></li>
-              <li><a href="https://github.com/ccantynz-alt/GateTest/issues" target="_blank" rel="noopener noreferrer" className="text-sm text-muted hover:text-foreground transition-colors">Report Issue</a></li>
+              <li><a href="https://github.com/crclabs-hq/GateTest#readme" target="_blank" rel="noopener noreferrer" className="text-sm text-muted hover:text-foreground transition-colors">Documentation</a></li>
+              <li><a href="https://github.com/crclabs-hq/GateTest" target="_blank" rel="noopener noreferrer" className="text-sm text-muted hover:text-foreground transition-colors">GitHub</a></li>
+              <li><a href="https://github.com/crclabs-hq/GateTest/releases" target="_blank" rel="noopener noreferrer" className="text-sm text-muted hover:text-foreground transition-colors">Changelog</a></li>
+              <li><a href="https://github.com/crclabs-hq/GateTest/issues" target="_blank" rel="noopener noreferrer" className="text-sm text-muted hover:text-foreground transition-colors">Report Issue</a></li>
             </ul>
           </div>
 

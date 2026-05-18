@@ -212,7 +212,7 @@ function stubOverview() {
         auto_fixes_7d: 12,
       },
       {
-        name: 'ccantynz-alt/GateTest',
+        name: 'crclabs-hq/GateTest',
         last_scan: iso(2 * 60 * 60 * 1000),
         open_issues_by_severity: { critical: 0, high: 0, medium: 0, low: 0 },
         auto_fixes_7d: 4,
@@ -234,7 +234,7 @@ function stubOverview() {
       },
       {
         ts: iso(2 * 60 * 60 * 1000),
-        repo: 'ccantynz-alt/GateTest',
+        repo: 'crclabs-hq/GateTest',
         event: 'scan_completed',
         detail: 'clean',
       },

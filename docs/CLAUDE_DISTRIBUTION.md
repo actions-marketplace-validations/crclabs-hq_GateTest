@@ -45,7 +45,7 @@ exist):
   "mcpServers": {
     "gatetest": {
       "command": "npx",
-      "args": ["--yes", "-p", "github:ccantynz-alt/gatetest", "gatetest-mcp"]
+      "args": ["--yes", "-p", "github:crclabs-hq/gatetest", "gatetest-mcp"]
     }
   }
 }
@@ -61,7 +61,7 @@ Claude in every session. Try:
 Clone the repo and point your MCP client at the binary:
 
 ```bash
-git clone https://github.com/ccantynz-alt/gatetest ~/gatetest
+git clone https://github.com/crclabs-hq/gatetest ~/gatetest
 cd ~/gatetest && npm install --production
 ```
 

@@ -24,7 +24,7 @@ jobs:
       checks: write
     steps:
       - uses: actions/checkout@v4
-      - uses: ccantynz-alt/gatetest@v1
+      - uses: crclabs-hq/gatetest@v1
 ```
 
 That is the entire install. Push the file, open a PR, the gate runs.
@@ -36,7 +36,7 @@ That is the entire install. Push the file, open a PR, the gate runs.
 When the gate finds something it can fix, let Claude propose the patch:
 
 ```yaml
-- uses: ccantynz-alt/gatetest@v1
+- uses: crclabs-hq/gatetest@v1
   with:
     suite: quick
     auto-fix: true
@@ -67,7 +67,7 @@ When the gate blocks and an Anthropic key is present, the action opens a follow-
 ### Example: SARIF upload for GitHub Code Scanning
 
 ```yaml
-- uses: ccantynz-alt/gatetest@v1
+- uses: crclabs-hq/gatetest@v1
   id: gatetest
   with:
     suite: full
@@ -83,7 +83,7 @@ When the gate blocks and an Anthropic key is present, the action opens a follow-
 ### Example: monorepo
 
 ```yaml
-- uses: ccantynz-alt/gatetest@v1
+- uses: crclabs-hq/gatetest@v1
   with:
     working-directory: ./apps/api
 ```
@@ -103,7 +103,7 @@ Two of the four Nuclear-tier deliverables — mutation testing and chaos / runti
 Mutation testing applies real code mutations (operator swaps, boundary changes, return-value flips) to your source files, then verifies that at least one of your tests fails for each mutation. If all tests still pass after a mutation, your test suite has a coverage gap that line-coverage alone cannot see.
 
 ```yaml
-- uses: ccantynz-alt/gatetest@v1
+- uses: crclabs-hq/gatetest@v1
   with:
     suite: nuclear
     mutation: true
@@ -122,7 +122,7 @@ Requirements:
 Chaos testing drives a real Chromium browser against a deployed URL and injects five resilience scenarios (slow network, API failures, offline mode, missing CSS/JS, server timeouts). It reports whether your site degrades gracefully or shows blank pages and error screens.
 
 ```yaml
-- uses: ccantynz-alt/gatetest@v1
+- uses: crclabs-hq/gatetest@v1
   with:
     suite: nuclear
     chaos: true
@@ -138,7 +138,7 @@ Requirements:
 ### Both at once
 
 ```yaml
-- uses: ccantynz-alt/gatetest@v1
+- uses: crclabs-hq/gatetest@v1
   with:
     suite: nuclear
     mutation: true
@@ -240,7 +240,7 @@ All paid tiers are pay-on-completion — you are only charged once a scan delive
 
 ## Where things live
 
-- Source repo: https://github.com/ccantynz-alt/gatetest
+- Source repo: https://github.com/crclabs-hq/gatetest
 - Web app and pricing: https://gatetest.ai
 - Privacy policy: https://gatetest.ai/legal/privacy
 - Live chat support: https://gatetest.ai

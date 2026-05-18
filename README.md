@@ -7,7 +7,7 @@
 <!-- npm-version badge — re-enable after first `npm publish`:
 [![npm](https://img.shields.io/npm/v/gatetest.svg)](https://www.npmjs.com/package/gatetest)
 -->
-[![CI](https://github.com/ccantynz-alt/gatetest/actions/workflows/ci.yml/badge.svg)](https://github.com/ccantynz-alt/gatetest/actions/workflows/ci.yml)
+[![CI](https://github.com/crclabs-hq/gatetest/actions/workflows/ci.yml/badge.svg)](https://github.com/crclabs-hq/gatetest/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Modules](https://img.shields.io/badge/modules-102-purple.svg)](#what-it-replaces)
 [![Tests](https://img.shields.io/badge/tests-3500%2B-brightgreen.svg)](#real-repo-proofs)
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ccantynz-alt/gatetest@v1
+      - uses: crclabs-hq/gatetest@v1
         with:
           suite: full
           auto-fix: ${{ github.event_name == 'pull_request' }}
@@ -56,15 +56,15 @@ The action is a composite — no Docker pull, no container build. It installs Ga
 
 ```bash
 # Run against the current directory, no install:
-npx github:ccantynz-alt/gatetest --suite quick
+npx github:crclabs-hq/gatetest --suite quick
 
 # Or clone and run from source:
-git clone https://github.com/ccantynz-alt/gatetest
+git clone https://github.com/crclabs-hq/gatetest
 cd gatetest && npm install
 node bin/gatetest.js --suite quick
 ```
 
-> The package is not yet on npm. `npm install -g gatetest` will work after the first publish — track [issue tracker](https://github.com/ccantynz-alt/gatetest/issues) for the release tag.
+> The package is not yet on npm. `npm install -g gatetest` will work after the first publish — track [issue tracker](https://github.com/crclabs-hq/gatetest/issues) for the release tag.
 
 ### Pre-push sweep
 
@@ -192,9 +192,9 @@ Live prices and Stripe checkout at [gatetest.ai](https://gatetest.ai).
 
 GateTest is not magic. The things it does not yet do, said out loud:
 
-- **The npm package is not yet published.** Install today is via the GitHub Action (composite, recommended), `npx github:ccantynz-alt/gatetest`, or a `git clone`. The first `npm publish` is queued, not shipped.
+- **The npm package is not yet published.** Install today is via the GitHub Action (composite, recommended), `npx github:crclabs-hq/gatetest`, or a `git clone`. The first `npm publish` is queued, not shipped.
 - **Headless-browser modules (`liveCrawler`, `runtimeErrors`, `explorer`, `chaos`) degrade gracefully on Vercel serverless.** Chromium cannot launch inside the function. The modules emit an info-level skip and the rest of the scan continues — full power requires the CLI, a worker, or local dev.
-- **The GitHub Marketplace listing is drafted, not approved.** Approval is in progress (the action itself works regardless — `ccantynz-alt/gatetest@v1` resolves today).
+- **The GitHub Marketplace listing is drafted, not approved.** Approval is in progress (the action itself works regardless — `crclabs-hq/gatetest@v1` resolves today).
 - **`installation_id` is not persisted across GitHub App installs.** Multi-org customers cannot yet be correlated to a single billing account; this is tracked as Known Issue #22 in [CLAUDE.md](CLAUDE.md).
 - **PR comments are not idempotent.** A busy PR with many pushes will collect duplicate scan comments. Tracked as Known Issue #23.
 
@@ -233,7 +233,7 @@ Total Anthropic spend across the four external real-repo Nuclear proofs: roughly
 ## Develop and contribute
 
 ```bash
-git clone https://github.com/ccantynz-alt/gatetest
+git clone https://github.com/crclabs-hq/gatetest
 cd gatetest
 npm install
 (cd website && npm install)
@@ -243,7 +243,7 @@ node bin/gatetest.js --list
 
 The Bible — [CLAUDE.md](CLAUDE.md) — is required reading for contributors. It defines the architecture, the quality bar, the forbidden list, the protected platforms, and the authorization rules that apply to anything touching money, user data, or public-facing communication.
 
-Bug reports and feature requests are welcome via [GitHub Issues](https://github.com/ccantynz-alt/gatetest/issues). Small PRs that fix one thing and add a test are merged fastest. The pre-commit and pre-push hooks under [`src/hooks/`](src/hooks/) run the gate locally — running them before pushing keeps CI green.
+Bug reports and feature requests are welcome via [GitHub Issues](https://github.com/crclabs-hq/gatetest/issues). Small PRs that fix one thing and add a test are merged fastest. The pre-commit and pre-push hooks under [`src/hooks/`](src/hooks/) run the gate locally — running them before pushing keeps CI green.
 
 ---
 
@@ -255,5 +255,5 @@ MIT — see [LICENSE](LICENSE).
 
 <sub>
 GateTest is built and maintained at <a href="https://gatetest.ai">gatetest.ai</a>.
-Talk to the team via the chat on the site. File bugs at <a href="https://github.com/ccantynz-alt/gatetest/issues">GitHub Issues</a>.
+Talk to the team via the chat on the site. File bugs at <a href="https://github.com/crclabs-hq/gatetest/issues">GitHub Issues</a>.
 </sub>

@@ -31,7 +31,7 @@ const {
   path.resolve(__dirname, '..', 'website', 'app', 'lib', 'stripe-checkout.js')
 );
 
-const VALID_REPO = 'https://github.com/ccantynz-alt/gatetest';
+const VALID_REPO = 'https://github.com/crclabs-hq/gatetest';
 
 // ---------------------------------------------------------------------------
 // fetchImpl mock factory — captures the single call and returns a shaped

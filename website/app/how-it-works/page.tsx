@@ -338,7 +338,7 @@ jobs:
               Run a free scan now
             </Link>
             <a
-              href="https://github.com/ccantynz-alt/gatetest"
+              href="https://github.com/crclabs-hq/gatetest"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl font-semibold text-sm border border-white/15 text-white/75 hover:border-white/30 hover:text-white transition-colors"
@@ -346,7 +346,7 @@ jobs:
               See the GitHub Action
             </a>
             <a
-              href="https://github.com/ccantynz-alt/gatetest/tree/main/docs/proofs"
+              href="https://github.com/crclabs-hq/gatetest/tree/main/docs/proofs"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl font-semibold text-sm border border-white/15 text-white/75 hover:border-white/30 hover:text-white transition-colors"

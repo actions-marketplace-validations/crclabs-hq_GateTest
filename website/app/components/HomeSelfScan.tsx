@@ -90,7 +90,7 @@ export default function HomeSelfScan() {
             <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
             <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
             <span className="ml-2 text-[11px] text-white/40 font-mono">
-              ccantynz-alt/gatetest &nbsp;&middot;&nbsp; main &nbsp;&middot;&nbsp; gate
+              crclabs-hq/gatetest &nbsp;&middot;&nbsp; main &nbsp;&middot;&nbsp; gate
               {badge.commitShaShort && (
                 <>
                   &nbsp;&middot;&nbsp;
@@ -136,7 +136,7 @@ export default function HomeSelfScan() {
                 </div>
               </div>
               <Link
-                href="https://github.com/ccantynz-alt/GateTest/actions"
+                href="https://github.com/crclabs-hq/GateTest/actions"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white/80 hover:text-white hover:bg-white/10 hover:border-white/20 transition-colors"

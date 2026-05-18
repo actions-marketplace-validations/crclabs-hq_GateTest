@@ -2,7 +2,7 @@
 # GateTest — Composite GitHub Action
 # ============================================================================
 # Lets any repo run the GateTest gate (102 modules) with a single
-# `uses: ccantynz-alt/gatetest@v1` line in their workflow.
+# `uses: crclabs-hq/gatetest@v1` line in their workflow.
 #
 # Optional AI auto-repair: when `auto-fix: true` AND the gate blocks AND
 # the workflow exposes ANTHROPIC_API_KEY, the action invokes the AI
@@ -111,7 +111,7 @@ runs:
           # Fallback: clone the canonical repo (single source of truth).
           # TODO(publish): remove this branch once @gatetest/cli is on npm.
           GATETEST_HOME="$RUNNER_TEMP/gatetest"
-          git clone --depth 1 https://github.com/ccantynz-alt/gatetest.git "$GATETEST_HOME"
+          git clone --depth 1 https://github.com/crclabs-hq/gatetest.git "$GATETEST_HOME"
           chmod +x "$GATETEST_HOME/bin/gatetest.js"
           # Install runtime deps without scripts to keep this fast + safe.
           (cd "$GATETEST_HOME" && (npm ci --omit=dev --ignore-scripts 2>/dev/null || npm install --production --ignore-scripts 2>/dev/null || true))

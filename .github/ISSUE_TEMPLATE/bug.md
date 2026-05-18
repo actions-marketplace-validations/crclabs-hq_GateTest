@@ -23,7 +23,7 @@ labels: bug
 
 ### GateTest version
 
-<!-- Output of `node bin/gatetest.js --version` or the action tag you pinned (e.g. `ccantynz-alt/gatetest@v1`). -->
+<!-- Output of `node bin/gatetest.js --version` or the action tag you pinned (e.g. `crclabs-hq/gatetest@v1`). -->
 
 ### Environment
 

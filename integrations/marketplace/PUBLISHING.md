@@ -87,7 +87,7 @@ curl -sL https://registry.npmjs.org/gatetest/-/gatetest-$(npm view gatetest vers
 
 **Users then run:**
 ```bash
-brew tap ccantynz-alt/gatetest
+brew tap crclabs-hq/gatetest
 brew install gatetest
 ```
 
@@ -145,7 +145,7 @@ step — works the moment the file is on `main`.
 | --- | --- | --- |
 | npm | `npm i -g gatetest` / `npx gatetest` | npm publish (Craig) |
 | MCP | `npx gatetest-mcp` | npm publish (Craig) |
-| Homebrew | `brew install ccantynz-alt/gatetest/gatetest` | tap repo + formula bump (Craig) |
+| Homebrew | `brew install crclabs-hq/gatetest/gatetest` | tap repo + formula bump (Craig) |
 | Drop-in CI | `curl ... | bash` | Already live (no action) |
 | Hosted SaaS | gatetest.ai | Already live |
 | GitHub Marketplace | Install from marketplace | App listing approval (Craig, 2-3 weeks) |

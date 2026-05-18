@@ -17,10 +17,10 @@
   "homepage": "https://gatetest.ai",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ccantynz-alt/gatetest.git"
+    "url": "git+https://github.com/crclabs-hq/gatetest.git"
   },
   "bugs": {
-    "url": "https://github.com/ccantynz-alt/gatetest/issues"
+    "url": "https://github.com/crclabs-hq/gatetest/issues"
   },
   "scripts": {
     "test": "node --test tests/**/*.test.js",

@@ -72,7 +72,7 @@ What it covers (the 102 modules) — among other things:
   AI safety:    prompt injection surfaces, browser-bundled API keys,
                 eval(atob(…)) injection, deprecated model usage
 
-We dogfood it. The repo is at https://github.com/ccantynz-alt/GateTest
+We dogfood it. The repo is at https://github.com/crclabs-hq/GateTest
 — you can run it on us and tell us what we missed.
 
 Tech: Node.js engine (~zero deps), Next.js 16 site, Claude Sonnet 4.6

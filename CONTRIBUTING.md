@@ -5,7 +5,7 @@ Thanks for considering a contribution. This document is intentionally short. The
 ## Getting set up
 
 ```bash
-git clone https://github.com/ccantynz-alt/gatetest
+git clone https://github.com/crclabs-hq/gatetest
 cd gatetest
 npm install
 (cd website && npm install)
@@ -63,7 +63,7 @@ Routine bug fixes, refactors inside the approved stack, new test cases, doc impr
 
 ## Where to ask
 
-- [GitHub Issues](https://github.com/ccantynz-alt/gatetest/issues) — bugs, feature requests, public discussion.
+- [GitHub Issues](https://github.com/crclabs-hq/gatetest/issues) — bugs, feature requests, public discussion.
 - Live chat on [gatetest.ai](https://gatetest.ai) — fastest reply.
 
 That is the whole guide. Open the PR.

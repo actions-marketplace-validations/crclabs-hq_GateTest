@@ -29,7 +29,7 @@ Broken code is rejected before it ships.
 From the root of the target repository:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/ccantynz-alt/gatetest/main/integrations/scripts/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/crclabs-hq/gatetest/main/integrations/scripts/install.sh | bash
 git add .github .husky .gatetest.json
 git commit -m "chore: install GateTest quality gate"
 git push

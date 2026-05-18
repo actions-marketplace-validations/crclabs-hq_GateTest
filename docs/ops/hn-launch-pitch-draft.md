@@ -77,7 +77,7 @@ Standard install:
   curl -sSL https://gatetest.ai/install.sh | bash   (CI gate today)
   https://gatetest.ai                        (paid web scans today)
 
-Repo is open source: https://github.com/ccantynz-alt/gatetest
+Repo is open source: https://github.com/crclabs-hq/gatetest
 
 Honest caveats below. I'm here all day to answer questions.
 ```

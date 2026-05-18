@@ -24,7 +24,7 @@ Complete every step in order. The listing will be reviewed by GitHub staff (typi
 1. Go to **https://github.com/settings/apps** (or **https://github.com/organizations/ccantynz-alt/settings/apps** if the app is owned by the org).
 2. Click **GateTestHQ**.
 3. In the left sidebar, click **Marketplace listing**.
-   - If you don't see this option, the app must first be installed on at least one repo. Install it on `ccantynz-alt/gatetest` via the "Install App" tab.
+   - If you don't see this option, the app must first be installed on at least one repo. Install it on `crclabs-hq/gatetest` via the "Install App" tab.
 
 ---
 

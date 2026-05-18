@@ -9,9 +9,9 @@
   "keywords": ["security", "code quality", "AI", "claude", "scan", "fix", "sonarqube", "snyk"],
   "icon": "images/icon.png",
   "galleryBanner": { "color": "#0a0a0a", "theme": "dark" },
-  "repository": { "type": "git", "url": "https://github.com/ccantynz-alt/gatetest" },
+  "repository": { "type": "git", "url": "https://github.com/crclabs-hq/gatetest" },
   "homepage": "https://gatetest.ai",
-  "bugs": { "url": "https://github.com/ccantynz-alt/gatetest/issues" },
+  "bugs": { "url": "https://github.com/crclabs-hq/gatetest/issues" },
   "license": "MIT",
   "activationEvents": [
     "onStartupFinished"

@@ -162,7 +162,7 @@ export default function HomeFaq() {
           </a>{" "}
           &middot;{" "}
           <a
-            href="https://github.com/ccantynz-alt/GateTest/issues"
+            href="https://github.com/crclabs-hq/GateTest/issues"
             target="_blank"
             rel="noopener noreferrer"
             className="text-accent hover:underline font-medium"

@@ -46,7 +46,7 @@ The pricing tiers reflect depth, not module count: every paid tier scans the ful
 ### How to install
 
 ```yaml
-- uses: ccantynz-alt/gatetest@v1
+- uses: crclabs-hq/gatetest@v1
   with:
     suite: quick
     auto-fix: true

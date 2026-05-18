@@ -108,7 +108,7 @@ export default function HomeCode() {
         <p className="text-xs text-muted text-center mt-6">
           Zero dependencies. Zero telemetry by default. Source is{" "}
           <a
-            href="https://github.com/ccantynz-alt/GateTest"
+            href="https://github.com/crclabs-hq/GateTest"
             target="_blank"
             rel="noopener noreferrer"
             className="text-accent hover:underline font-medium"

@@ -69,7 +69,7 @@ interface SelfScanBadgeProps {
 }
 
 const DEFAULT_WORKFLOW_URL =
-  "https://github.com/ccantynz-alt/gatetest/actions";
+  "https://github.com/crclabs-hq/gatetest/actions";
 const DEFAULT_POLL_MS = 60_000;
 
 export default function SelfScanBadge({

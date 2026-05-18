@@ -193,7 +193,7 @@ describe('SelfScanBadge.tsx — file-level invariants', () => {
   });
 
   it('points the workflow link at the GitHub Actions page by default', () => {
-    assert.match(tsx, /github\.com\/ccantynz-alt\/gatetest\/actions/);
+    assert.match(tsx, /github\.com\/crclabs-hq\/gatetest\/actions/i);
   });
 
   it('uses cache: "no-store" so the badge never serves stale data', () => {

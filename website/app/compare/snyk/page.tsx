@@ -46,7 +46,7 @@ const faqItems = [
   },
   {
     q: "Can GateTest fix vulnerabilities automatically?",
-    a: "Yes. The Scan + Fix tier ($199) uses AI to create pull requests with working code changes that address the issues found. Snyk can suggest fix PRs for dependency upgrades in its paid tiers; GateTest auto-fixes source code vulnerabilities — SSRF guards, TLS config fixes, cookie security flags, and more. The Nuclear tier ($399) adds Claude-driven diagnosis on every finding, cross-finding attack-chain correlation, mutation testing, and a CTO-readable executive summary.",
+    a: "Yes. The Scan + Fix tier ($199) uses AI to create pull requests with working code changes that address the issues found. Snyk can suggest fix PRs for dependency upgrades in its paid tiers; GateTest auto-fixes source code vulnerabilities — SSRF guards, TLS config fixes, cookie security flags, and more. The Nuclear tier ($399) adds Claude-driven diagnosis on every finding, cross-finding attack-chain correlation, a board-ready CISO report, and a CTO-readable executive summary. Mutation testing and chaos / fuzz pass also ship via the GitHub Action (mutation: true / chaos: true) — runs wherever your CI runs.",
   },
   {
     q: "Does GateTest work with private repos?",
@@ -72,7 +72,7 @@ const comparisonRows = [
   { feature: "PII-in-logs detection", gatetest: true, competitor: false },
   { feature: "Accessibility (WCAG 2.2 automated audit)", gatetest: true, competitor: false },
   { feature: "Performance analysis", gatetest: true, competitor: false },
-  { feature: "Mutation testing (Nuclear tier)", gatetest: true, competitor: false },
+  { feature: "Mutation testing (via GitHub Action)", gatetest: true, competitor: false },
   { feature: "Single config, single bill across all categories", gatetest: true, competitor: false },
   { feature: "Pay per scan (not per seat)", gatetest: true, competitor: false },
   { feature: "PR / commit status integration", gatetest: true, competitor: true },

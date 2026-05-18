@@ -136,7 +136,7 @@ No other QA tool on earth offers this. It's our killer advantage.
 | **Quick Scan** | 4 (syntax, lint, secrets, code quality) | Report + pass/fail | **$29** |
 | **Full Scan** | All 102 modules | Full report, SARIF, JUnit | **$99** |
 | **Scan + Fix** | All 102 modules + auto-fix | Report + PR with fixes applied | **$199** |
-| **Nuclear** | 102 modules + crawl + mutation + fix | Everything. The works. | **$399** |
+| **Nuclear** | 102 modules + per-finding Claude diagnosis + correlation + CISO report + exec summary + auto-fix PR | Everything on the website-only scan. Mutation testing + chaos / fuzz pass also available via the GitHub Action where a CI runner is present. | **$399** |
 
 ### Recurring tier — after first scan proves value
 
@@ -232,7 +232,7 @@ accessibility. GateTest catches every one of these AND fixes them automatically.
 - **Quick Scan** ($29): 4 modules, instant report
 - **Full Scan** ($99): All 102 modules, full report
 - **Scan + Fix** ($199): Full scan + auto-fix PR — MOST POPULAR
-- **Nuclear** ($399): Everything including mutation testing and live crawl
+- **Nuclear** ($399): Everything plus per-finding Claude diagnosis, cross-finding correlation, board-ready CISO report, executive summary. Mutation testing and chaos / fuzz pass also available via the GitHub Action (`mutation: true` / `chaos: true`) — runs wherever your CI runs.
 - **Continuous** ($49/mo): Scan every push, dashboard, alerts
 - All tiers: pay on completion only. Card hold released if scan fails.
 

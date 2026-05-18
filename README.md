@@ -182,7 +182,7 @@ Pay-on-completion. The card is held at checkout and only captured if the scan de
 | **Quick Scan**    | $29     | 4 modules — syntax, linting, secrets, code quality. Fastest path to a first signal.                                                                |
 | **Full Scan**     | $99     | All 102 modules. Auto-fix PR included. SARIF + JUnit reports.                                                                                      |
 | **Scan + Fix**    | $199    | Everything in Full, plus a second-Claude pair-review critique on every fix and an architecture-shape design-observations report.                   |
-| **Nuclear**       | $399    | Everything in Scan + Fix, plus real Claude diagnosis on every finding, cross-finding attack-chain correlation, mutation testing, chaos / fuzz pass, and a CTO-readable executive summary. |
+| **Nuclear**       | $399    | Everything in Scan + Fix, plus real Claude diagnosis on every finding, cross-finding attack-chain correlation, board-ready CISO report (OWASP / SOC2 / CIS v8 / 30-60-90), and a CTO-readable executive summary. Mutation testing and chaos / fuzz pass are also available via the GitHub Action (`mutation: true` / `chaos: true`) — they need a CI runner to execute your test suite and a headless browser, so they ship with the Action rather than the website-only scan. |
 
 Live prices and Stripe checkout at [gatetest.ai](https://gatetest.ai).
 

@@ -41,7 +41,7 @@ Existing autofixers patch single findings. GateTest runs a self-healing flywheel
 3. Claude fills the remaining gap — Anthropic API spend is only spent on the long tail.
 4. Every successful Claude-driven fix is distilled into a new recipe, so the deterministic layers grow over time.
 
-The pricing tiers reflect depth, not module count: every paid tier scans the full 102 modules. The higher tiers add iterative fix loops, pair-review of every fix by a second Claude pass, architecture annotations, cross-finding correlation, mutation testing, and a CTO-readable executive summary.
+The pricing tiers reflect depth, not module count: every paid tier scans the full 102 modules. The higher tiers add iterative fix loops, pair-review of every fix by a second Claude pass, architecture annotations, cross-finding correlation, per-finding Claude diagnosis, a board-ready CISO report, and a CTO-readable executive summary. Mutation testing and chaos / fuzz pass run via the GitHub Action (set `mutation: true` / `chaos: true`) because they need a CI runner — they ship wherever your CI runs.
 
 ### How to install
 
@@ -62,7 +62,7 @@ That is the entire install. The action sets up Node, installs GateTest, runs the
 - $29 per Quick Scan (4 critical modules).
 - $99 per Full Scan (all 102 modules).
 - $199 per Scan + Fix (full scan plus iterative fix loop, pair-review, architecture annotations).
-- $399 per Nuclear (full scan plus per-finding Claude diagnosis, attack-chain correlation, mutation testing, chaos/fuzz, executive summary).
+- $399 per Nuclear (full scan plus per-finding Claude diagnosis, attack-chain correlation, board-ready CISO report, executive summary; mutation testing and chaos / fuzz pass also available via the GitHub Action — `mutation: true` / `chaos: true`).
 - $49/month Continuous for unlimited push-triggered scans.
 
 Pricing is unified at https://gatetest.ai/pricing.

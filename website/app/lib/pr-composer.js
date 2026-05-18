@@ -160,6 +160,47 @@ function renderRegressionTests(fixes) {
 }
 
 /**
+ * Render the CISO board-report attachment notice. Only used by the
+ * Nuclear ($399) tier. Tells the customer the report shipped in the PR
+ * diff and what's inside it. No emojis (Bible rule).
+ *
+ * @param {Object} opts
+ * @param {string}  opts.path             Repo path the report was committed to.
+ * @param {string}  [opts.riskLevel]      One of LOW / MODERATE / ELEVATED / HIGH / CRITICAL.
+ * @param {Object}  [opts.complianceGaps] { owasp, soc2, cis } arrays from generateCisoReport.
+ * @param {Object}  [opts.counts]         { Critical, High, Medium, Low } finding counts.
+ * @param {boolean} [opts.failed]         True if generation failed; renders a graceful placeholder.
+ * @returns {string}
+ */
+function renderCisoReportSection({ path, riskLevel, complianceGaps, counts, failed } = {}) {
+  if (failed) {
+    return [
+      '### Board-ready CISO report',
+      '',
+      'Report generation hit a transient error this run. The code fixes above shipped successfully — this advisory section is a heads-up that the supplementary CISO deliverable was not attached. Please contact support and we will regenerate it free of charge.',
+    ].join('\n');
+  }
+  if (!path) return '';
+  const owaspCount = complianceGaps && Array.isArray(complianceGaps.owasp) ? complianceGaps.owasp.length : 0;
+  const soc2Count = complianceGaps && Array.isArray(complianceGaps.soc2) ? complianceGaps.soc2.length : 0;
+  const cisCount = complianceGaps && Array.isArray(complianceGaps.cis) ? complianceGaps.cis.length : 0;
+  const risk = riskLevel || 'see report';
+  const sevLine = counts
+    ? `${counts.Critical || 0} critical / ${counts.High || 0} high / ${counts.Medium || 0} medium / ${counts.Low || 0} low`
+    : '';
+  const lines = [
+    '### Board-ready CISO report',
+    '',
+    `Attached at \`${path}\` in this PR diff. Covers OWASP Top 10 2021 (${owaspCount} categories implicated), SOC2 Trust Service Criteria (${soc2Count} criteria implicated), CIS Controls v8 (${cisCount} controls implicated), and a 30/60/90-day remediation roadmap.`,
+    '',
+    `Overall risk level: **${risk}**${sevLine ? ` — ${sevLine}` : ''}.`,
+    '',
+    'Open the file in GitHub for the rendered markdown, or download and open in any browser via File > Print > Save as PDF for board distribution.',
+  ];
+  return lines.join('\n');
+}
+
+/**
  * Render the could-not-fix / advisory section from errors[].
  */
 function renderErrors(errors) {
@@ -182,6 +223,9 @@ function renderErrors(errors) {
  * @param {Record<string, string[]>} [opts.postFixFindingsByModule]
  * @param {string} [opts.repoUrl]
  * @param {string} [opts.cveSection]  Pre-rendered CVE patches markdown section (from composeCveFixPrSection).
+ * @param {Object} [opts.cisoReport]  Nuclear-tier CISO board-report descriptor.
+ *   { path, riskLevel, complianceGaps, counts, failed }. See
+ *   renderCisoReportSection for shape.
  * @returns {string}  Markdown PR body, ready to hand to openPullRequest.
  */
 function composePrBody(opts) {
@@ -195,6 +239,7 @@ function composePrBody(opts) {
     originalFindingsByModule,
     postFixFindingsByModule,
     cveSection,
+    cisoReport,
   } = opts || {};
 
   const realFixes = fixes.filter((f) => !(f.file || '').startsWith('tests/auto-generated/'));
@@ -257,6 +302,16 @@ function composePrBody(opts) {
     sections.push(regTests);
   }
 
+  // CISO board-ready report — Nuclear tier only. Only rendered when the
+  // route opts in by passing a cisoReport descriptor.
+  if (cisoReport) {
+    const ciso = renderCisoReportSection(cisoReport);
+    if (ciso) {
+      sections.push('');
+      sections.push(ciso);
+    }
+  }
+
   // Advisory
   const adv = renderErrors(errors);
   if (adv) {
@@ -300,5 +355,6 @@ module.exports = {
   renderBeforeAfterScan,
   renderFixedFiles,
   renderRegressionTests,
+  renderCisoReportSection,
   renderErrors,
 };

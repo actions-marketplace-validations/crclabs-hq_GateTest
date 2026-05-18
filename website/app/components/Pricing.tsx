@@ -86,6 +86,7 @@ const scanPlans = [
       "Mutation testing — we mutate your source under your tests, prove your tests actually catch bugs",
       "Chaos / fuzz pass — adversarial inputs against HTTP routes, CLI args, file parsers; report what crashes",
       "CTO-readable executive summary — single document, plain language, real recommendations",
+      "Board-ready CISO report (OWASP Top 10, SOC2, CIS v8, 30/60/90-day roadmap) — attached to every PR",
       "Best margin if you're shipping money or PII — the $399 hits all the high-stakes bug classes",
     ],
     cta: "Run Nuclear",

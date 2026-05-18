@@ -97,6 +97,34 @@ const { runPairReview, renderReviewComment } = require("@/app/lib/pair-review") 
   ) => string;
 };
 
+// CISO report generator — Nuclear-tier ($399) deliverable. Wires the
+// existing helper into the Nuclear branch of the fix route so paying
+// customers actually receive the board-ready report the marketing
+// promises (OWASP Top 10, SOC2 TSC, CIS Controls v8, 30/60/90-day
+// remediation roadmap). Report is attached as a markdown file inside
+// the auto-fix PR at gatetest-reports/ciso-board-report-<date>.md.
+// Failure is non-blocking — fixes ship even if the report errors.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { generateCisoReport, cisoReportPath } = require("@/app/lib/ciso-report-generator") as {
+  generateCisoReport: (opts: {
+    findings?: Array<{ module?: string; ruleId?: string; severity?: string; level?: string; detail?: string; message?: string }>;
+    chains?: Array<{ severity?: string; impact?: string; description?: string; fixOrder?: string }>;
+    hostName?: string;
+    scanDate?: string;
+    tier?: string;
+    askClaude?: (prompt: string) => Promise<string>;
+  }) => Promise<{
+    markdown: string;
+    html: string;
+    summary: string;
+    complianceGaps: { owasp: Array<{ control: string; title: string; findingCount: number }>; soc2: Array<{ control: string; title: string; findingCount: number }>; cis: Array<{ control: string; title: string; findingCount: number }> };
+    sections: string[];
+    riskLevel: string;
+    counts: { Critical: number; High: number; Medium: number; Low: number };
+  }>;
+  cisoReportPath: (scanDate?: string) => string;
+};
+
 // Phase 1.4 — PR-body composer. Builds the structured markdown report
 // from every artifact this route collects (fixes, errors, attempt
 // history, gate results, before/after findings, regression tests).
@@ -115,6 +143,14 @@ const { composePrBody } = require("@/app/lib/pr-composer") as {
     repoUrl?: string;
     /** Pre-rendered CVE patches markdown section from composeCveFixPrSection. */
     cveSection?: string;
+    /** Nuclear-tier CISO report descriptor (path/riskLevel/complianceGaps/counts/failed). */
+    cisoReport?: {
+      path?: string;
+      riskLevel?: string;
+      complianceGaps?: { owasp: unknown[]; soc2: unknown[]; cis: unknown[] };
+      counts?: { Critical: number; High: number; Medium: number; Low: number };
+      failed?: boolean;
+    };
   }) => string;
 };
 
@@ -1457,6 +1493,100 @@ export async function POST(req: NextRequest) {
       await upsertFile(owner, repo, fix.file, fix.fixed, message, branchName, existingSha, token);
     });
 
+    // Nuclear-tier CISO board-report. Generated AFTER all fixes are
+    // committed (so it reflects the post-fix landscape), BEFORE PR-body
+    // composition (so the body can mention it). Committed to the same
+    // branch as a markdown file the customer receives in the PR diff;
+    // they can open in any browser → File > Print > Save as PDF for
+    // board distribution.
+    //
+    // Failure is non-blocking — the fixes already shipped to the
+    // branch; the customer keeps what they paid for and we log a soft
+    // advisory in the PR body.
+    let cisoReportDescriptor: {
+      path?: string;
+      riskLevel?: string;
+      complianceGaps?: { owasp: unknown[]; soc2: unknown[]; cis: unknown[] };
+      counts?: { Critical: number; High: number; Medium: number; Low: number };
+      failed?: boolean;
+    } | undefined;
+    let cisoReportSummary: string | undefined;
+    if (input.tier === "nuclear") {
+      try {
+        // Build the findings list from the original (pre-fix) findings the
+        // caller passed in. Falls back to the input.issues array if the
+        // caller didn't supply originalFindingsByModule (older clients).
+        type CisoFinding = { module: string; detail: string; severity: string };
+        const cisoFindings: CisoFinding[] = [];
+        if (input.originalFindingsByModule && typeof input.originalFindingsByModule === "object") {
+          for (const [moduleName, details] of Object.entries(input.originalFindingsByModule)) {
+            if (!Array.isArray(details)) continue;
+            for (const detail of details) {
+              // Heuristic severity: error if the detail looks error-shaped,
+              // warning otherwise. The CISO renderer normalises this.
+              const sev = /error|critical|fail|violation/i.test(detail) ? "error" : "warning";
+              cisoFindings.push({ module: moduleName, detail, severity: sev });
+            }
+          }
+        } else {
+          for (const iss of rawIssues || []) {
+            cisoFindings.push({ module: iss.module, detail: iss.issue, severity: "error" });
+          }
+        }
+
+        const cisoResult = await generateCisoReport({
+          findings: cisoFindings,
+          // Attack chains are produced by the Nuclear server-fix route; the
+          // /api/scan/fix path doesn't compute them today. Future: pass
+          // through when the orchestrator wires correlator output here.
+          chains: [],
+          hostName: `${owner}/${repo}`,
+          tier: "Nuclear",
+          askClaude: askClaudeForTest,
+        });
+
+        const reportPath = cisoReportPath();
+        // Commit the report to the branch as a real file in the PR diff.
+        try {
+          const existingReportSha = await fetchFileSha(owner, repo, reportPath, branchName, token);
+          await upsertFile(
+            owner,
+            repo,
+            reportPath,
+            cisoResult.markdown,
+            `docs(gatetest): add board-ready CISO report`,
+            branchName,
+            existingReportSha,
+            token
+          );
+        } catch (commitErr) {
+          // Treat commit failure the same as generation failure — surface
+          // in PR body as advisory, do not block the PR.
+          const msg = commitErr instanceof Error ? commitErr.message : "commit failed";
+          errors.push(`CISO report commit failed (report not attached to PR): ${msg}`);
+          cisoReportDescriptor = { failed: true };
+          cisoReportSummary = `ciso: commit failed (${msg})`;
+        }
+
+        if (!cisoReportDescriptor) {
+          cisoReportDescriptor = {
+            path: reportPath,
+            riskLevel: cisoResult.riskLevel,
+            complianceGaps: cisoResult.complianceGaps,
+            counts: cisoResult.counts,
+          };
+          cisoReportSummary = `ciso: report committed at ${reportPath} (${cisoResult.riskLevel} risk, ${cisoFindings.length} findings)`;
+        }
+      } catch (err) {
+        // Generation failed entirely — Claude error, mapping crash, etc.
+        // Customer still gets the fixes; PR body gets a soft advisory.
+        const msg = err instanceof Error ? err.message : "ciso report failed";
+        errors.push(`CISO report generation failed (report not attached to PR): ${msg}`);
+        cisoReportDescriptor = { failed: true };
+        cisoReportSummary = `ciso: failed (${msg})`;
+      }
+    }
+
     // Phase 1.4 — Compose the PR body from every artifact we collected.
     // The composer renders header, CVE patches (if any), before/after scan
     // comparison, gate results, per-file attempt history, fixed-files list,
@@ -1477,6 +1607,7 @@ export async function POST(req: NextRequest) {
       postFixFindingsByModule,
       repoUrl,
       cveSection: cvePrSection || undefined,
+      cisoReport: cisoReportDescriptor,
     });
     // Append the advisory section (files the tier cap couldn't cover)
     // so customers see what was left on the table without paying for it.
@@ -1688,6 +1819,14 @@ export async function POST(req: NextRequest) {
       architecture: architectureSummary
         ? { summary: architectureSummary }
         : { skipped: true, reason: "tier is not scan_fix or originalFileContents not supplied — architecture annotation is a $199-tier value-add" },
+      cisoReport: cisoReportSummary
+        ? {
+            summary: cisoReportSummary,
+            path: cisoReportDescriptor?.path,
+            riskLevel: cisoReportDescriptor?.riskLevel,
+            failed: cisoReportDescriptor?.failed === true,
+          }
+        : { skipped: true, reason: "tier is not nuclear — board-ready CISO report is a $399-tier deliverable" },
       grounding: {
         summary: groundingSummary,
         filesUsed: groundingExtract.found.map((f) => f.path),

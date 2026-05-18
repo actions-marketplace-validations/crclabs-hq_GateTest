@@ -30,159 +30,35 @@
 
 const MAX_FINDINGS_FOR_NARRATIVE = 25;
 
-// ─── OWASP Top 10 2021 mappings ──────────────────────────────────────────────
+// ─── Compliance framework mappings ────────────────────────────────────────────
+//
+// The canonical mapping table lives in compliance-mappings.js. We keep
+// thin OWASP_MAPPING / SOC2_MAPPING / CIS_MAPPING projections exported
+// here for backward compatibility with the existing tests, but every
+// LOOKUP in this file goes through getComplianceMapping() so unmapped
+// modules fall through to the central fallback rather than being silently
+// dropped from the framework tables.
 
-const OWASP_TOP10 = {
-  'A01:2021': 'Broken Access Control',
-  'A02:2021': 'Cryptographic Failures',
-  'A03:2021': 'Injection',
-  'A04:2021': 'Insecure Design',
-  'A05:2021': 'Security Misconfiguration',
-  'A06:2021': 'Vulnerable and Outdated Components',
-  'A07:2021': 'Identification and Authentication Failures',
-  'A08:2021': 'Software and Data Integrity Failures',
-  'A09:2021': 'Security Logging and Monitoring Failures',
-  'A10:2021': 'Server-Side Request Forgery (SSRF)',
-};
+const {
+  getComplianceMapping,
+  OWASP_TOP10,
+  SOC2_CRITERIA,
+  CIS_CONTROLS,
+  MODULE_COMPLIANCE,
+} = require('./compliance-mappings');
 
-// Module → OWASP categories (can be multiple)
-const OWASP_MAPPING = {
-  secrets:              ['A02:2021', 'A07:2021'],
-  secretRotation:       ['A02:2021', 'A07:2021'],
-  tlsSecurity:          ['A02:2021', 'A05:2021'],
-  cookieSecurity:       ['A02:2021', 'A05:2021', 'A07:2021'],
-  webHeaders:           ['A05:2021'],
-  ciSecurity:           ['A05:2021', 'A08:2021'],
-  terraform:            ['A05:2021'],
-  kubernetes:           ['A05:2021'],
-  promptSafety:         ['A05:2021', 'A08:2021'],
-  envVars:              ['A05:2021'],
-  featureFlag:          ['A05:2021'],
-  ssrf:                 ['A10:2021'],
-  crossFileTaint:       ['A03:2021'],
-  sqlMigrations:        ['A03:2021'],
-  hardcodedUrl:         ['A01:2021', 'A05:2021'],
-  deadCode:             ['A04:2021'],
-  dependencies:         ['A06:2021'],
-  redos:                ['A06:2021'],
-  logPii:               ['A09:2021'],
-  errorSwallow:         ['A09:2021'],
-  moneyFloat:           ['A04:2021'],
-  raceCondition:        ['A04:2021'],
-  resourceLeak:         ['A04:2021'],
-  nPlusOne:             ['A04:2021'],
-  asyncIteration:       ['A04:2021'],
-  importCycle:          ['A04:2021'],
-  typescriptStrictness: ['A04:2021'],
-  lint:                 ['A04:2021'],
-  codeQuality:          ['A04:2021'],
-  homoglyph:            ['A08:2021'],
-  flakyTests:           ['A04:2021'],
-  retryHygiene:         ['A04:2021'],
-  datetimeBug:          ['A04:2021'],
-  cronExpression:       ['A04:2021'],
-  openapiDrift:         ['A05:2021'],
-};
-
-// ─── SOC2 Trust Service Criteria mappings ────────────────────────────────────
-
-const SOC2_CRITERIA = {
-  'CC6.1':  'Logical and Physical Access Controls — restrict logical access to software',
-  'CC6.6':  'Network and Logical Access — restrict access with security boundaries',
-  'CC6.7':  'Transmission and Disclosure — data in transit protected',
-  'CC6.8':  'Prevent Unauthorized Access — prevent logical access by unauthorized entities',
-  'CC7.1':  'System Operations — detect and monitor for configuration changes',
-  'CC7.2':  'Threat Intelligence — monitor for new vulnerabilities',
-  'CC8.1':  'Change Management — authorise, design, develop, and implement changes',
-  'CC2.2':  'Internal Communications — communicate information to enable entity objectives',
-  'CC3.1':  'Specification — identify and assess risks to achieving objectives',
-  'CC9.1':  'Risk Mitigation — identify and assess risks from business disruption',
-  'A1.1':   'Availability — maintain and monitor performance capacity',
-  'PI1.1':  'Processing Integrity — processing is complete, valid, accurate, timely',
-  'P4.1':   'Privacy — collect personal information consistent with objectives',
-  'P8.1':   'Privacy — remediate privacy incidents and complaints',
-};
-
-const SOC2_MAPPING = {
-  secrets:              ['CC6.1', 'CC6.8'],
-  secretRotation:       ['CC6.1', 'CC6.8'],
-  tlsSecurity:          ['CC6.7', 'CC6.6'],
-  cookieSecurity:       ['CC6.7', 'CC6.1'],
-  webHeaders:           ['CC6.6'],
-  ciSecurity:           ['CC8.1', 'CC6.8'],
-  terraform:            ['CC7.1', 'CC8.1'],
-  kubernetes:           ['CC7.1', 'CC6.6'],
-  envVars:              ['CC6.1'],
-  logPii:               ['CC2.2', 'P4.1', 'P8.1'],
-  ssrf:                 ['CC6.8'],
-  crossFileTaint:       ['CC6.8'],
-  sqlMigrations:        ['CC7.1', 'A1.1'],
-  dependencies:         ['CC7.2', 'CC8.1'],
-  promptSafety:         ['CC7.2', 'CC3.1'],
-  moneyFloat:           ['PI1.1'],
-  raceCondition:        ['PI1.1', 'A1.1'],
-  resourceLeak:         ['A1.1'],
-  nPlusOne:             ['A1.1'],
-  homoglyph:            ['CC6.8', 'CC8.1'],
-  errorSwallow:         ['CC7.1'],
-  featureFlag:          ['CC8.1'],
-  openapiDrift:         ['CC8.1', 'PI1.1'],
-  retryHygiene:         ['A1.1', 'CC9.1'],
-};
-
-// ─── CIS Controls v8 mappings ─────────────────────────────────────────────────
-
-const CIS_CONTROLS = {
-  '1':  'Inventory and Control of Enterprise Assets',
-  '2':  'Inventory and Control of Software Assets',
-  '3':  'Data Protection',
-  '4':  'Secure Configuration of Enterprise Assets and Software',
-  '5':  'Account Management',
-  '6':  'Access Control Management',
-  '7':  'Continuous Vulnerability Management',
-  '8':  'Audit Log Management',
-  '9':  'Email and Web Browser Protections',
-  '10': 'Malware Defenses',
-  '11': 'Data Recovery',
-  '12': 'Network Infrastructure Management',
-  '13': 'Network Monitoring and Defense',
-  '14': 'Security Awareness and Skills Training',
-  '15': 'Service Provider Management',
-  '16': 'Application Software Security',
-  '18': 'Penetration Testing',
-};
-
-const CIS_MAPPING = {
-  secrets:              ['3', '5'],
-  secretRotation:       ['3', '5'],
-  tlsSecurity:          ['3', '4'],
-  cookieSecurity:       ['3', '4', '6'],
-  webHeaders:           ['4', '16'],
-  ciSecurity:           ['4', '16'],
-  terraform:            ['4'],
-  kubernetes:           ['4', '12'],
-  envVars:              ['3', '4'],
-  logPii:               ['3', '8'],
-  ssrf:                 ['13', '16'],
-  crossFileTaint:       ['16'],
-  sqlMigrations:        ['4'],
-  dependencies:         ['2', '7'],
-  promptSafety:         ['16'],
-  moneyFloat:           ['16'],
-  raceCondition:        ['16'],
-  resourceLeak:         ['16'],
-  nPlusOne:             ['16'],
-  homoglyph:            ['16'],
-  errorSwallow:         ['8'],
-  featureFlag:          ['4', '16'],
-  openapiDrift:         ['16'],
-  retryHygiene:         ['16'],
-  redos:                ['16'],
-  importCycle:          ['16'],
-  asyncIteration:       ['16'],
-  datetimeBug:          ['16'],
-  deadCode:             ['16'],
-};
+// Back-compat projections — keep the old shape that tests + external
+// callers may be importing. Each is a flat module → string[] view onto
+// the central table.
+const OWASP_MAPPING = Object.fromEntries(
+  Object.entries(MODULE_COMPLIANCE).map(([k, v]) => [k, [...v.owasp]])
+);
+const SOC2_MAPPING = Object.fromEntries(
+  Object.entries(MODULE_COMPLIANCE).map(([k, v]) => [k, [...v.soc2]])
+);
+const CIS_MAPPING = Object.fromEntries(
+  Object.entries(MODULE_COMPLIANCE).map(([k, v]) => [k, [...v.cis]])
+);
 
 // ─── Severity utilities ───────────────────────────────────────────────────────
 
@@ -212,15 +88,18 @@ function buildComplianceGaps(findings) {
 
   for (const f of findings) {
     const modName = f.module || f.ruleId || '';
-    const baseMod = modName.split(':')[0];
+    // Use the central lookup: unknown modules fall through to the
+    // FALLBACK mapping so they still appear in framework tables rather
+    // than being silently dropped.
+    const mapping = getComplianceMapping(modName);
 
-    for (const cat of (OWASP_MAPPING[baseMod] || [])) {
+    for (const cat of mapping.owasp) {
       owaspHits[cat] = (owaspHits[cat] || 0) + 1;
     }
-    for (const crit of (SOC2_MAPPING[baseMod] || [])) {
+    for (const crit of mapping.soc2) {
       soc2Hits[crit] = (soc2Hits[crit] || 0) + 1;
     }
-    for (const ctrl of (CIS_MAPPING[baseMod] || [])) {
+    for (const ctrl of mapping.cis) {
       cisHits[ctrl] = (cisHits[ctrl] || 0) + 1;
     }
   }
@@ -473,6 +352,148 @@ function renderReport({ hostName, scanDate, tier, narrative, findings, chains, c
   return lines.filter(l => l !== null && l !== undefined).join('\n');
 }
 
+// ─── HTML renderer (for print-to-PDF) ─────────────────────────────────────────
+
+/**
+ * Tiny markdown → HTML converter for the print-stylesheet variant of the
+ * CISO report. Deliberately minimal — only handles the markdown shapes
+ * renderReport() actually produces (headings, tables, blockquotes, lists,
+ * horizontal rules, paragraphs, inline code, bold, italic). Zero deps.
+ *
+ * Output is wrapped in a self-contained HTML document with an embedded
+ * print stylesheet, so opening it in any browser → File > Print > Save
+ * as PDF produces a board-ready document.
+ *
+ * @param {string} markdown
+ * @param {string} hostName - rendered in the <title>
+ * @returns {string}
+ */
+function renderHtmlReport(markdown, hostName = 'Security Assessment') {
+  const escape = (s) => String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Render inline-level markdown (code, bold, italic) inside a single cell
+  // / paragraph. Order matters: code first (we don't want bold inside code
+  // to get processed).
+  const inline = (s) => {
+    let out = escape(s);
+    out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+    return out;
+  };
+
+  const lines = String(markdown || '').split('\n');
+  const out = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    // Horizontal rule
+    if (/^---+\s*$/.test(line)) {
+      out.push('<hr/>');
+      i++;
+      continue;
+    }
+    // Heading
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      const level = h[1].length;
+      out.push(`<h${level}>${inline(h[2])}</h${level}>`);
+      i++;
+      continue;
+    }
+    // Blockquote
+    if (/^>\s+/.test(line)) {
+      const block = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) {
+        block.push(lines[i].replace(/^>\s?/, ''));
+        i++;
+      }
+      out.push(`<blockquote>${inline(block.join(' '))}</blockquote>`);
+      continue;
+    }
+    // Table — a row that starts with `|` followed by the separator row
+    if (line.startsWith('|') && i + 1 < lines.length && /^\|[\s\-|:]+\|$/.test(lines[i + 1].trim())) {
+      const header = line.split('|').slice(1, -1).map((c) => c.trim());
+      i += 2; // skip separator
+      const rows = [];
+      while (i < lines.length && lines[i].startsWith('|')) {
+        rows.push(lines[i].split('|').slice(1, -1).map((c) => c.trim()));
+        i++;
+      }
+      const thead = header.map((c) => `<th>${inline(c)}</th>`).join('');
+      const tbody = rows
+        .map((r) => '<tr>' + r.map((c) => `<td>${inline(c)}</td>`).join('') + '</tr>')
+        .join('');
+      out.push(`<table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`);
+      continue;
+    }
+    // Unordered list
+    if (/^-\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^-\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^-\s+/, ''));
+        i++;
+      }
+      out.push('<ul>' + items.map((it) => `<li>${inline(it)}</li>`).join('') + '</ul>');
+      continue;
+    }
+    // Blank line
+    if (line.trim() === '') {
+      i++;
+      continue;
+    }
+    // Plain paragraph — accumulate consecutive non-special lines.
+    const para = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== '' &&
+      !/^#{1,6}\s/.test(lines[i]) &&
+      !/^---+\s*$/.test(lines[i]) &&
+      !lines[i].startsWith('|') &&
+      !/^-\s+/.test(lines[i]) &&
+      !/^>\s+/.test(lines[i])
+    ) {
+      para.push(lines[i]);
+      i++;
+    }
+    if (para.length > 0) {
+      out.push(`<p>${inline(para.join(' '))}</p>`);
+    }
+  }
+
+  const body = out.join('\n');
+  const titleSafe = escape(`Security Assessment — ${hostName}`);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${titleSafe}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.55; color: #1a1a1a; max-width: 900px; margin: 2rem auto; padding: 0 2rem; }
+    h1 { font-size: 2rem; border-bottom: 2px solid #333; padding-bottom: 0.5rem; }
+    h2 { font-size: 1.4rem; margin-top: 2.5rem; color: #1a1a1a; border-bottom: 1px solid #ccc; padding-bottom: 0.25rem; }
+    h3 { font-size: 1.1rem; margin-top: 1.75rem; }
+    blockquote { border-left: 4px solid #888; padding: 0.5rem 1rem; background: #f4f4f4; color: #333; margin: 1rem 0; font-weight: 600; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.95rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f0f0f0; }
+    code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.9em; }
+    hr { border: none; border-top: 1px solid #ccc; margin: 2rem 0; }
+    ul { padding-left: 1.5rem; }
+    li { margin: 0.25rem 0; }
+    @media print { body { margin: 0; padding: 1rem; max-width: none; } h2 { page-break-before: auto; } table { page-break-inside: avoid; } }
+  </style>
+</head>
+<body>
+${body}
+</body>
+</html>`;
+}
+
 // ─── Main entry point ─────────────────────────────────────────────────────────
 
 /**
@@ -484,8 +505,13 @@ function renderReport({ hostName, scanDate, tier, narrative, findings, chains, c
  * @param {string}   opts.hostName    - Hostname/repo being scanned
  * @param {string}   [opts.scanDate]  - ISO date string (defaults to today)
  * @param {string}   [opts.tier]      - Scan tier label
- * @param {Function} opts.askClaude   - async (prompt) => string
- * @returns {Promise<{ markdown, summary, complianceGaps, sections }>}
+ * @param {Function} [opts.askClaude] - async (prompt) => string. Optional;
+ *                                       if omitted or it throws, the executive
+ *                                       narrative section is skipped and the
+ *                                       rest of the report still ships.
+ * @returns {Promise<{ markdown: string, html: string, summary: string,
+ *                     complianceGaps: object, sections: string[],
+ *                     riskLevel: string, counts: object }>}
  */
 async function generateCisoReport({ findings = [], chains = [], hostName = 'Unknown', scanDate, tier = 'Nuclear', askClaude }) {
   const date = scanDate || new Date().toISOString().slice(0, 10);
@@ -496,15 +522,18 @@ async function generateCisoReport({ findings = [], chains = [], hostName = 'Unkn
   for (const f of findings) counts[classifySeverity(f)] = (counts[classifySeverity(f)] || 0) + 1;
 
   let narrative = null;
-  try {
-    const prompt = buildNarrativePrompt({ hostName, scanDate: date, findings, chains });
-    const raw = await askClaude(prompt);
-    narrative = raw ? raw.trim() : null;
-  } catch {
-    // narrative failure is non-blocking — report ships without it
+  if (typeof askClaude === 'function') {
+    try {
+      const prompt = buildNarrativePrompt({ hostName, scanDate: date, findings, chains });
+      const raw = await askClaude(prompt);
+      narrative = raw ? raw.trim() : null;
+    } catch {
+      // narrative failure is non-blocking — report ships without it
+    }
   }
 
   const markdown = renderReport({ hostName, scanDate: date, tier, narrative, findings, chains, complianceGaps, roadmap });
+  const html = renderHtmlReport(markdown, hostName);
 
   const riskLevel = counts.Critical > 0 ? 'CRITICAL' :
     counts.High > 5 ? 'HIGH' :
@@ -515,6 +544,7 @@ async function generateCisoReport({ findings = [], chains = [], hostName = 'Unkn
 
   return {
     markdown,
+    html,
     summary,
     complianceGaps,
     sections: ['cover', 'executiveSummary', 'scorecard', 'owasp', 'soc2', 'cis', 'attackChains', 'roadmap', 'appendix'],
@@ -523,12 +553,27 @@ async function generateCisoReport({ findings = [], chains = [], hostName = 'Unkn
   };
 }
 
+/**
+ * Default repository path where the CISO report attaches inside the
+ * customer's auto-fix PR. Date-stamped so re-runs don't clobber each
+ * other.
+ *
+ * @param {string} [scanDate] - ISO date string (YYYY-MM-DD)
+ * @returns {string}
+ */
+function cisoReportPath(scanDate) {
+  const d = scanDate || new Date().toISOString().slice(0, 10);
+  return `gatetest-reports/ciso-board-report-${d}.md`;
+}
+
 module.exports = {
   generateCisoReport,
   buildComplianceGaps,
   buildNarrativePrompt,
   buildRoadmap,
   renderReport,
+  renderHtmlReport,
+  cisoReportPath,
   classifySeverity,
   OWASP_MAPPING,
   SOC2_MAPPING,

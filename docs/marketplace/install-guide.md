@@ -58,6 +58,11 @@ When the gate blocks and an Anthropic key is present, the action opens a follow-
 | `working-directory` | `.` | Repository sub-directory to scan. Useful for monorepos. |
 | `report-format` | `console` | Output format: `console`, `json`, `sarif`, or `junit`. |
 | `fail-on-warning` | `false` | When `true`, warning-severity findings also block the gate. |
+| `mutation` | `false` | When `true`, run mutation testing after the gate. Exercises the customer test runner. See Nuclear-tier deliverables below. |
+| `chaos` | `false` | When `true` AND `chaos-url` is set, run live-browser chaos / runtime checks. Installs Playwright Chromium on the runner. See Nuclear-tier deliverables below. |
+| `chaos-url` | `''` | Live URL to chaos-test (deployed staging or prod, NOT localhost). Required when `chaos: true`. |
+| `mutation-blocks-merge` | `false` | When `true`, a failing mutation score blocks the merge. Off by default — mutation testing is coaching, not a gate. |
+| `chaos-blocks-merge` | `false` | When `true`, chaos / runtime failures block the merge. Off by default — runtime resilience is graded, not binary. |
 
 ### Example: SARIF upload for GitHub Code Scanning
 
@@ -82,6 +87,68 @@ When the gate blocks and an Anthropic key is present, the action opens a follow-
   with:
     working-directory: ./apps/api
 ```
+
+---
+
+## Nuclear-tier deliverables via the Action
+
+Two of the four Nuclear-tier deliverables — mutation testing and chaos / runtime testing — only ship via the GitHub Action, not via the website-only Nuclear flow.
+
+**Why:** the website's Nuclear pipeline runs on Vercel serverless functions. Mutation testing needs to exercise the customer's own test runner; chaos testing needs to launch a Chromium browser against a live URL. Neither is safe or possible inside a stateless serverless function. Both run cleanly on a GitHub Actions runner, which has the customer test suite already checked out and can install browser binaries on demand.
+
+**Honest disclosure:** if you paid for Nuclear via the website (paste a repo URL, get a scan back), you receive per-finding Claude diagnosis + cross-finding correlation + executive summary, but mutation and chaos are **not** part of that flow. To get the full four-deliverable Nuclear experience, use the Action.
+
+### Mutation testing
+
+Mutation testing applies real code mutations (operator swaps, boundary changes, return-value flips) to your source files, then verifies that at least one of your tests fails for each mutation. If all tests still pass after a mutation, your test suite has a coverage gap that line-coverage alone cannot see.
+
+```yaml
+- uses: ccantynz-alt/gatetest@v1
+  with:
+    suite: nuclear
+    mutation: true
+    # mutation-blocks-merge defaults to false — failures surface as warnings.
+    # Flip to true to gate the merge on mutation score.
+    mutation-blocks-merge: false
+```
+
+Requirements:
+- Your test suite must be runnable in CI. The module auto-detects `npm test` or `node --test`.
+- Tests must pass on baseline. Mutation testing won't start with a red suite.
+- Reasonable runtime budget — the module caps at 50 mutants by default.
+
+### Chaos / runtime testing
+
+Chaos testing drives a real Chromium browser against a deployed URL and injects five resilience scenarios (slow network, API failures, offline mode, missing CSS/JS, server timeouts). It reports whether your site degrades gracefully or shows blank pages and error screens.
+
+```yaml
+- uses: ccantynz-alt/gatetest@v1
+  with:
+    suite: nuclear
+    chaos: true
+    chaos-url: 'https://staging.example.com'
+    # chaos-blocks-merge defaults to false — runtime failures surface as warnings.
+    chaos-blocks-merge: false
+```
+
+Requirements:
+- A deployed URL — `chaos-url` must be a real HTTPS endpoint reachable from the runner. **Do not point at `localhost`** — there's nothing there.
+- The Action installs Playwright Chromium on demand via `npx playwright install --with-deps chromium`. No setup on your side beyond setting `chaos: true`.
+
+### Both at once
+
+```yaml
+- uses: ccantynz-alt/gatetest@v1
+  with:
+    suite: nuclear
+    mutation: true
+    chaos: true
+    chaos-url: 'https://staging.example.com'
+  env:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Mutation and chaos run after the main gate verdict. They never change the gate verdict on their own — they have their own opt-in `*-blocks-merge` toggles.
 
 ---
 

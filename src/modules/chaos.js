@@ -25,12 +25,19 @@ class ChaosModule extends BaseModule {
 
   async run(result, config) {
     const chaosConfig = config.getModuleConfig('chaos') || {};
-    const baseUrl = chaosConfig.url || config.get('explorer.url') ||
+    // URL resolution order:
+    //   1. GATETEST_CHAOS_URL env var — used by the GitHub Action so customers
+    //      can wire a deployed URL without committing a .gatetest/config.json.
+    //   2. modules.chaos.url from config (the documented config path).
+    //   3. explorer.url / liveCrawler.url — share URL with sibling browser modules.
+    const baseUrl = process.env.GATETEST_CHAOS_URL ||
+                    chaosConfig.url ||
+                    config.get('explorer.url') ||
                     config.get('liveCrawler.url');
 
     if (!baseUrl) {
       result.addCheck('chaos:config', true, {
-        message: 'No URL configured — set modules.chaos.url in .gatetest/config.json',
+        message: 'No URL configured — set GATETEST_CHAOS_URL or modules.chaos.url in .gatetest/config.json',
       });
       return;
     }

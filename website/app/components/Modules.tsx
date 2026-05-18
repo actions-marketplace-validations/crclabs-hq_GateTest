@@ -26,7 +26,7 @@ const activeModules = [
   },
   {
     name: "Accessibility",
-    description: "WCAG 2.2 AAA — missing alt text, ARIA labels, keyboard traps, heading hierarchy.",
+    description: "WCAG 2.2 automated audit (AA + AAA-aligned) — missing alt text, ARIA labels, keyboard traps, heading hierarchy.",
     icon: "A",
   },
   {
@@ -139,7 +139,7 @@ export default function Modules() {
             What We Check
           </span>
           <h2 className="text-3xl sm:text-4xl font-bold mt-4 mb-4 text-foreground">
-            67 modules. <span className="gradient-text">Every scan.</span>
+            102 modules. <span className="gradient-text">Every scan.</span>
           </h2>
           <p className="text-muted text-lg max-w-2xl mx-auto">
             Source code analysis, AI review, infrastructure hardening, supply chain,

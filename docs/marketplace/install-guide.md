@@ -117,7 +117,7 @@ Set them in the `env:` block on the step or job — never commit secrets to the 
 | Suite | Modules | What runs | Typical use |
 | --- | --- | --- | --- |
 | `quick` | 4 critical modules | Secrets, syntax, dependencies, lint | PR gate on every push |
-| `full` | All 91 modules | Everything the gate ships with | Pre-merge to main, nightly scan |
+| `full` | All 102 modules | Everything the gate ships with | Pre-merge to main, nightly scan |
 | `scan_fix` | 91 + fix loop | Full scan plus iterative Claude fix loop, pair-review, architecture annotator | Customers on the $199 tier |
 | `nuclear` | 91 + correlation + adversarial | Full scan plus per-finding Claude diagnosis, cross-finding correlation, mutation testing, chaos/fuzz, executive summary | Customers on the $399 tier |
 
@@ -162,9 +162,9 @@ The action falls back to cloning the repo at runtime when `@gatetest/cli` is not
 | --- | --- | --- |
 | Free (OSS) | $0 | Full gate, public repos only |
 | Quick Scan | $29 | 4 critical modules, single scan |
-| Full Scan | $99 | All 91 modules, single scan |
-| Scan + Fix | $199 | 91 modules + iterative Claude fix loop, pair-review of every fix, architecture annotator |
-| Nuclear | $399 | 91 modules + per-finding Claude diagnosis, attack-chain correlation, mutation testing, chaos/fuzz, executive summary |
+| Full Scan | $99 | All 102 modules, single scan |
+| Scan + Fix | $199 | 102 modules + iterative Claude fix loop, pair-review of every fix, architecture annotator |
+| Nuclear | $399 | 102 modules + per-finding Claude diagnosis, attack-chain correlation, mutation testing, chaos/fuzz, executive summary |
 | Continuous | $49/month | Unlimited push-triggered scans |
 
 All paid tiers are pay-on-completion — you are only charged once a scan delivers. Sign up and manage subscriptions at https://gatetest.ai/pricing.

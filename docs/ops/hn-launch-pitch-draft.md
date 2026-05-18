@@ -66,7 +66,7 @@ plus a "fake-fix detector" that catches symptom-patching. Replaces
 Snyk + ESLint + axe + Lighthouse + Semgrep + Dependabot
 in a single gate decision: PASS or BLOCKED.
 
-Pricing: $29 Quick Scan, $99 Full Scan (all 90 modules), $199 Scan+Fix
+Pricing: $29 Quick Scan, $99 Full Scan (all 102 modules), $199 Scan+Fix
 (adds pair-review + architecture annotations), $399 Nuclear (real
 Claude diagnosis + cross-finding attack-chain correlation). Card hold
 at checkout, only charged after delivery. CLI is free (BYO Anthropic

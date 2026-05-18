@@ -24,7 +24,7 @@ const TILES: KillTile[] = [
   { tool: "Cypress", module: "e2e", blurb: "Browser E2E plus 89 things Cypress doesn't do." },
   { tool: "BrowserStack", module: "compatibility", blurb: "Cross-browser matrix, no monthly device farm bill." },
   { tool: "Lighthouse", module: "performance", blurb: "Perf, SEO, A11y unified — and gate-blocking, not advisory." },
-  { tool: "axe-core", module: "accessibility", blurb: "WCAG 2.2 AAA — built in, not a separate plugin." },
+  { tool: "axe-core", module: "accessibility", blurb: "WCAG 2.2 automated audit (AA + AAA-aligned) — built in, not a separate plugin." },
   { tool: "Renovate", module: "dependencies", blurb: "Polyglot freshness + CVE fix-PR, not just notifications." },
   { tool: "Dependabot", module: "dependencies", blurb: "Same scope, plus typosquats, license risks, lockfile drift." },
   { tool: "hadolint", module: "dockerfile", blurb: "Dockerfile lint + secrets + curl|sh + chmod 777 hunting." },
@@ -38,7 +38,7 @@ export default function HomeKills() {
       <div className="mx-auto max-w-6xl">
         <div className="text-center mb-12">
           <span className="text-sm font-semibold text-accent uppercase tracking-wider">
-            What it kills
+            What it replaces
           </span>
           <h2 className="text-3xl sm:text-4xl font-bold mt-4 mb-4 text-foreground">
             Twelve tools. <span className="gradient-text">One config.</span>

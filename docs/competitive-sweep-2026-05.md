@@ -58,7 +58,7 @@ CodeRabbit has the distribution lead — "the most installed AI code review app 
 
 5,000+ deterministic static analysis rules + AI review + autofix, 20+ languages. Claims the lowest false-positive rate. Per-seat pricing.
 
-**Impact:** DeepSource is the closest "many rules + autofix" competitor. They beat us on raw rule count (5,000 vs our 91 modules — different unit; their rules are atomic, our modules are families). They lose to us on: pay-on-completion, mutation testing, chaos, cross-finding correlation, Nuclear-tier diagnosis depth.
+**Impact:** DeepSource is the closest "many rules + autofix" competitor. They beat us on raw rule count (5,000 vs our 102 modules — different unit; their rules are atomic, our modules are families). They lose to us on: pay-on-completion, mutation testing, chaos, cross-finding correlation, Nuclear-tier diagnosis depth.
 
 ### Sweep — open-source, BYOM
 
@@ -80,7 +80,7 @@ Open-source. Customer picks the model, runs the infra, owns the prompt template.
 | Chaos / fuzz in gate | ✅ ($399 Nuclear) | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Executive summary single-doc | ✅ ($399 Nuclear) | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Pay-on-completion | ✅ ($29/99/199/399 per scan) | ❌ (per-developer seat) | ❌ (GHAS seat) | ❌ ($30/seat/mo) | ❌ (seat) | ❌ (seat) |
-| All-in-one (QA + sec + perf + a11y) | ✅ 91 modules | partial (security only) | ❌ (security only) | partial (no perf/a11y) | ❌ (review only) | ❌ (review only) |
+| All-in-one (QA + sec + perf + a11y) | ✅ 102 modules | partial (security only) | ❌ (security only) | partial (no perf/a11y) | ❌ (review only) | ❌ (review only) |
 | Self-improving fix pattern library | ✅ (this week — `lib/fix-pattern-recall.js`) | partial (dynamic few-shot) | ❌ | partial | partial (graph index) | ❌ |
 | Tech-stack auto-detection in prompt | ✅ (this week — `lib/stack-detector.js`) | ? (not documented) | ❌ | ❌ | ✅ (implicit via graph) | partial |
 | Per-scan spend cap | ✅ (this week — `lib/budget-tracker.js`) | n/a (different pricing) | n/a | n/a | n/a | n/a |
@@ -122,7 +122,7 @@ The April 2026 thesis line dies on 2026-05-26 when Snyk Agent Fix ships. Suggest
 
 > **"Snyk Code is the security scanner. CodeRabbit is the AI reviewer. GateTest is everything else — and the only one that bills by the scan instead of the seat."**
 >
-> One tool. 91 modules. Security, quality, performance, accessibility, supply chain, AI-safety. Iterative fix loop with mutation testing, chaos testing, and cross-finding correlation in the Nuclear tier. Pay $29 / $99 / $199 / $399 per scan — no subscriptions, no seats, no surprises.
+> One tool. 102 modules. Security, quality, performance, accessibility, supply chain, AI-safety. Iterative fix loop with mutation testing, chaos testing, and cross-finding correlation in the Nuclear tier. Pay $29 / $99 / $199 / $399 per scan — no subscriptions, no seats, no surprises.
 
 ---
 

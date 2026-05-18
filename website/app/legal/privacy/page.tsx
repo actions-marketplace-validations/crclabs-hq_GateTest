@@ -112,6 +112,31 @@ export default function Privacy() {
               <li>We do <strong>NOT</strong> use Google Analytics or similar tracking services</li>
               <li>We do <strong>NOT</strong> sell, rent, or trade any user data to third parties</li>
             </ul>
+
+            <h3 className="text-sm font-semibold text-foreground mt-3 mb-1">2.4 Distilled Fix Recipes (Cross-Customer Learning)</h3>
+            <p>
+              To improve our deterministic fix engine over time, GateTest may store small,
+              anonymised snippets of code patterns that our AI successfully repaired (typically
+              1&ndash;3 KB per pattern). Before storage these snippets are stripped of identifiers,
+              project names, file paths, and other potentially identifying values, and reduced to
+              a generic before/after transformation. The resulting snippets become deterministic
+              rules in our fix engine that benefit all customers &mdash; your scan&apos;s fixes
+              become faster and cheaper to produce, and so do everyone else&apos;s.
+            </p>
+            <p className="mt-2">
+              <strong>Opt-out:</strong> you can disable distillation for your runs by setting the
+              environment variable <code>GATETEST_DISTILL_OPT_OUT=1</code> in your CI environment
+              (or in the request body when calling our APIs directly). When this flag is set, no
+              snippets from your runs are stored, and the corresponding patterns do not feed back
+              into the shared fix-recipe store.
+            </p>
+            <p className="mt-2">
+              We do <strong>NOT</strong> store distilled snippets that retain customer identifiers,
+              repository URLs, customer-named symbols, secrets, or any data that could be used to
+              re-identify a specific customer or codebase. We do <strong>NOT</strong> resell the
+              recipe store as a standalone product, license it to third parties, or use it for any
+              purpose other than improving the fix engine for paying customers of GateTest.
+            </p>
           </section>
 
           <section>
@@ -513,6 +538,23 @@ export default function Privacy() {
                 <em>Governed by:</em> Neon Data Processing Addendum with SCCs for EU/UK transfers
                 where applicable.
                 <a href="https://neon.tech/privacy-policy" className="text-accent-light hover:underline ml-1" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+              </li>
+              <li>
+                <strong>Functional Software, Inc. (Sentry)</strong> (United States) — application
+                error tracking and performance monitoring for the gatetest.ai website and APIs.
+                <br />
+                <em>Sees:</em> stack traces of uncaught exceptions and unhandled rejections, HTTP
+                request metadata (URL, method, IP, user-agent, response code), browser session
+                replay samples (sampled, with form input masking), and release / deployment tags.
+                Local-variable values captured at the point of failure are passed through an
+                automated scrubber that strips request bodies, prompts, file contents, repository
+                URLs, API keys, tokens, secrets, cookies, and authorization headers BEFORE they
+                leave the GateTest process. We never intentionally send customer source code,
+                Claude prompts, or scan output to Sentry.
+                <br />
+                <em>Governed by:</em> Sentry Data Processing Addendum and Standard Contractual
+                Clauses for EU/UK transfers where applicable.
+                <a href="https://sentry.io/privacy/" className="text-accent-light hover:underline ml-1" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
               </li>
               <li>
                 <strong>Email delivery provider</strong> — transactional email delivery (scan

@@ -31,12 +31,12 @@ const scanPlans = [
     badge: "Most Popular",
     description:
       "Every module. Security, accessibility, SEO, AI code review, and more.",
-    modules: "All 90 modules",
+    modules: "All 102 modules",
 
     features: [
       "Everything in Quick Scan",
       "Security (OWASP, XSS, SQLi, SSRF, ReDoS, TLS, cookies)",
-      "Accessibility (WCAG 2.2 AAA)",
+      "Accessibility (WCAG 2.2 automated audit — AA + AAA-aligned)",
       "Supply chain — typosquats + license compliance",
       "IaC security — Dockerfile, K8s, Terraform",
       "CI/CD hardening — unpinned actions, permissions",
@@ -57,7 +57,7 @@ const scanPlans = [
     badge: "Deepest review",
     description:
       "Full Scan plus a second-Claude pair-review on every fix and a codebase-shape architecture report.",
-    modules: "All 90 + depth review",
+    modules: "All 102 + depth review",
     features: [
       "Everything in Full Scan",
       "Pair-review critique on every fix — second Claude scores correctness, completeness, readability, test coverage",
@@ -78,7 +78,7 @@ const scanPlans = [
     badge: "Maximum depth",
     description:
       "The deepest scan we offer. Real Claude diagnosis, attack-chain correlation, mutation testing, chaos pass, executive summary.",
-    modules: "All 90 + nuclear stack",
+    modules: "All 102 + nuclear stack",
     features: [
       "Everything in Scan + Fix",
       "Real Claude diagnosis on every finding — no templated snippets, every fix reasoned from your specific evidence",
@@ -93,10 +93,12 @@ const scanPlans = [
   },
 ];
 
-// Continuous tier — listed in CLAUDE.md revenue model.
-// Stripe wiring for the subscription product is pending Craig (Boss Rule
-// #6) so the CTA links to the GitHub App install flow rather than a
-// monthly-billing checkout. Price text remains $49/mo as authorised.
+// Continuous tier — listed in CLAUDE.md revenue model. Stripe subscription
+// wiring is pending Craig's authorization (Boss Rule #6), so the card is
+// shown as "Coming soon" and the CTA links to a notification sign-up
+// rather than monthly-billing checkout. Once subscriptions are live the
+// `comingSoon` flag here flips to false and the CTA returns to a real
+// install/checkout link.
 const continuousPlan = {
   name: "Continuous",
   price: "$49",
@@ -112,8 +114,9 @@ const continuousPlan = {
     "Pricing applied on top of a one-shot tier on demand",
     "Cancel anytime",
   ],
-  cta: "Install GitHub App",
-  href: "/github/setup",
+  cta: "Notify me when live",
+  href: "mailto:hello@gatetest.ai?subject=Notify%20me%20when%20Continuous%20%2449%2Fmo%20is%20live",
+  comingSoon: true,
 };
 
 const comingSoon = [
@@ -235,7 +238,7 @@ export default function Pricing() {
               <button
                 onClick={() => handleCheckout(plan.id)}
                 disabled={loading === plan.id}
-                className={`block w-full text-center py-3 px-5 rounded-xl font-semibold text-sm transition-all mb-6 cursor-pointer disabled:opacity-50 ${
+                className={`block w-full text-center py-3 px-5 rounded-xl font-semibold text-sm transition-all mb-2 cursor-pointer disabled:opacity-50 ${
                   plan.highlight
                     ? "btn-primary"
                     : "btn-secondary"
@@ -243,6 +246,12 @@ export default function Pricing() {
               >
                 {loading === plan.id ? "Redirecting..." : plan.cta}
               </button>
+              <p className="text-[11px] leading-snug text-muted mb-5 text-center">
+                By continuing you agree to our{" "}
+                <a href="/legal/terms" className="underline hover:text-foreground">Terms</a>,{" "}
+                <a href="/legal/privacy" className="underline hover:text-foreground">Privacy Policy</a>, and{" "}
+                <a href="/legal/refunds" className="underline hover:text-foreground">Refund Policy</a>.
+              </p>
 
               <ul className="space-y-2.5 mt-auto">
                 {plan.features.map((feature) => (
@@ -258,11 +267,18 @@ export default function Pricing() {
 
         {/* Continuous subscription — separate card, different commercial shape */}
         <div className="max-w-3xl mx-auto mb-12">
-          <div className="rounded-2xl border-2 border-dashed border-accent/30 bg-gradient-to-br from-accent/[0.04] to-transparent p-6 sm:p-8">
+          <div className="rounded-2xl border-2 border-dashed border-accent/30 bg-gradient-to-br from-accent/[0.04] to-transparent p-6 sm:p-8 opacity-90">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
               <div className="flex-1">
-                <div className="text-xs font-semibold text-accent uppercase tracking-wider mb-2">
-                  Subscription
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-semibold text-accent uppercase tracking-wider">
+                    Subscription
+                  </span>
+                  {continuousPlan.comingSoon && (
+                    <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                      Coming soon
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-xl font-bold text-foreground mb-1">
                   {continuousPlan.name}

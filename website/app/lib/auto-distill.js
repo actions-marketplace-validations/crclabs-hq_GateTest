@@ -276,6 +276,15 @@ function fileExtOf(filePath) {
  */
 function distillClaudeFix({ issue, originalContent, patchedContent, recipeStorePath, originalModel }) {
   try {
+    // Privacy opt-out: customer sets GATETEST_DISTILL_OPT_OUT=1 in CI to keep
+    // their fix snippets out of the shared recipe store. Documented in the
+    // privacy policy under section 2.4 (Distilled Fix Recipes).
+    const optOutEnv = (arguments[0] && arguments[0].env) || process.env;
+    const optOutFlag = optOutEnv && optOutEnv.GATETEST_DISTILL_OPT_OUT;
+    if (optOutFlag === '1' || optOutFlag === 'true' || optOutFlag === 'TRUE') {
+      return { written: false, reason: 'opt-out' };
+    }
+
     if (!issue || typeof issue !== 'object') return { written: false, reason: 'no-issue' };
     if (typeof originalContent !== 'string' || typeof patchedContent !== 'string') {
       return { written: false, reason: 'bad-content' };

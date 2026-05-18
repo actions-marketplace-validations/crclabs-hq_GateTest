@@ -172,6 +172,46 @@ describe('auto-distill — distillClaudeFix', () => {
       recipeStorePath: store,
     }));
   });
+
+  it('honours the GATETEST_DISTILL_OPT_OUT=1 env var (privacy opt-out)', () => {
+    const out = distillClaudeFix({
+      issue: { ruleKey: 'js-reject-unauthorized', module: 'tlsSecurity', file: 'src/foo.js' },
+      originalContent: REJECT_FIXTURE.before,
+      patchedContent: REJECT_FIXTURE.after,
+      recipeStorePath: store,
+      env: { GATETEST_DISTILL_OPT_OUT: '1' },
+    });
+    assert.strictEqual(out.written, false);
+    assert.strictEqual(out.reason, 'opt-out');
+    // Store file should not be touched (no recipe persisted).
+    const fsCheck = require('node:fs');
+    assert.strictEqual(fsCheck.existsSync(store), false);
+  });
+
+  it('also accepts "true" / "TRUE" as opt-out values', () => {
+    for (const v of ['true', 'TRUE']) {
+      const out = distillClaudeFix({
+        issue: { ruleKey: 'js-reject-unauthorized', module: 'tlsSecurity', file: 'src/foo.js' },
+        originalContent: REJECT_FIXTURE.before,
+        patchedContent: REJECT_FIXTURE.after,
+        recipeStorePath: store,
+        env: { GATETEST_DISTILL_OPT_OUT: v },
+      });
+      assert.strictEqual(out.written, false);
+      assert.strictEqual(out.reason, 'opt-out');
+    }
+  });
+
+  it('does NOT opt out when the env var is unset or empty', () => {
+    const out = distillClaudeFix({
+      issue: { ruleKey: 'js-reject-unauthorized', module: 'tlsSecurity', file: 'src/foo.js' },
+      originalContent: REJECT_FIXTURE.before,
+      patchedContent: REJECT_FIXTURE.after,
+      recipeStorePath: store,
+      env: { GATETEST_DISTILL_OPT_OUT: '' },
+    });
+    assert.strictEqual(out.written, true);
+  });
 });
 
 describe('auto-distill — promotion', () => {

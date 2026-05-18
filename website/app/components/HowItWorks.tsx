@@ -18,29 +18,29 @@ const steps = [
   },
   {
     step: "02",
-    title: "GateTest runs 67 modules",
+    title: "GateTest runs 102 modules",
     description:
-      "One command triggers every check — syntax, security, accessibility, supply chain, auth flaws, CI hardening, and 16 more. Every module runs. Every check is recorded.",
+      "One command triggers every check — syntax, security, accessibility, supply chain, auth flaws, CI hardening, and dozens more. Every module runs. Every check is recorded.",
     code: `$ gatetest --suite full
 
 [PASS] syntax         — 47 checks
 [PASS] lint           — 183 checks
 [PASS] secrets        — 312 files scanned
 [PASS] security       — 0 vulnerabilities
-[PASS] accessibility  — WCAG 2.2 AAA
+[PASS] accessibility  — WCAG 2.2 automated audit
 [PASS] maliciousDeps  — 0 typosquats
 [PASS] iacSecurity    — Dockerfiles clean
 [PASS] authFlaws      — no JWT/cookie issues
-...14 more modules passed`,
+...modules continue ...`,
   },
   {
     step: "03",
     title: "Gate decides: PASS or BLOCKED",
     description:
-      "Zero tolerance. One failure in any of the 67 modules blocks the entire pipeline. No overrides. No \"ship it anyway.\" The gate produces a timestamped report with full evidence.",
+      "Zero tolerance. One failure in any of the 102 modules blocks the entire pipeline. No overrides. No \"ship it anyway.\" The gate produces a timestamped report with full evidence.",
     code: `GATE: PASSED
 
-Modules: 67/67 passed
+Modules: 102/102 passed
 Checks:  847/847 passed
 Time:    2.1s
 

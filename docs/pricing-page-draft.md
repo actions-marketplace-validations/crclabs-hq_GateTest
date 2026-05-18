@@ -30,7 +30,7 @@ What's NOT included:
 
 What's included:
 - Everything in Free
-- Full scan reports (all 101 modules visible)
+- Full scan reports (all 102 modules visible)
 - **$10 of auto-fix credit included** (~30 fixes at typical cost)
 - Continuous scanning: weekly auto-scan on every project
 - Email alerts on new CVEs affecting your stack

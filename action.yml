@@ -1,7 +1,7 @@
 # ============================================================================
 # GateTest — Composite GitHub Action
 # ============================================================================
-# Lets any repo run the GateTest gate (91 modules) with a single
+# Lets any repo run the GateTest gate (102 modules) with a single
 # `uses: ccantynz-alt/gatetest@v1` line in their workflow.
 #
 # Optional AI auto-repair: when `auto-fix: true` AND the gate blocks AND
@@ -14,7 +14,7 @@
 # ============================================================================
 
 name: 'GateTest Quality Gate'
-description: '91-module AI-powered quality gate with self-healing CI'
+description: '102-module AI-powered quality gate with self-healing CI'
 author: 'GateTest (gatetest.ai)'
 
 branding:
@@ -23,7 +23,7 @@ branding:
 
 inputs:
   suite:
-    description: 'Which GateTest suite to run: quick (4 modules) / full (91) / scan_fix / nuclear'
+    description: 'Which GateTest suite to run: quick (4 modules) / full (102) / scan_fix / nuclear'
     required: false
     default: 'quick'
   auto-fix:

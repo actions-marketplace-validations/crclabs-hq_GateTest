@@ -356,7 +356,7 @@ function formatForGitHubIssue(findings, opts = {}) {
     '',
     meta,
     '',
-    '> Filed automatically from a [GateTest](https://gatetest.ai) scan. GateTest runs 90 modules covering security, supply-chain, accessibility, infra hygiene, AI-app safety, and more.',
+    '> Filed automatically from a [GateTest](https://gatetest.ai) scan. GateTest runs 102 modules covering security, supply-chain, accessibility, infra hygiene, AI-app safety, and more.',
     '',
     `**Summary:** ${c.total} finding${c.total === 1 ? '' : 's'} — ${c.error} error${c.error === 1 ? '' : 's'}, ${c.warning} warning${c.warning === 1 ? '' : 's'}, ${c.info} info.`,
     '',

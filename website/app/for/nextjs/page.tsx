@@ -67,7 +67,7 @@ const nextjsModules = [
   },
   {
     name: "accessibility",
-    label: "Accessibility (WCAG 2.2 AAA)",
+    label: "Accessibility (WCAG 2.2 automated audit — AA + AAA-aligned)",
     description: "Full accessibility audit — missing alt text, ARIA label gaps, keyboard navigation, focus indicators, color contrast, and structured landmark regions.",
     tag: "UX",
   },
@@ -183,7 +183,7 @@ export default function NextJsPage() {
           </h1>
           <p className="text-lg text-white/60 max-w-2xl leading-relaxed">
             GateTest understands Next.js — App Router conventions, server actions, Vercel deployment config,
-            next.config.js security headers, and NEXT_PUBLIC_* environment variable exposure. 90 modules
+            next.config.js security headers, and NEXT_PUBLIC_* environment variable exposure. 102 modules
             built for the way modern Next.js apps are actually structured.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 mt-8">
@@ -310,7 +310,7 @@ export default function NextJsPage() {
             Ship Next.js apps with confidence.
           </h2>
           <p className="text-white/60 mb-8 max-w-xl mx-auto">
-            90 modules, App Router awareness, AI-powered review, auto-fix PRs. Pay only when results are delivered.
+            102 modules, App Router awareness, AI-powered review, auto-fix PRs. Pay only when results are delivered.
           </p>
           <Link
             href="/"

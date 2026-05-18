@@ -18,7 +18,7 @@ GateTest
 *(140 characters max — shown in search results and the Marketplace card)*
 
 ```
-67-module AI-powered code quality gate. Catches security issues, bugs, and bad patterns before they reach production.
+102-module AI-powered code quality gate. Catches security issues, bugs, and bad patterns before they reach production.
 ```
 
 ---
@@ -29,7 +29,7 @@ GateTest
 ```markdown
 ## The only gate your repo needs
 
-GateTest scans every push and pull request through **67 specialised modules** in seconds — then posts a commit status and a full report directly to your PR. One check. One decision. Pass or blocked.
+GateTest scans every push and pull request through **102 specialised modules** in seconds — then posts a commit status and a full report directly to your PR. One check. One decision. Pass or blocked.
 
 ### What it catches that your current tools miss
 
@@ -79,17 +79,13 @@ GateTest is **free to install**. Scans are available on [gatetest.ai](https://ga
 | Plan | Price | What you get |
 |------|-------|-------------|
 | Quick Scan | $29 | 4 core modules — fast gate |
-| Full Scan | $99 | All 67 modules |
-| Scan + Fix | $199 | 67 modules + auto-fix PR |
+| Full Scan | $99 | All 102 modules |
+| Scan + Fix | $199 | 102 modules + auto-fix PR |
 | Continuous | $49/mo | Scan every push, automatically |
 
-### Why developers switch
+### Where it runs today
 
-> *"We duct-taped ESLint, Snyk, and Lighthouse together for two years. GateTest replaced all three with one config file."*
-
-> *"Caught a hardcoded Stripe key in a junior dev's PR before it hit main. Paid for itself in the first scan."*
-
-> *"The N+1 detector alone found 12 unindexed queries in our first scan. Our p99 latency dropped 40%."*
+Used internally by Crontech.ai and Gluecron.com (real, owner-attributed deployments). Customer quotes will be added after the first cohort of paying customers — we will not publish fabricated or anonymous testimonials.
 
 ### Built for AI-assisted teams
 
@@ -169,7 +165,7 @@ https://gatetest.ai/docs/api
 
 1. **PR check passing** — GitHub PR page showing the GateTest check as green ✓
 2. **PR comment with issues** — the formatted report comment on a PR with real findings
-3. **Module breakdown** — the scan results page on gatetest.ai showing all 67 modules
+3. **Module breakdown** — the scan results page on gatetest.ai showing all 102 modules
 4. **Blocked PR** — a PR blocked with specific issues listed (secrets, N+1, etc.)
 5. **Install flow** — the gatetest.ai/github/setup page
 

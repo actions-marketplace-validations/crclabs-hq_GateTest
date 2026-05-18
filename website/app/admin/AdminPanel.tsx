@@ -591,7 +591,7 @@ export default function AdminPanel({ adminLogin }: AdminPanelProps) {
                   className="px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-900 focus:border-emerald-500 focus:outline-none text-sm"
                 >
                   <option value="quick">Quick (39 modules)</option>
-                  <option value="full">Full (90 modules)</option>
+                  <option value="full">Full (102 modules)</option>
                 </select>
                 <button
                   onClick={runScan}

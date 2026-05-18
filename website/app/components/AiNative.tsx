@@ -21,7 +21,7 @@ const aiIssues = [
   },
   {
     issue: "Incomplete accessibility",
-    description: "AI forgets alt text, ARIA labels, and focus management. GateTest enforces WCAG 2.2 AAA.",
+    description: "AI forgets alt text, ARIA labels, and focus management. GateTest runs a WCAG 2.2 automated audit (AA + AAA-aligned) and blocks the gate on failures.",
     icon: "A",
   },
   {

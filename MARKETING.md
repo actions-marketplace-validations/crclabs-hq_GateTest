@@ -57,7 +57,7 @@ patterns AI gets wrong before they touch production.
 | integrationTests | API & service integration tests |
 | e2e | Playwright/Cypress/Puppeteer integration |
 | visual | Layout shifts, fonts, z-index, design tokens, viewports |
-| accessibility | WCAG 2.2 AAA — alt text, ARIA, focus, contrast |
+| accessibility | WCAG 2.2 automated audit (AA + AAA-aligned) — alt text, ARIA, focus, contrast |
 | performance | Bundle budgets, Core Web Vitals, Lighthouse scores |
 | security | OWASP patterns, dependency CVEs, CSP, XSS/SQLi |
 | seo | Meta tags, Open Graph, sitemaps, structured data |
@@ -93,7 +93,7 @@ patterns AI gets wrong before they touch production.
 6. **CLAUDE.md as single source of truth** — All quality thresholds, checklists,
    and gate rules live in one human-readable file that's enforced automatically.
 
-7. **80-90% ahead of any single competitor** — Because we cover 16x the scope.
+7. **Designed to consolidate a dozen single-purpose QA tools into one gate.** — One install, one report, one bill across security, quality, dependencies, accessibility, performance, AI safety, and infrastructure hardening.
 
 ---
 
@@ -134,9 +134,9 @@ No other QA tool on earth offers this. It's our killer advantage.
 | Tier | Modules | What They Get | Price |
 |------|---------|---------------|-------|
 | **Quick Scan** | 4 (syntax, lint, secrets, code quality) | Report + pass/fail | **$29** |
-| **Full Scan** | All 20 modules | Full report, SARIF, JUnit | **$99** |
-| **Scan + Fix** | All 20 modules + auto-fix | Report + PR with fixes applied | **$199** |
-| **Nuclear** | 20 modules + crawl + mutation + fix | Everything. The works. | **$399** |
+| **Full Scan** | All 102 modules | Full report, SARIF, JUnit | **$99** |
+| **Scan + Fix** | All 102 modules + auto-fix | Report + PR with fixes applied | **$199** |
+| **Nuclear** | 102 modules + crawl + mutation + fix | Everything. The works. | **$399** |
 
 ### Recurring tier — after first scan proves value
 
@@ -210,7 +210,7 @@ You only pay when the scan completes.
 
 ### How it works section
 1. **Point us at your repo** — GitHub URL, that's it
-2. **We scan everything** — 20 modules, 200+ checks, security to accessibility
+2. **We scan everything** — 102 modules, 800+ checks, security to accessibility
 3. **Get your report** — PASS or BLOCKED, with every issue detailed
 4. **We fix it** — Auto-fix PR lands in your repo (Scan+Fix tier)
 5. **Pay only if we deliver** — Card hold released if scan can't complete
@@ -230,7 +230,7 @@ accessibility. GateTest catches every one of these AND fixes them automatically.
 
 ### Pricing section
 - **Quick Scan** ($29): 4 modules, instant report
-- **Full Scan** ($99): All 20 modules, full report
+- **Full Scan** ($99): All 102 modules, full report
 - **Scan + Fix** ($199): Full scan + auto-fix PR — MOST POPULAR
 - **Nuclear** ($399): Everything including mutation testing and live crawl
 - **Continuous** ($49/mo): Scan every push, dashboard, alerts

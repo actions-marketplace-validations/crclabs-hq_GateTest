@@ -8,7 +8,7 @@
  *   - Sample-URL chips pre-fill so visitors can try the product without typing.
  *   - Honest counter row — no fabricated numbers; "Launching today" badge if no
  *     real data is available.
- *   - Substance over polish: every claim ties to a real artefact (91 modules,
+ *   - Substance over polish: every claim ties to a real artefact (102 modules,
  *     3500+ tests, self-scan green, pay-on-completion).
  *   - Dark theme preserved. Animated grid background retained.
  *   - Mobile-first; 320px ↔ 2560px.
@@ -57,25 +57,26 @@ export default function Hero() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
               </span>
-              <span>Launching today &middot; v1.42 &middot; 91 modules live</span>
+              <span>Launching today &middot; v1.42 &middot; 102 modules live</span>
             </div>
           </div>
 
           {/* Headline — the claim, not a slogan */}
           <h1 className="text-center text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05] mb-6 fade-up text-white">
-            One gate. <span className="hero-accent-text">91 modules.</span>
+            One gate. <span className="hero-accent-text">102 modules.</span>
             <br />
             Self-healing CI.
           </h1>
 
           {/* Unfair-advantage hook */}
           <p className="text-center text-xl sm:text-2xl text-white/65 max-w-3xl mx-auto mb-3 leading-snug fade-up font-medium">
-            Pay only if we fix it.
+            Pay only when the scan delivers.
           </p>
           <p className="text-center text-base sm:text-lg text-white/45 max-w-2xl mx-auto mb-10 leading-relaxed fade-up">
             Scan your repo or any public site. We find bugs, security issues,
-            and CI rot. Then we open a PR that fixes them. Card hold released
-            if we can&apos;t deliver.
+            and CI rot. On Scan + Fix and Nuclear tiers we open a PR with the
+            fixes we can ship. If the scan fails to complete, your card hold
+            is released.
           </p>
 
           {/* Primary CTA: the live URL scan, in-hero */}
@@ -120,7 +121,7 @@ export default function Hero() {
                 label="Self-scan"
                 value="GREEN"
                 tone="ok"
-                detail="91/91 modules"
+                detail="102/102 modules"
               />
               <StatusCell
                 label="Tests passing"

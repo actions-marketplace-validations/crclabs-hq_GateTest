@@ -125,6 +125,27 @@ const { generateCisoReport, cisoReportPath } = require("@/app/lib/ciso-report-ge
   cisoReportPath: (scanDate?: string) => string;
 };
 
+// Phase 3.2 — cross-finding correlation engine. Identifies attack
+// chains across the full Nuclear-tier findings set (one Claude call,
+// independent of the per-finding diagnoser). Wired into /api/scan/fix
+// so the CISO report receives real chains instead of an empty array.
+// Failure is non-blocking — Nuclear deliverable still ships; CISO
+// report rendered with chains:[] and a placeholder note in the PR body.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { correlateForCisoChains } = require("@/app/lib/ciso-correlator-bridge") as {
+  correlateForCisoChains: (opts: {
+    tier?: string;
+    findings: Array<{ detail: string; module?: string; severity?: string }>;
+    hostname?: string;
+    askClaude: (prompt: string) => Promise<string>;
+    timeoutMs?: number;
+  }) => Promise<{
+    chains: Array<{ title: string; severity: string; findingNumbers: number[]; findingsInvolved: string[]; impact: string; fixOrder: string }>;
+    note: string | null;
+    skipped: boolean;
+  }>;
+};
+
 // Phase 1.4 — PR-body composer. Builds the structured markdown report
 // from every artifact this route collects (fixes, errors, attempt
 // history, gate results, before/after findings, regression tests).
@@ -1534,12 +1555,31 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        // Phase 3.2 wire-up — run cross-finding correlation BEFORE the
+        // CISO report so chains can flow into the report's attack-chain
+        // section. ONE Claude call, budget-bounded by a 30s timeout.
+        // Fail-soft: any error / timeout / parse failure returns
+        // chains:[] with a human-readable note. The Nuclear deliverable
+        // STILL ships either way — chains are an additive lift on top
+        // of the per-finding diagnosis the CISO report already covers.
+        const correlationResult = await correlateForCisoChains({
+          tier: "nuclear",
+          findings: cisoFindings.map((f) => ({ detail: f.detail, module: f.module, severity: f.severity })),
+          hostname: `${owner}/${repo}`,
+          askClaude: askClaudeForTest,
+        });
+        if (correlationResult.note) {
+          // Surface the honest reason in the PR body so customers see
+          // why their CISO report rendered without chains. Not a hard
+          // error — just an advisory.
+          errors.push(`CISO attack-chain correlation: ${correlationResult.note}`);
+        }
+
         const cisoResult = await generateCisoReport({
           findings: cisoFindings,
-          // Attack chains are produced by the Nuclear server-fix route; the
-          // /api/scan/fix path doesn't compute them today. Future: pass
-          // through when the orchestrator wires correlator output here.
-          chains: [],
+          // Real chains from the correlator. Empty array = "findings
+          // appear independent" (an honest outcome, not a failure).
+          chains: correlationResult.chains,
           hostName: `${owner}/${repo}`,
           tier: "Nuclear",
           askClaude: askClaudeForTest,

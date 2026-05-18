@@ -236,7 +236,7 @@ export default function SnykPage() {
               },
               {
                 title: "Auto-fix for source code bugs",
-                body: "Snyk can open a PR to bump a dependency version. GateTest writes a fix for the source code bug — adds the SSRF validation guard, removes the TLS bypass, restructures the N+1 query into a batched lookup — and opens the PR for your review.",
+                body: "Snyk can open a PR to bump a dependency version. At the Scan + Fix tier ($199) and Nuclear ($399), GateTest writes a fix for the source code bug — adds the SSRF validation guard, removes the TLS bypass, restructures the N+1 query into a batched lookup — and opens the PR for your review.",
               },
               {
                 title: "One bill, 102 modules",

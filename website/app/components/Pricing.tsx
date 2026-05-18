@@ -9,7 +9,7 @@ const scanPlans = [
     price: "$29",
     period: "per scan",
     description:
-      "Essential checks. Syntax, linting, secrets, and code quality.",
+      "Essential checks. Syntax, linting, secrets, and code quality. Scan-only — no auto-fix.",
     modules: "4 modules",
     features: [
       "Syntax & compilation validation",
@@ -17,7 +17,7 @@ const scanPlans = [
       "Secret & credential detection",
       "Code quality analysis",
       "Detailed report with file & line numbers",
-      "AI auto-fix PR included",
+      "Scan-only — auto-fix is a Scan + Fix tier feature",
       "Pay only when scan completes",
     ],
     cta: "Run Quick Scan",
@@ -30,7 +30,7 @@ const scanPlans = [
     period: "per scan",
     badge: "Most Popular",
     description:
-      "Every module. Security, accessibility, SEO, AI code review, and more.",
+      "Every module. Security, accessibility, SEO, AI code review, and more. Scan-only — no auto-fix.",
     modules: "All 102 modules",
 
     features: [
@@ -44,7 +44,7 @@ const scanPlans = [
       "Migration safety — dangerous SQL patterns",
       "Flaky test detector",
       "AI code review by Claude",
-      "AI auto-fix PR — Claude opens a PR with the fixes",
+      "Scan-only — auto-fix is a Scan + Fix tier feature",
     ],
     cta: "Run Full Scan",
     highlight: true,
@@ -176,8 +176,9 @@ export default function Pricing() {
             Pay when it&apos;s done. <span className="gradient-text">Not before.</span>
           </h2>
           <p className="text-muted text-lg max-w-2xl mx-auto">
-            We hold your card, run the scan, deliver the report, and Claude opens the fix PR.
-            If we can&apos;t complete it, you pay nothing.
+            We hold your card, run the scan, and deliver the report. On Scan + Fix
+            and Nuclear tiers Claude also opens the fix PR. If we can&apos;t complete
+            it, you pay nothing.
           </p>
         </div>
 
@@ -335,8 +336,9 @@ export default function Pricing() {
 
         {/* Bottom trust line */}
         <p className="text-center text-xs text-muted mt-10">
-          All scans include a detailed report and an AI fix PR. Payments processed securely via Stripe.
-          Card hold released immediately if scan cannot complete.
+          All scans include a detailed report. The AI fix PR is included on the
+          Scan + Fix ($199) and Nuclear ($399) tiers. Payments processed securely
+          via Stripe. Card hold released immediately if scan cannot complete.
         </p>
       </div>
     </section>

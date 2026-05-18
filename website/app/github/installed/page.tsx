@@ -20,7 +20,7 @@ export default function Installed() {
         </h1>
         <p className="text-lg text-muted mb-8">
           Every push and pull request will now be automatically scanned by
-          90 quality modules. Results appear as commit statuses and PR comments.
+          102 quality modules. Results appear as commit statuses and PR comments.
         </p>
 
         {/* What happens next */}

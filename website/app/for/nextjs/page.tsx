@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Code Quality for Next.js Apps — GateTest",
   description:
-    "90 checks built for Next.js: App Router route validation, React Hook exhaustive-deps, TypeScript strict mode, Core Web Vitals, OpenGraph tags, accessibility, security headers, and AI-powered fixes.",
+    "102 checks built for Next.js: App Router route validation, React Hook exhaustive-deps, TypeScript strict mode, Core Web Vitals, OpenGraph tags, accessibility, security headers. AI-powered fixes at the Scan + Fix tier and above.",
   keywords: [
     "Next.js code quality",
     "Next.js testing",
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Code Quality for Next.js Apps — GateTest",
     description:
-      "90 checks built for Next.js: App Router route validation, React Hook exhaustive-deps, TypeScript strict mode, Core Web Vitals, OpenGraph tags, accessibility, security headers, and AI-powered fixes.",
+      "102 checks built for Next.js: App Router route validation, React Hook exhaustive-deps, TypeScript strict mode, Core Web Vitals, OpenGraph tags, accessibility, security headers. AI-powered fixes at the Scan + Fix tier and above.",
     url: "https://gatetest.ai/for/nextjs",
     siteName: "GateTest",
     type: "website",
@@ -310,7 +310,7 @@ export default function NextJsPage() {
             Ship Next.js apps with confidence.
           </h2>
           <p className="text-white/60 mb-8 max-w-xl mx-auto">
-            102 modules, App Router awareness, AI-powered review, auto-fix PRs. Pay only when results are delivered.
+            102 modules, App Router awareness, AI-powered review on every paid tier, and AI auto-fix PRs at the Scan + Fix tier ($199) and Nuclear ($399). Pay only when results are delivered.
           </p>
           <Link
             href="/"

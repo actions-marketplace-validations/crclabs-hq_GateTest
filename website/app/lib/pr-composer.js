@@ -323,7 +323,7 @@ function composePrBody(opts) {
   sections.push('');
   sections.push('### How GateTest works');
   sections.push('');
-  sections.push('1. **Scan** — your repo runs through up to 90 quality / security / hygiene modules.');
+  sections.push('1. **Scan** — your repo runs through up to 102 quality / security / hygiene modules.');
   sections.push('2. **Iterative fix loop** — for every finding, Claude attempts a fix, GateTest re-checks the file, and if quality drops, Claude sees the failure and tries again. Up to N attempts (default 3).');
   sections.push('3. **Syntax gate** — every accepted fix is parsed before commit. Broken-syntax fixes are rolled back, never shipped.');
   sections.push('4. **Cross-file scanner gate** — all accepted fixes are applied to a synthetic post-fix workspace and re-scanned together. Any fix that introduces a new finding the original scan didn\'t have is rolled back.');

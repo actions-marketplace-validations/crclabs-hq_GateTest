@@ -5,7 +5,7 @@
  * 1. Customer selects a scan tier and provides repo URL
  * 2. This route creates a Stripe Checkout Session with capture_method: manual
  * 3. Customer completes payment → Stripe holds the funds
- * 4. GateTest runs the scan (and AI fix on Full Scan)
+ * 4. GateTest runs the scan (and AI fix on Scan + Fix and Nuclear tiers)
  * 5. Scan succeeds → capture the payment
  * 6. Scan fails → cancel the payment intent (hold released)
  *
@@ -48,7 +48,7 @@ const TIERS: Record<string, ScanTier> = {
     priceInCents: 9900,
     modules: "all-102",
     description:
-      "All 102 modules — security, supply chain, auth, CI hardening, AI review, and more. AI auto-fix PR included.",
+      "All 102 modules — security, supply chain, auth, CI hardening, AI review, and more. Scan-only (no auto-fix — that ships at Scan + Fix $199 and above).",
   },
   // Phase 2.3 — $199 Scan + Fix tier. Wired in once Phase 2.1 (pair-review),
   // 2.2 (architecture annotator), and 2.4 (4/3 real-repo proofs validated:

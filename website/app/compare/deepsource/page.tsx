@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "GateTest vs DeepSource — AI-Native Code Quality in 2026",
   description:
-    "DeepSource finds issues. GateTest finds AND fixes them. 102 modules, pay-on-completion pricing, no per-seat licensing, AI-powered auto-fix PRs created in seconds.",
+    "DeepSource finds issues. GateTest finds them and — at the Scan + Fix tier ($199) and above — fixes them. 102 modules, pay-on-completion pricing, no per-seat licensing, AI auto-fix PRs created in seconds.",
   keywords: [
     "DeepSource alternative",
     "DeepSource vs GateTest",
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "GateTest vs DeepSource — AI-Native Code Quality in 2026",
     description:
-      "DeepSource finds issues. GateTest finds AND fixes them. 102 modules, pay-on-completion pricing, no per-seat licensing, AI-powered auto-fix PRs.",
+      "DeepSource finds issues. GateTest finds them and — at the Scan + Fix tier ($199) and above — fixes them. 102 modules, pay-on-completion pricing, no per-seat licensing, AI auto-fix PRs.",
     url: "https://gatetest.ai/compare/deepsource",
     siteName: "GateTest",
     type: "website",
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
 const faqItems = [
   {
     q: "What does GateTest do that DeepSource doesn't?",
-    a: "GateTest's key advantages over DeepSource: AI-powered code review using Claude (DeepSource uses static analysis, not generative AI), auto-fix PRs that write actual code changes (DeepSource shows issues, not fixes), pay-per-scan pricing (DeepSource is subscription per-seat), coverage of performance/visual regression/chaos testing/mutation testing (DeepSource is code quality and security only), and prompt/LLM safety scanning for AI apps.",
+    a: "GateTest's key advantages over DeepSource: AI-powered code review using Claude (DeepSource uses static analysis, not generative AI), AI auto-fix PRs at the Scan + Fix tier ($199) and Nuclear ($399) that write actual code changes (DeepSource shows issues, not fixes), pay-per-scan pricing (DeepSource is subscription per-seat), coverage of performance/visual regression/chaos testing/mutation testing (DeepSource is code quality and security only), and prompt/LLM safety scanning for AI apps.",
   },
   {
     q: "DeepSource has a free tier. Does GateTest?",
@@ -129,7 +129,7 @@ export default function DeepSourcePage() {
           </h1>
           <p className="text-lg text-white/60 max-w-2xl leading-relaxed">
             DeepSource is a solid static analysis tool. GateTest is an AI-native quality platform:
-            102 modules, generative AI code review using Claude, auto-fix PRs that write real code,
+            102 modules, generative AI code review using Claude, AI auto-fix PRs that write real code at the Scan + Fix tier ($199) and Nuclear ($399),
             and pay-on-completion pricing with no per-seat subscriptions.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 mt-8">
@@ -215,7 +215,7 @@ export default function DeepSourcePage() {
             {[
               {
                 title: "Fixes, not just findings",
-                body: "DeepSource Autofix covers a subset of its own analysis rules. GateTest's AI auto-fix covers everything it finds: security misconfigs, N+1 queries, accessibility violations, code quality issues, TypeScript strictness regressions — any issue GateTest detects, it can write a fix for and open as a PR.",
+                body: "DeepSource Autofix covers a subset of its own analysis rules. At the Scan + Fix tier ($199) and Nuclear ($399), GateTest's AI auto-fix covers everything it finds: security misconfigs, N+1 queries, accessibility violations, code quality issues, TypeScript strictness regressions — any issue GateTest detects, it can write a fix for and open as a PR.",
               },
               {
                 title: "Pay for what you use",
@@ -265,7 +265,7 @@ export default function DeepSourcePage() {
             Find issues. Fix issues. Ship faster.
           </h2>
           <p className="text-white/60 mb-8 max-w-xl mx-auto">
-            102 modules, AI-powered review, auto-fix PRs — all in one scan. Pay only when results are delivered.
+            102 modules and AI-powered review on every paid tier. AI auto-fix PRs at Scan + Fix ($199) and Nuclear ($399). Pay only when results are delivered.
           </p>
           <Link
             href="/"

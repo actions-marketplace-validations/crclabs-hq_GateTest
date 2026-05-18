@@ -31,10 +31,10 @@ const SUITE_DESCRIPTIONS = {
 };
 
 const TIER_DESCRIPTIONS = {
-  quick:    { label: 'Quick',     priceUsd: 29,  description: 'Top issues, free preview, fast feedback' },
-  full:     { label: 'Full',      priceUsd: 99,  description: 'Every clustered issue + fix instructions + health score' },
-  scan_fix: { label: 'Scan + Fix', priceUsd: 199, description: 'Full + pair-review + architecture annotation' },
-  nuclear:  { label: 'Nuclear',   priceUsd: 399, description: 'Full + Claude diagnosis + attack-chain correlation + mutation + chaos + executive summary' },
+  quick:    { label: 'Quick',     priceUsd: 29,  description: 'Top issues from a 4-module scan + health score (scan-only, no auto-fix)' },
+  full:     { label: 'Full',      priceUsd: 99,  description: 'All 102 modules + AI code review + every clustered issue + health score (scan-only, no auto-fix)' },
+  scan_fix: { label: 'Scan + Fix', priceUsd: 199, description: 'All 102 modules + AI auto-fix PR + regression tests + pair-review' },
+  nuclear:  { label: 'Nuclear',   priceUsd: 399, description: 'Scan + Fix + Claude diagnosis per finding + attack-chain correlation + executive summary + CISO board-ready report (mutation + chaos available via the GitHub Action)' },
 };
 
 /**

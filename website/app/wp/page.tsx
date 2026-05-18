@@ -102,9 +102,7 @@ export default function WordPressLanding() {
         </div>
 
         <p className="text-center text-xs text-muted mt-8">
-          Pricing structure pending Stripe setup — see your developer if you need
-          immediate access. Pre-launch, every scan is free during the soft-launch
-          window.
+          Pay-on-completion via Stripe. The scan delivers the findings; the charge captures only when results are returned.
         </p>
       </section>
 

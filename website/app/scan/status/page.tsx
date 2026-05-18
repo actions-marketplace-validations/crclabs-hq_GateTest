@@ -240,17 +240,20 @@ export default function ScanStatus() {
     }
   }
 
-  // Auto-trigger fix once the scan completes with fixable issues — matches
-  // the admin Command Center behaviour so the customer doesn't have to click
-  // a second button to see the repair step happen.
+  // Auto-trigger fix once the scan completes with fixable issues — ONLY
+  // for paid fix-tiers (scan_fix / nuclear). Quick ($29) and Full ($99)
+  // are scan-only tiers; their fix-phase is an upgrade, not an entitlement.
+  // Auto-triggering for them gave away $199 Scan+Fix work for $29.
   useEffect(() => {
     if (fixTriggered.current) return;
     if (scanResult?.status !== "complete") return;
     if ((scanResult.totalIssues || 0) === 0) return;
     if (extractFixableIssues(scanResult.modules).length === 0) return;
+    // Gate: only Scan+Fix ($199) and Nuclear ($399) get the auto-fix.
+    if (params.tier !== "scan_fix" && params.tier !== "nuclear") return;
     fixTriggered.current = true;
     runFix();
-  }, [scanResult]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [scanResult, params.tier]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const isComplete = scanResult?.status === "complete";
@@ -476,12 +479,14 @@ export default function ScanStatus() {
               </div>
             )}
 
-            {/* What's next — AI fix is the primary CTA */}
-            {(scanResult?.totalIssues || 0) > 0 && (
+            {/* What's next — AI fix CTA. Only paid fix-tiers (scan_fix /
+                nuclear) get the "Fix with AI" button. Quick / Full are
+                scan-only tiers; they see an upgrade card instead. */}
+            {(scanResult?.totalIssues || 0) > 0 && (params.tier === "scan_fix" || params.tier === "nuclear") && (
               <div className="p-5 rounded-xl border border-border bg-white">
                 <h3 className="font-bold text-foreground mb-2">Or let GateTest fix it for you</h3>
                 <p className="text-sm text-muted mb-4">
-                  Skip the copy-paste — Claude reads each finding, generates the fix, re-validates against the scanner, writes a regression test, and opens a pull request on your repo. Included with every scan.
+                  Skip the copy-paste — Claude reads each finding, generates the fix, re-validates against the scanner, writes a regression test, and opens a pull request on your repo. Included with your {params.tier === "nuclear" ? "Nuclear" : "Scan + Fix"} tier.
                 </p>
 
                 {!fixResult && !fixing && (
@@ -572,12 +577,42 @@ export default function ScanStatus() {
                   </div>
                 )}
 
-                {params.tier === "quick" && !fixing && !fixResult && (
-                  <p className="mt-4 text-xs text-muted">
-                    Want every module scanned, not just 4? <Link href="/#pricing" className="text-accent font-medium hover:underline">Upgrade to Full Scan</Link> &mdash; AI fix included.
-                  </p>
+              </div>
+            )}
 
-                )}
+            {/* Upgrade card for Quick / Full customers (scan-only tiers). */}
+            {(scanResult?.totalIssues || 0) > 0 && (params.tier === "quick" || params.tier === "full") && (
+              <div className="p-6 rounded-xl border-2 border-accent/30 bg-accent/5">
+                <h3 className="font-bold text-foreground mb-2 text-lg">Want these fixed automatically?</h3>
+                <p className="text-sm text-muted mb-5">
+                  Your <span className="font-semibold">{params.tier === "quick" ? "Quick" : "Full"}</span> scan delivered the findings. The AI auto-fix — Claude reads each one, generates the fix, writes a regression test, and opens a pull request on your repo — is included with the Scan + Fix and Nuclear tiers.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {params.tier === "quick" && (
+                    <Link
+                      href="/#pricing"
+                      className="p-4 rounded-lg border border-border bg-white hover:border-accent/40 transition-colors block"
+                    >
+                      <p className="font-semibold text-foreground mb-1">Full Scan — $99</p>
+                      <p className="text-xs text-muted">See findings in all 102 modules (not just 4). Same scan-only delivery, full coverage.</p>
+                    </Link>
+                  )}
+                  <Link
+                    href="/#pricing"
+                    className="p-4 rounded-lg border-2 border-accent bg-white hover:bg-accent/5 transition-colors block"
+                  >
+                    <p className="font-semibold text-foreground mb-1">Scan + Fix — $199</p>
+                    <p className="text-xs text-muted">All 102 modules + AI opens a pull request with the fixes + regression tests + pair-review.</p>
+                  </Link>
+                  <Link
+                    href="/#pricing"
+                    className={`p-4 rounded-lg border border-border bg-white hover:border-accent/40 transition-colors block ${params.tier === "full" ? "" : "sm:col-span-1"}`}
+                  >
+                    <p className="font-semibold text-foreground mb-1">Nuclear — $399</p>
+                    <p className="text-xs text-muted">Scan + Fix + Claude diagnosis per finding + attack-chain correlation + board-ready CISO report.</p>
+                  </Link>
+                </div>
+                <p className="mt-4 text-xs text-muted">Pay-on-completion via Stripe. Refunds available if the scan didn&apos;t deliver.</p>
               </div>
             )}
 

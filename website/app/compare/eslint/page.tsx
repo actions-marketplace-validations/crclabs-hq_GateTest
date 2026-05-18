@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "GateTest vs ESLint — Why 2026 Developers Are Moving On",
   description:
-    "ESLint is one tool. GateTest is 90. Security, performance, accessibility, visual regression, mutation testing, AI code review — all in one gate. Auto-fix included.",
+    "ESLint is one tool. GateTest is 102. Security, performance, accessibility, visual regression, mutation testing, AI code review — all in one gate. AI auto-fix at the Scan + Fix tier and above.",
   keywords: [
     "ESLint alternative",
     "ESLint vs GateTest",

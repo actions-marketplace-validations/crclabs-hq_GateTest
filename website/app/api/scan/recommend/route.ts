@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
         reasoning: ["Couldn't probe the URL — recommending the generic web Quick scan as a safe starting point."],
         ctaUrl: "/api/checkout?tier=quick",
         suiteDescription: "Generic web suite",
-        tierDescription: "Top issues, free preview, fast feedback",
+        tierDescription: "Top issues from a 4-module scan (scan-only, no auto-fix)",
         priceUsd: 29,
       },
       error: detection.error,

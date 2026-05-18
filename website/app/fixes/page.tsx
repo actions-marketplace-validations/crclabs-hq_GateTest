@@ -210,7 +210,7 @@ export default async function FixesPage() {
         <div className="mt-16 rounded-xl bg-teal-500/5 border border-teal-500/15 p-8 text-center">
           <h2 className="text-xl font-semibold mb-2">Want your repo in this list?</h2>
           <p className="text-slate-400 text-sm mb-6">
-            GateTest scans your code, fixes the issues, and opens a PR. You merge. Done.
+            GateTest scans your code. On Scan + Fix ($199) and Nuclear ($399) it fixes the issues and opens a PR. You merge. Done.
           </p>
           <Link
             href="/"

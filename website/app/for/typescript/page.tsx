@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "TypeScript Code Quality & Strict Mode Enforcement — GateTest",
   description:
-    "GateTest enforces TypeScript strict mode, catches @ts-ignore abuse, detects any-type leaks, and flags tsconfig regressions before they reach production. Auto-fix included.",
+    "GateTest enforces TypeScript strict mode, catches @ts-ignore abuse, detects any-type leaks, and flags tsconfig regressions before they reach production. AI auto-fix at the Scan + Fix tier and above.",
   keywords: [
     "TypeScript code quality",
     "TypeScript strict mode enforcement",

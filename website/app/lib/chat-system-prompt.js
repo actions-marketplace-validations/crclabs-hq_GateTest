@@ -70,8 +70,10 @@ unlocks at the price listed for that tier.
 3. Findings cluster by root cause — 800 raw findings collapse to
    ~30 unique fixes
 4. Health Score gives a 0-100 verdict
-5. For repo scans at paid tiers, an AI fix loop opens a PR with
-   verified fixes (syntax-gated, scanner-revalidated, test-generated)
+5. For repo scans on Scan + Fix ($199) and Nuclear ($399), an AI
+   fix loop opens a PR with verified fixes (syntax-gated,
+   scanner-revalidated, test-generated). Quick ($29) and Full ($99)
+   are scan-only tiers.
 
 ## Modules
 

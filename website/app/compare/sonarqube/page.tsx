@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "GateTest vs SonarQube — The Smarter Alternative in 2026",
   description:
-    "GateTest replaces SonarQube with 90 AI-powered modules, auto-fix PRs, and pay-on-completion pricing. No complex setup. No per-seat licensing. Just results.",
+    "GateTest replaces SonarQube with 102 AI-powered modules, AI auto-fix PRs at the Scan + Fix tier and above, and pay-on-completion pricing. No complex setup. No per-seat licensing. Just results.",
   keywords: [
     "SonarQube alternative",
     "SonarQube vs GateTest",
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "GateTest vs SonarQube — The Smarter Alternative in 2026",
     description:
-      "GateTest replaces SonarQube with 90 AI-powered modules, auto-fix PRs, and pay-on-completion pricing. No complex setup. No per-seat licensing.",
+      "GateTest replaces SonarQube with 102 AI-powered modules, AI auto-fix PRs at the Scan + Fix tier and above, and pay-on-completion pricing. No complex setup. No per-seat licensing.",
     url: "https://gatetest.ai/compare/sonarqube",
     siteName: "GateTest",
     type: "website",
@@ -132,7 +132,7 @@ export default function SonarQubePage() {
           </h1>
           <p className="text-lg text-white/60 max-w-2xl leading-relaxed">
             SonarQube was built in 2006 — before AI, before cloud-native CI/CD, before modern
-            security threats. GateTest is built for 2026: 90 AI-powered modules, auto-fix PRs,
+            security threats. GateTest is built for 2026: 102 AI-powered modules, AI auto-fix PRs at the Scan + Fix tier ($199) and above,
             zero server setup, and pay-on-completion pricing.
           </p>
 
@@ -204,7 +204,7 @@ export default function SonarQubePage() {
               },
               {
                 title: "Auto-fix PRs, not just reports",
-                body: "SonarQube tells you what's wrong and leaves you to fix it. GateTest writes the fix and opens a pull request. You review, you merge. No debugging, no manual remediation, no guessing at the right fix.",
+                body: "SonarQube tells you what's wrong and leaves you to fix it. At the Scan + Fix tier ($199) and Nuclear ($399), GateTest writes the fix and opens a pull request. You review, you merge. No debugging, no manual remediation, no guessing at the right fix.",
               },
               {
                 title: "Zero server infrastructure",

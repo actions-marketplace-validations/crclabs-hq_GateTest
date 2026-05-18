@@ -173,8 +173,8 @@ export default function Modules() {
             More modules in development
           </h3>
           <p className="text-muted max-w-xl mx-auto">
-            Live browser testing, visual regression, auto-fix PRs, and mutation testing.
-            Powered by real browser automation.
+            Visual regression (screenshot comparison between deploys) and self-healing CI
+            (agent reads failures and opens fix PRs automatically).
           </p>
         </div>
 

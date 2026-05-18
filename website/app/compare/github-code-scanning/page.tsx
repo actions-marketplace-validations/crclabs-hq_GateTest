@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "GateTest vs GitHub Code Scanning — The Complete QA Platform",
   description:
-    "GitHub Code Scanning covers security basics. GateTest covers 90 quality dimensions: security, performance, accessibility, AI safety, visual regression, chaos testing, and auto-fix.",
+    "GitHub Code Scanning covers security basics. GateTest covers 102 quality dimensions: security, performance, accessibility, AI safety, visual regression, chaos testing, and auto-fix at the Scan + Fix tier and above.",
   keywords: [
     "GitHub Code Scanning alternative",
     "GitHub Advanced Security alternative",
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "GateTest vs GitHub Code Scanning — The Complete QA Platform",
     description:
-      "GitHub Code Scanning covers security basics. GateTest covers 90 quality dimensions: security, performance, accessibility, AI safety, visual regression, chaos testing, and auto-fix.",
+      "GitHub Code Scanning covers security basics. GateTest covers 102 quality dimensions: security, performance, accessibility, AI safety, visual regression, chaos testing, and auto-fix at the Scan + Fix tier and above.",
     url: "https://gatetest.ai/compare/github-code-scanning",
     siteName: "GateTest",
     type: "website",
@@ -275,7 +275,7 @@ export default function GitHubCodeScanningPage() {
             Security is just the beginning.
           </h2>
           <p className="text-white/60 mb-8 max-w-xl mx-auto">
-            Get 90 quality dimensions in one scan — security, performance, accessibility, AI safety,
+            Get 102 quality dimensions in one scan — security, performance, accessibility, AI safety,
             visual regression, and more. Same PR workflow as GitHub Code Scanning.
           </p>
           <Link

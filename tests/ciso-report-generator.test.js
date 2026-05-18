@@ -107,11 +107,16 @@ describe('buildComplianceGaps', () => {
     assert.ok(gaps.owasp.indexOf(a02) < gaps.owasp.indexOf(a10));
   });
 
-  it('returns empty arrays for unknown modules', () => {
+  it('unknown modules fall through to the FALLBACK mapping (so they still appear in framework tables)', () => {
+    // Behaviour change as part of the Nuclear-tier CISO wiring: unknown
+    // modules now resolve to FALLBACK_MAPPING (A04 / CC8.1 / 16) rather
+    // than silently disappearing from the framework section. This is so
+    // the customer's report never has "0 findings" cells next to obvious
+    // findings the customer can see in the appendix.
     const gaps = buildComplianceGaps([makeF('unknownModule', 'error')]);
-    assert.equal(gaps.owasp.length, 0);
-    assert.equal(gaps.soc2.length, 0);
-    assert.equal(gaps.cis.length, 0);
+    assert.ok(gaps.owasp.length > 0, 'fallback OWASP applied');
+    assert.ok(gaps.soc2.length > 0, 'fallback SOC2 applied');
+    assert.ok(gaps.cis.length > 0, 'fallback CIS applied');
   });
 
   it('handles module names with colon prefix (ruleId form)', () => {
@@ -490,3 +495,174 @@ describe('generateCisoReport', () => {
     assert.ok(CIS_MAPPING.dependencies);
   });
 });
+
+// ─── Wiring tests for Nuclear-tier deliverable ────────────────────────────────
+// These tests cover the additions made to wire the CISO report into the
+// auto-fix PR flow: required PR-attached report sections, HTML render
+// for print-to-PDF, default-path helper, and graceful behaviour when
+// askClaude is absent.
+
+const {
+  renderHtmlReport,
+  cisoReportPath,
+} = require('../website/app/lib/ciso-report-generator');
+
+describe('generateCisoReport — Nuclear wiring', () => {
+  it('output includes OWASP / SOC2 / CIS / 30-60-90 sections in the markdown', async () => {
+    const result = await generateCisoReport({
+      findings: SAMPLE_FINDINGS,
+      hostName: 'wiring.test',
+      askClaude: async () => 'narrative',
+    });
+    // OWASP section
+    assert.match(result.markdown, /OWASP Top 10/i);
+    // SOC2 section
+    assert.match(result.markdown, /SOC2 Trust Service Criteria/i);
+    // CIS section
+    assert.match(result.markdown, /CIS Controls v8/i);
+    // 30/60/90 roadmap (header + each sprint)
+    assert.match(result.markdown, /Remediation Roadmap/i);
+    assert.match(result.markdown, /30-Day Sprint/i);
+    assert.match(result.markdown, /60-Day Sprint/i);
+    assert.match(result.markdown, /90-Day Sprint/i);
+  });
+
+  it('empty scan produces a valid no-findings report without crashing', async () => {
+    const result = await generateCisoReport({
+      findings: [],
+      hostName: 'clean.io',
+      askClaude: async () => 'all clear',
+    });
+    assert.ok(typeof result.markdown === 'string');
+    assert.ok(result.markdown.length > 100);
+    assert.equal(result.complianceGaps.owasp.length, 0);
+    assert.equal(result.complianceGaps.soc2.length, 0);
+    assert.equal(result.complianceGaps.cis.length, 0);
+    // Roadmap should report "no critical/high" rather than crash.
+    assert.match(result.markdown, /No critical or high findings/i);
+  });
+
+  it('30/60/90 buckets are populated correctly by severity', () => {
+    const findings = [
+      makeF('secrets', 'critical', 'crit-1'),
+      makeF('secrets', 'critical', 'crit-2'),
+      makeF('ssrf', 'error', 'high-1'),
+      makeF('ssrf', 'error', 'high-2'),
+      makeF('ssrf', 'error', 'high-3'),
+      makeF('ssrf', 'error', 'high-4'),
+      makeF('webHeaders', 'warning', 'med-1'),
+      makeF('webHeaders', 'warning', 'med-2'),
+      makeF('webHeaders', 'warning', 'med-3'),
+    ];
+    const roadmap = buildRoadmap(findings);
+    // 30-day takes criticals + up to 3 highs
+    assert.ok(roadmap.thirtyDays.length >= 2, 'criticals should land in 30-day');
+    assert.ok(roadmap.thirtyDays.some((r) => r.severity === 'Critical'));
+    // 60-day takes remaining highs + first mediums
+    assert.ok(roadmap.sixtyDays.length >= 1);
+    // 90-day takes remaining mediums + lows
+    assert.ok(Array.isArray(roadmap.ninetyDays));
+  });
+
+  it('result includes html string suitable for print-to-PDF', async () => {
+    const result = await generateCisoReport({
+      findings: SAMPLE_FINDINGS,
+      hostName: 'pdf.io',
+      askClaude: async () => 'narrative',
+    });
+    assert.ok(typeof result.html === 'string');
+    assert.match(result.html, /<!DOCTYPE html>/);
+    assert.match(result.html, /<title>/);
+    assert.match(result.html, /OWASP/);
+    assert.match(result.html, /CIS Controls/);
+  });
+
+  it('renderHtmlReport handles headings, tables, blockquotes, lists', () => {
+    const md = [
+      '# Header One',
+      '',
+      '> Important callout',
+      '',
+      '## Header Two',
+      '',
+      '| Col A | Col B |',
+      '| --- | --- |',
+      '| cell1 | cell2 |',
+      '',
+      '- item one',
+      '- item two',
+      '',
+      'A plain paragraph.',
+    ].join('\n');
+    const html = renderHtmlReport(md, 'test');
+    assert.match(html, /<h1>Header One<\/h1>/);
+    assert.match(html, /<h2>Header Two<\/h2>/);
+    assert.match(html, /<blockquote>Important callout<\/blockquote>/);
+    assert.match(html, /<table>/);
+    assert.match(html, /<th>Col A<\/th>/);
+    assert.match(html, /<td>cell1<\/td>/);
+    assert.match(html, /<ul>/);
+    assert.match(html, /<li>item one<\/li>/);
+    assert.match(html, /<p>A plain paragraph\.<\/p>/);
+  });
+
+  it('renderHtmlReport escapes user-supplied content to prevent injection', () => {
+    const md = '# Title\n\n<script>alert(1)</script>\n';
+    const html = renderHtmlReport(md, 'safe<x>');
+    // The h1 still renders; the script tag is escaped in body content.
+    assert.ok(!html.includes('<script>alert(1)</script>'));
+    assert.match(html, /&lt;script&gt;/);
+  });
+
+  it('renderHtmlReport accepts empty markdown without crashing', () => {
+    const html = renderHtmlReport('', 'x');
+    assert.match(html, /<!DOCTYPE html>/);
+    assert.match(html, /<\/html>/);
+  });
+
+  it('cisoReportPath returns a date-stamped path under gatetest-reports/', () => {
+    const p1 = cisoReportPath('2026-05-18');
+    assert.equal(p1, 'gatetest-reports/ciso-board-report-2026-05-18.md');
+    const p2 = cisoReportPath();
+    // Today's date
+    const today = new Date().toISOString().slice(0, 10);
+    assert.equal(p2, `gatetest-reports/ciso-board-report-${today}.md`);
+  });
+
+  it('askClaude optional: omitting it still produces a complete report', async () => {
+    const result = await generateCisoReport({
+      findings: SAMPLE_FINDINGS,
+      hostName: 'no-claude.test',
+      // askClaude omitted entirely
+    });
+    assert.ok(typeof result.markdown === 'string');
+    assert.ok(result.markdown.length > 100);
+    // Narrative section says "not available" — never crashes.
+    assert.match(result.markdown, /Executive narrative not available/);
+    // Sections + compliance gaps still computed.
+    assert.ok(result.complianceGaps.owasp.length > 0);
+  });
+
+  it('buildComplianceGaps uses fallback mapping for unknown modules so they still appear', () => {
+    const findings = [
+      makeF('unknown-module-xyz', 'error', 'something'),
+      makeF('another-unknown', 'warning', 'something else'),
+    ];
+    const gaps = buildComplianceGaps(findings);
+    // Even with no explicit mapping, the fallback (A04 / CC8.1 / 16)
+    // ensures the findings appear in framework tables.
+    assert.ok(gaps.owasp.length > 0, 'unknown modules should fall through to fallback OWASP');
+    assert.ok(gaps.soc2.length > 0);
+    assert.ok(gaps.cis.length > 0);
+  });
+
+  it('markdown report includes the host name in the header', async () => {
+    const result = await generateCisoReport({
+      findings: SAMPLE_FINDINGS,
+      hostName: 'specific-host-name.test',
+      askClaude: async () => 'narrative',
+    });
+    assert.match(result.markdown, /specific-host-name\.test/);
+  });
+});
+

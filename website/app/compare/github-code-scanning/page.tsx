@@ -50,7 +50,7 @@ const faqItems = [
   },
   {
     q: "Can GateTest auto-fix the issues it finds?",
-    a: "Yes. The Scan + Fix tier ($199) creates a pull request with code changes that fix the issues found. GitHub Code Scanning shows you security alerts and leaves fixing to you. GateTest writes the fix. The Nuclear tier ($399) adds Claude-driven per-finding diagnosis, cross-finding attack-chain correlation, mutation testing, and a CTO-readable executive summary.",
+    a: "Yes. The Scan + Fix tier ($199) creates a pull request with code changes that fix the issues found. GitHub Code Scanning shows you security alerts and leaves fixing to you. GateTest writes the fix. The Nuclear tier ($399) adds Claude-driven per-finding diagnosis, cross-finding attack-chain correlation, a board-ready CISO report, and a CTO-readable executive summary. Mutation testing and chaos / fuzz pass also ship via the GitHub Action (mutation: true / chaos: true) — runs wherever your CI runs.",
   },
 ];
 
@@ -160,7 +160,7 @@ export default function GitHubCodeScanningPage() {
               { label: "Code Quality", items: ["Cyclomatic complexity", "Dead code", "Import cycles", "TypeScript strictness"] },
               { label: "Reliability", items: ["Race conditions", "Resource leaks", "Retry hygiene", "Error swallowing"] },
               { label: "AI Safety", items: ["Prompt injection", "Cost DoS (no max_tokens)", "Browser-exposed keys", "Deprecated models"] },
-              { label: "Visual & UX", items: ["Screenshot regression", "Responsive layout", "Mutation testing", "Chaos testing"] },
+              { label: "Visual & UX", items: ["Screenshot regression", "Responsive layout", "Mutation testing (via Action)", "Chaos testing (via Action)"] },
             ].map((group) => (
               <div
                 key={group.label}
@@ -233,7 +233,7 @@ export default function GitHubCodeScanningPage() {
               },
               {
                 title: "Auto-fix, not just alerts",
-                body: "GitHub Code Scanning shows you security alerts. You investigate, understand the issue, write the fix, test it. GateTest writes the fix and opens a pull request. The Scan + Fix tier covers both finding and fixing — security issues, code quality problems, configuration misconfigurations. The Nuclear tier adds attack-chain correlation, mutation testing, and a CTO-readable executive summary on top.",
+                body: "GitHub Code Scanning shows you security alerts. You investigate, understand the issue, write the fix, test it. GateTest writes the fix and opens a pull request. The Scan + Fix tier covers both finding and fixing — security issues, code quality problems, configuration misconfigurations. The Nuclear tier adds attack-chain correlation, a board-ready CISO report, and a CTO-readable executive summary on top. Mutation testing and chaos / fuzz pass also ship via the GitHub Action where a CI runner is present.",
               },
               {
                 title: "Host-agnostic by design",

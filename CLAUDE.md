@@ -555,8 +555,10 @@ Plus 12 more modules they don't have: AI code review, **fake-fix detector (catch
 | Quick Scan | $29 | 4 modules |
 | Full Scan | $99 | All 90 modules |
 | Scan + Fix | $199 | 90 modules + auto-fix PR |
-| Nuclear | $399 | Everything + mutation + crawl + chaos |
+| Nuclear | $399 | Everything on the website-only scan: 102-module deep scan, per-finding Claude diagnosis, cross-finding correlation, auto-fix PR, pair-review, executive summary, board-ready CISO report. Mutation testing + chaos / fuzz pass are NOT part of the website-only flow — they ship via the GitHub Action (`mutation: true` / `chaos: true`) because they need a CI runner to execute the customer's test suite and a headless browser. |
 | Continuous | $49/mo | Scan every push |
+
+**Honesty note (Bible Forbidden #1 / Boss Rule #8):** the website-only Nuclear path cannot run mutation testing or chaos / fuzz pass — those two modules need the customer's CI environment (Vercel serverless cannot safely run a customer's test suite, and Chromium typically cannot launch inside the function). Both modules are first-class in the engine and run cleanly via the GitHub Action where `mutation.js` and `chaos.js` have a real runner. Marketing copy must reflect this on every public surface; future sessions DO NOT regress this wording back to "every Nuclear scan includes mutation + chaos."
 
 ---
 

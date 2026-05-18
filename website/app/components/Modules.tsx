@@ -126,7 +126,7 @@ const comingSoonModules = [
   },
   {
     name: "Mutation Testing",
-    description: "Modifies your source code to verify your tests actually catch bugs.",
+    description: "Modifies your source code to verify your tests actually catch bugs. Ships via the GitHub Action (mutation: true) because it executes your test suite.",
   },
 ];
 

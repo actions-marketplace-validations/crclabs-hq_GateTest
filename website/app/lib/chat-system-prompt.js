@@ -42,9 +42,12 @@ it found using Claude AI.
   Everything in Scan + Fix plus:
     - Real Claude diagnosis on every finding (no templated snippets)
     - Cross-finding attack-chain correlation
-    - Mutation testing (proves your tests catch bugs)
-    - Chaos / fuzz pass on entry points
+    - Board-ready CISO report (OWASP / SOC2 / CIS v8 / 30-60-90)
     - CTO-readable executive summary report
+  Also available via the GitHub Action (mutation: true / chaos: true):
+    - Mutation testing (proves your tests catch bugs) — needs a CI runner to execute your test suite
+    - Chaos / fuzz pass on entry points — needs a headless browser
+  The website-only Nuclear scan does not include those two — they ship wherever the customer's CI runs.
 
 - WordPress Health Check: $19 one-shot
   WordPress-specific scan against any public WP site. Probes for

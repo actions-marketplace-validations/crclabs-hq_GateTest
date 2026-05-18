@@ -231,3 +231,114 @@ test('action.yml never soft-fails the gate (Bible Forbidden #24)', () => {
     'the gate step MUST NOT use continue-on-error: true (Bible Forbidden #24)'
   );
 });
+
+// ── Mutation + chaos inputs (Nuclear-tier deliverables via the Action) ──────
+
+test('action.yml declares the mutation, chaos, chaos-url inputs with defaults', () => {
+  const required = ['mutation', 'chaos', 'chaos-url', 'mutation-blocks-merge', 'chaos-blocks-merge'];
+  for (const name of required) {
+    assert.ok(parsed.inputs[name], `input "${name}" must be declared`);
+    assert.ok(parsed.inputs[name].description, `input "${name}" must have a description`);
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(parsed.inputs[name], 'default'),
+      `input "${name}" must have a default`
+    );
+  }
+});
+
+test('action.yml mutation/chaos inputs default to off so they never cost customers unintentionally', () => {
+  assert.equal(parsed.inputs.mutation.default, 'false', 'mutation default must be "false"');
+  assert.equal(parsed.inputs.chaos.default, 'false', 'chaos default must be "false"');
+  assert.equal(parsed.inputs['chaos-url'].default, '', 'chaos-url default must be empty');
+  assert.equal(parsed.inputs['mutation-blocks-merge'].default, 'false');
+  assert.equal(parsed.inputs['chaos-blocks-merge'].default, 'false');
+});
+
+test('action.yml has a mutation step conditional on inputs.mutation == "true"', () => {
+  // Find the mutation step block in the raw text — match by step name then
+  // grab everything up to the next step header.
+  const step = RAW.match(/- name: Mutation testing[\s\S]+?(?=\n    - name:|$)/);
+  assert.ok(step, 'expected a "Mutation testing" step in the composite action');
+  assert.match(
+    step[0],
+    /if:\s*\$\{\{\s*inputs\.mutation\s*==\s*['"]true['"]/,
+    'mutation step must be conditional on inputs.mutation == "true"'
+  );
+  assert.match(step[0], /--module\s+mutation/, 'mutation step must invoke `--module mutation`');
+});
+
+test('action.yml has a chaos step conditional on inputs.chaos == "true" AND chaos-url non-empty', () => {
+  const step = RAW.match(/- name: Chaos \/ runtime testing[\s\S]+?(?=\n    - name:|$)/);
+  assert.ok(step, 'expected a "Chaos / runtime testing" step in the composite action');
+  assert.match(
+    step[0],
+    /if:\s*\$\{\{\s*inputs\.chaos\s*==\s*['"]true['"]/,
+    'chaos step must be conditional on inputs.chaos == "true"'
+  );
+  assert.match(
+    step[0],
+    /inputs\.chaos-url\s*!=\s*['"]['"]/,
+    'chaos step must also gate on inputs.chaos-url not being empty'
+  );
+  assert.match(step[0], /--module\s+chaos/, 'chaos step must invoke `--module chaos`');
+});
+
+test('action.yml chaos step installs the Playwright Chromium binary inline', () => {
+  const step = RAW.match(/- name: Chaos \/ runtime testing[\s\S]+?(?=\n    - name:|$)/);
+  assert.ok(step, 'expected a "Chaos / runtime testing" step');
+  // The Action installs Playwright on demand so customers don't need to
+  // pre-install it in their workflow. One-line install keeps the surface tiny.
+  assert.match(
+    step[0],
+    /npx\s+playwright\s+install\s+--with-deps\s+chromium/,
+    'chaos step must run `npx playwright install --with-deps chromium`'
+  );
+});
+
+test('action.yml chaos step exports GATETEST_CHAOS_URL from inputs.chaos-url', () => {
+  const step = RAW.match(/- name: Chaos \/ runtime testing[\s\S]+?(?=\n    - name:|$)/);
+  assert.ok(step, 'expected a "Chaos / runtime testing" step');
+  assert.match(
+    step[0],
+    /GATETEST_CHAOS_URL:\s*\$\{\{\s*inputs\.chaos-url\s*\}\}/,
+    'chaos step must expose chaos-url to the CLI via GATETEST_CHAOS_URL'
+  );
+});
+
+test('action.yml Enforce gate verdict step is NOT influenced by mutation/chaos exit codes', () => {
+  // Mutation and chaos run AFTER the gate step but BEFORE Enforce gate
+  // verdict (so they can mark warnings). Critically, the enforcement step
+  // only reads steps.gate.outputs.gate-status — never mutation/chaos outputs.
+  const enforce = RAW.match(/- name: Enforce gate verdict[\s\S]+?$/);
+  assert.ok(enforce, 'expected an "Enforce gate verdict" step');
+  // Should not branch on mutation/chaos outputs at all.
+  assert.doesNotMatch(enforce[0], /mutation[-_]?(?:blocks-merge|status|exit)/i,
+    'Enforce gate verdict must NOT branch on mutation status');
+  assert.doesNotMatch(enforce[0], /chaos[-_]?(?:blocks-merge|status|exit)/i,
+    'Enforce gate verdict must NOT branch on chaos status');
+  // Should read only the gate outputs.
+  assert.match(enforce[0], /steps\.gate\.outputs\.gate-status/,
+    'Enforce gate verdict must read steps.gate.outputs.gate-status');
+});
+
+test('action.yml mutation step honours mutation-blocks-merge=false by default (no merge block)', () => {
+  const step = RAW.match(/- name: Mutation testing[\s\S]+?(?=\n    - name:|$)/);
+  assert.ok(step);
+  // The step body must consult mutation-blocks-merge before propagating
+  // a non-zero exit — that's how coaching-vs-gating is encoded.
+  assert.match(
+    step[0],
+    /mutation-blocks-merge/,
+    'mutation step must consult inputs.mutation-blocks-merge before exiting non-zero'
+  );
+});
+
+test('action.yml chaos step honours chaos-blocks-merge=false by default (no merge block)', () => {
+  const step = RAW.match(/- name: Chaos \/ runtime testing[\s\S]+?(?=\n    - name:|$)/);
+  assert.ok(step);
+  assert.match(
+    step[0],
+    /chaos-blocks-merge/,
+    'chaos step must consult inputs.chaos-blocks-merge before exiting non-zero'
+  );
+});

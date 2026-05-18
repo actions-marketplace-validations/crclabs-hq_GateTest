@@ -73,7 +73,7 @@ const TIERS: Record<string, ScanTier> = {
     priceInCents: 39900,
     modules: "all-102+nuclear-stack",
     description:
-      "Everything in Scan + Fix, PLUS: real Claude diagnosis on every finding (no templated snippets), cross-finding attack-chain correlation (textbook session-forgery / supply-chain vectors no per-finding scanner can see), mutation testing (proves your tests catch bugs), chaos / fuzz pass on entry points, and a CTO-readable executive summary report.",
+      "Everything in Scan + Fix, PLUS: real Claude diagnosis on every finding (no templated snippets), cross-finding attack-chain correlation (textbook session-forgery / supply-chain vectors no per-finding scanner can see), board-ready CISO report (OWASP / SOC2 / CIS v8 / 30-60-90), and a CTO-readable executive summary report. Mutation testing and chaos / fuzz pass are also available via the GitHub Action (mutation: true / chaos: true) — they need a CI runner so they ship wherever your CI runs.",
 
   },
 };

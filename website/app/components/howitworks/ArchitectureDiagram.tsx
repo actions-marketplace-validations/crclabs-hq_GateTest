@@ -22,7 +22,7 @@ const NODES: Node[] = [
   { id: "fix", label: "Flywheel  ·  AST → Rule → Recipe → Claude", detail: "first layer that wins ships the patch", y: 510, variant: "fix" },
   { id: "gate", label: "Test gen  +  syntax gate  +  scanner re-validation", detail: "broken fixes never reach the PR", y: 610, variant: "fix" },
   { id: "review", label: "Pair review  +  architecture annotation  ·  Tier 2+", detail: "second Claude critiques every fix", y: 700, variant: "review" },
-  { id: "nuclear", label: "Correlation  +  mutation  +  chaos  +  executive summary  ·  Tier 3", detail: "attack chains across findings, mutation testing, exec report", y: 790, variant: "nuclear" },
+  { id: "nuclear", label: "Correlation  +  Claude diagnosis  +  executive summary  ·  Tier 3", detail: "attack chains across findings, per-finding diagnosis, CISO report (mutation + chaos run via GitHub Action)", y: 790, variant: "nuclear" },
   { id: "pr", label: "PR composed and opened", detail: "before/after table, advisory, regression tests", y: 890, variant: "output" },
 ];
 
@@ -48,7 +48,7 @@ export default function ArchitectureDiagram() {
       <svg
         viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
         role="img"
-        aria-label="GateTest scan pipeline architecture: customer push enters via GitHub App or Gluecron Signal Bus, lands in a Postgres scan queue, runs through 102 deterministic modules, clusters and ranks findings, applies the AST/Rule/Recipe/Claude flywheel, validates each fix through a syntax gate and scanner re-validation, adds pair review and architecture annotation for Tier 2 and up, adds correlation, mutation, chaos, and executive summary for Tier 3, and finally opens a pull request."
+        aria-label="GateTest scan pipeline architecture: customer push enters via GitHub App or Gluecron Signal Bus, lands in a Postgres scan queue, runs through 102 deterministic modules, clusters and ranks findings, applies the AST/Rule/Recipe/Claude flywheel, validates each fix through a syntax gate and scanner re-validation, adds pair review and architecture annotation for Tier 2 and up, adds cross-finding correlation, per-finding Claude diagnosis, and executive summary for Tier 3 (mutation testing and chaos / fuzz pass are available via the GitHub Action where a CI runner is present), and finally opens a pull request."
         className="w-full h-auto min-w-[640px]"
       >
         <defs>

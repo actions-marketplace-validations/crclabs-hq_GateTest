@@ -50,7 +50,7 @@ const faqItems = [
   },
   {
     q: "Can GateTest fix the issues it finds, like a PR suggestion?",
-    a: "GateTest goes further than suggestions. The AI-powered auto-fix mode (Scan + Fix, $199) creates an actual pull request with working code changes. SonarQube shows you the issue; GateTest writes the fix. The Nuclear tier ($399) adds Claude-driven diagnosis per finding, attack-chain correlation across findings, mutation testing, and a CTO-readable executive summary.",
+    a: "GateTest goes further than suggestions. The AI-powered auto-fix mode (Scan + Fix, $199) creates an actual pull request with working code changes. SonarQube shows you the issue; GateTest writes the fix. The Nuclear tier ($399) adds Claude-driven diagnosis per finding, attack-chain correlation across findings, a board-ready CISO report, and a CTO-readable executive summary. Mutation testing also ships via the GitHub Action with mutation: true — runs wherever your CI runs.",
   },
 ];
 

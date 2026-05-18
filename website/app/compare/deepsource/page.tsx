@@ -38,7 +38,7 @@ const faqItems = [
   },
   {
     q: "Does GateTest's AI fix code like DeepSource's Autofix?",
-    a: "GateTest's Scan + Fix tier ($199) goes further than DeepSource Autofix. DeepSource Autofix generates fixes for a specific subset of analysis issues. GateTest uses Claude to read your entire codebase context and write fixes for any issue it finds — security misconfigurations, logic bugs, N+1 queries, accessibility violations — and opens a pull request with complete, reviewable code. The Nuclear tier ($399) adds attack-chain correlation across findings, mutation testing on your existing tests, and an executive summary report you can hand to a CTO.",
+    a: "GateTest's Scan + Fix tier ($199) goes further than DeepSource Autofix. DeepSource Autofix generates fixes for a specific subset of analysis issues. GateTest uses Claude to read your entire codebase context and write fixes for any issue it finds — security misconfigurations, logic bugs, N+1 queries, accessibility violations — and opens a pull request with complete, reviewable code. The Nuclear tier ($399) adds attack-chain correlation across findings, a board-ready CISO report, and an executive summary report you can hand to a CTO. Mutation testing on your existing tests also ships via the GitHub Action with mutation: true — runs wherever your CI runs.",
   },
   {
     q: "How do scan speeds compare?",

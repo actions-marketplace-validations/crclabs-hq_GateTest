@@ -14,7 +14,7 @@
 # ============================================================================
 
 name: 'GateTest Quality Gate'
-description: '91-module AI-powered quality gate with self-healing CI'
+description: '102-module AI-powered quality gate with self-healing CI'
 author: 'GateTest (gatetest.ai)'
 
 branding:

@@ -222,7 +222,7 @@ jobs:
         # above. This is the SARIF-feeding job, not the dogfood gate. The
         # strict `self-scan` job keeps the default 0.7 and is the one that
         # decides whether main is green.
-        run: node bin/gatetest.js --suite full --sarif --junit --confidence-threshold 0.95
+        run: node bin/gatetest.js --suite quick --sarif --junit --confidence-threshold 0.95
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

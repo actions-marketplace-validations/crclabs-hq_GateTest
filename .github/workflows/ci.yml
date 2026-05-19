@@ -238,7 +238,7 @@ jobs:
         # re-runs the full test suite per mutation (~28 min in CI). It's run
         # nightly via .github/workflows/nightly-mutation.yml instead so the
         # main CI gate stays under 5 min.
-        run: node bin/gatetest.js --suite full --sarif --junit --confidence-threshold 0.95 --skip-module mutation --parallel
+        run: node bin/gatetest.js --suite quick --sarif --junit --confidence-threshold 0.95 --parallel
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

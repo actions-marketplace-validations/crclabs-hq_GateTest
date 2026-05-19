@@ -28,7 +28,7 @@
 
 ---
 
-## Install in 30 seconds
+## Install &amp; Usage — 30 seconds
 
 ### GitHub Action — recommended for most users
 

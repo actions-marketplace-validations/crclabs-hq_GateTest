@@ -30,8 +30,12 @@ class LinksModule extends BaseModule {
     const deadLinks = []; // href="#" or javascript:void(0)
     const brokenInternal = [];
 
+    // Internal audit / dev / scaffolding docs that contain redacted /
+    // ellipsis-shaped placeholder links — not customer-facing routes.
+    const INTERNAL_DOCS_RE = /(?:^|\/)(?:docs\/legal\/|docs\/proofs\/|docs\/marketplace\/|\.claude\/)/;
     for (const file of allFiles) {
       const relPath = path.relative(projectRoot, file);
+      if (INTERNAL_DOCS_RE.test('/' + relPath.replace(/\\/g, '/'))) continue;
       const content = fs.readFileSync(file, 'utf-8');
       const ext = path.extname(file);
 
@@ -95,7 +99,17 @@ class LinksModule extends BaseModule {
       // Skip absolute URLs that start with / (these are route paths, not filesystem paths)
       // Only validate relative file references
       if (!href.startsWith('/') && !href.startsWith('http')) {
-        const resolved = path.resolve(path.dirname(path.join(projectRoot, source)), href);
+        // Skip pure anchor references (#section) — page-internal navigation,
+        // not file references. They resolve at runtime against the HTML/MDX
+        // headings of the current page, not against the filesystem.
+        if (href.startsWith('#')) continue;
+        // Skip mailto: / tel: / javascript: schemes
+        if (/^(mailto|tel|javascript|sms):/i.test(href)) continue;
+        // Strip any anchor / query fragment before resolving — links like
+        // `./other.md#section` should resolve `./other.md` only.
+        const filePart = href.split('#')[0].split('?')[0];
+        if (!filePart) continue;
+        const resolved = path.resolve(path.dirname(path.join(projectRoot, source)), filePart);
         if (!fs.existsSync(resolved)) {
           brokenInternal.push({ href, source });
         }

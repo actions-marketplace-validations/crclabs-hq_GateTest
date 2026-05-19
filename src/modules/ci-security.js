@@ -173,11 +173,17 @@ class CiSecurityModule extends BaseModule {
         issues += this._scanRunInjection(line, lines, i, rel, result);
       }
 
-      // continue-on-error: true on the gate step
+      // continue-on-error: true on the GATE step itself (not on auxiliary
+      // upload / artifact / SARIF steps that happen to live in the same job
+      // as a gate step). Bible Forbidden #24 scopes specifically to the gate
+      // step that EXECUTES `gatetest`. We detect this by looking back up to
+      // 4 lines for an explicit `run: ... gatetest` invocation — not just
+      // any line mentioning gatetest (which would also catch step `name:`
+      // labels, comments, and the upload-sarif step that references the
+      // gate's output path).
       if (/^\s*continue-on-error\s*:\s*true\b/i.test(line)) {
-        // Look back a handful of lines for a gatetest reference (name or run)
-        const lookback = lines.slice(Math.max(0, i - 8), i).join('\n');
-        if (/gatetest/i.test(lookback)) {
+        const lookback = lines.slice(Math.max(0, i - 4), i).join('\n');
+        if (/\brun\s*:.*gatetest/i.test(lookback)) {
           issues += this._flag(result, `ci-security:soft-fail-gate:${rel}:${i + 1}`, {
             severity: 'error',
             file: rel,

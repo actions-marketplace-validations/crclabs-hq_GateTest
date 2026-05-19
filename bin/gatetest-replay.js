@@ -52,7 +52,7 @@ const HELP = `
                            12345  (with GITHUB_REPOSITORY=owner/repo set)
 
   OPTIONS
-    --token <pat>        GitHub personal-access token. Optional. Resolution
+    ++token <pat>        GitHub personal-access token. Optional. Resolution
                          order: --token, GITHUB_TOKEN, GH_TOKEN, gh CLI.
                          Falls back to unauthenticated (60 req/hour).
     --working-dir <path> Directory to replay against (default: cwd)

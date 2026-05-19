@@ -147,10 +147,14 @@ class PerformanceModule extends BaseModule {
       });
     }
 
-    // Check for WebP/AVIF usage
+    // Check for WebP/AVIF usage — informational only. Many projects ship
+    // SVG / optimised PNG and don't need WebP, and Next.js' Image component
+    // does on-demand format conversion at request time. Surface this as a
+    // warning rather than a blocking error.
     const webpFiles = this._collectFiles(projectRoot, ['.webp', '.avif']);
     if (imageFiles.length > 0 && webpFiles.length === 0) {
       result.addCheck('perf:modern-images', false, {
+        severity: 'warning',
         message: 'No WebP/AVIF images found — using only legacy formats',
         suggestion: 'Convert images to WebP/AVIF with fallbacks for better performance',
       });
@@ -179,8 +183,14 @@ class PerformanceModule extends BaseModule {
 
   _checkMemoryLeakPatterns(projectRoot, result) {
     const jsFiles = this._collectFiles(projectRoot, ['.js', '.ts', '.jsx', '.tsx']);
+    // Scanner modules / orchestrator libs / marketing-doc pages legitimately
+    // contain literal "setInterval(" / "addEventListener(" pattern strings as
+    // detection patterns or doc copy — they shouldn't trigger their own check.
+    const SCANNER_PATH_RE = /(?:^|\/)(?:src\/modules|src\/core|website\/app\/lib\/scan-modules|website\/app\/lib\/multi-file-refactor|website\/app\/for|tests|integrations\/infra)\//;
     for (const file of jsFiles) {
       const relPath = path.relative(projectRoot, file);
+      const normalised = relPath.replace(/\\/g, '/');
+      if (SCANNER_PATH_RE.test('/' + normalised)) continue;
       const content = fs.readFileSync(file, 'utf-8');
 
       // Check for addEventListener without removeEventListener

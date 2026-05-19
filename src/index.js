@@ -14,6 +14,8 @@ const { JsonReporter } = require('./reporters/json-reporter');
 const { HtmlReporter } = require('./reporters/html-reporter');
 const { SarifReporter } = require('./reporters/sarif-reporter');
 const { JunitReporter } = require('./reporters/junit-reporter');
+const { GithubAnnotationsReporter } = require('./reporters/github-annotations-reporter');
+const { CiSummaryReporter } = require('./reporters/ci-summary-reporter');
 const { GateTestCache } = require('./core/cache');
 const {
   HostBridge,
@@ -53,8 +55,12 @@ class GateTest {
   /**
    * Run a specific suite of tests.
    */
-  async runSuite(suiteName = 'standard') {
-    const modules = this.config.getSuite(suiteName);
+  async runSuite(suiteName = 'standard', opts = {}) {
+    let modules = this.config.getSuite(suiteName);
+    if (opts.skipModules && opts.skipModules.length > 0) {
+      const skip = new Set(opts.skipModules);
+      modules = modules.filter((m) => !skip.has(m));
+    }
     return this._run(modules);
   }
 
@@ -104,6 +110,18 @@ class GateTest {
     new HtmlReporter(runner, this.config);
     if (this.options.sarif) new SarifReporter(runner, this.config);
     if (this.options.junit) new JunitReporter(runner, this.config);
+    // Inline PR annotations — auto-on when running inside GitHub Actions
+    // (the GITHUB_ACTIONS env var is set by every Actions runner). Customers
+    // get red squiggles on the PR diff with zero configuration. Can be
+    // forced on via options.githubAnnotations for non-Actions hosts that
+    // also consume workflow commands.
+    if (this.options.githubAnnotations || process.env.GITHUB_ACTIONS === 'true') {
+      new GithubAnnotationsReporter(runner);
+      // Same gating — CiSummaryReporter emits a collapsible timing table
+      // and a top-line ::notice:: summary so the PR shows the verdict
+      // without expanding the run log.
+      new CiSummaryReporter(runner);
+    }
 
     // onProgress hook — lets a caller (e.g. SSE-streaming route) observe
     // module-level events as they happen. Pass a function `(event, payload)`
@@ -148,6 +166,8 @@ module.exports = {
   HtmlReporter,
   SarifReporter,
   JunitReporter,
+  GithubAnnotationsReporter,
+  CiSummaryReporter,
   // Host abstraction — Gluecron-first (CLAUDE.md → STRATEGIC DIRECTION).
   HostBridge,
   GitHubBridge,

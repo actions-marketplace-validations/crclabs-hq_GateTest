@@ -15,6 +15,7 @@ const {
   toCommitState,
   buildDescription,
   buildMarkdownComment,
+  linkifyFinding,
   sendGithubCallback,
 } = require(path.resolve(__dirname, '..', 'website', 'app', 'lib', 'github-callback.js'));
 
@@ -171,6 +172,122 @@ describe('buildMarkdownComment', () => {
   it('shows error message for crashed scan', () => {
     const md = buildMarkdownComment('o/r', 'a'.repeat(40), { status: 'failed', error: 'scan timeout' }, null);
     assert.ok(md.includes('scan timeout'), `expected error message`);
+  });
+
+  it('shows auto-fix CTA on gate failure when no autoFixPrUrl present', () => {
+    const result = makeScanResult({
+      totalIssues: 1,
+      modules: [{
+        name: 'security',
+        status: 'failed',
+        issues: 1,
+        checks: [{ severity: 'error' }],
+        details: ['issue'],
+      }],
+    });
+    const md = buildMarkdownComment('o/r', 'a'.repeat(40), result, null);
+    assert.ok(md.includes('Want these fixed automatically?'), 'CTA appears on failure');
+    assert.ok(md.includes('ANTHROPIC_API_KEY'), 'CTA names the secret');
+    assert.ok(md.includes('console.anthropic.com'), 'CTA links to Anthropic');
+  });
+
+  it('omits auto-fix CTA when scan passed', () => {
+    const md = buildMarkdownComment('o/r', 'a'.repeat(40), makeScanResult(), null);
+    assert.ok(!md.includes('Want these fixed automatically?'), 'no CTA on pass');
+  });
+
+  it('shows auto-fix PR link when scanResult.autoFixPrUrl present (and skips CTA)', () => {
+    const result = makeScanResult({
+      totalIssues: 1,
+      autoFixPrUrl: 'https://github.com/o/r/pull/123',
+      modules: [{
+        name: 'security',
+        status: 'failed',
+        issues: 1,
+        checks: [{ severity: 'error' }],
+        details: ['issue'],
+      }],
+    });
+    const md = buildMarkdownComment('o/r', 'a'.repeat(40), result, null);
+    assert.ok(md.includes('https://github.com/o/r/pull/123'), 'links to fix PR');
+    assert.ok(md.includes('Auto-fix PR opened'), 'labels the link');
+    assert.ok(!md.includes('Want these fixed automatically?'), 'no CTA when PR already opened');
+  });
+
+  it('linkifies file:line in failing-module details to the GitHub blob URL', () => {
+    const result = makeScanResult({
+      totalIssues: 1,
+      modules: [{
+        name: 'security',
+        status: 'failed',
+        issues: 1,
+        checks: [{ severity: 'error' }],
+        details: ['src/foo.js:42 hardcoded AWS key'],
+      }],
+    });
+    const sha = 'abc1234def56789';
+    const md = buildMarkdownComment('owner/repo', sha, result, null);
+    // The detail string should become a markdown link to the file at the right line.
+    const expectedUrl = `https://github.com/owner/repo/blob/${sha}/src/foo.js#L42`;
+    assert.ok(md.includes(expectedUrl), `expected blob URL in markdown, got:\n${md}`);
+    assert.ok(md.includes('[`src/foo.js:42`]'), `expected markdown link label`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// linkifyFinding
+// ---------------------------------------------------------------------------
+
+describe('linkifyFinding', () => {
+  it('turns "path:line" into a markdown link to the blob URL', () => {
+    const out = linkifyFinding(
+      'src/foo.js:42 - hardcoded secret',
+      'owner', 'repo', 'abc123',
+    );
+    assert.strictEqual(
+      out,
+      '[`src/foo.js:42`](https://github.com/owner/repo/blob/abc123/src/foo.js#L42) - hardcoded secret',
+    );
+  });
+
+  it('handles "path:line:col" by stripping the column', () => {
+    const out = linkifyFinding(
+      'src/bar.ts:10:5 - missing return',
+      'o', 'r', 'sha',
+    );
+    assert.ok(out.includes('src/bar.ts#L10'));
+    assert.ok(out.includes('`src/bar.ts:10`'));
+  });
+
+  it('preserves leading whitespace / paren before the path', () => {
+    const out = linkifyFinding(
+      '  (src/baz.js:1) issue',
+      'o', 'r', 'sha',
+    );
+    assert.ok(out.startsWith('  ('));
+    assert.ok(out.includes('[`src/baz.js:1`]'));
+  });
+
+  it('returns input unchanged when no path:line found', () => {
+    const out = linkifyFinding('a generic finding with no path', 'o', 'r', 'sha');
+    assert.strictEqual(out, 'a generic finding with no path');
+  });
+
+  it('returns input unchanged when owner/repo/sha missing', () => {
+    const out = linkifyFinding('src/foo.js:1 issue', '', '', '');
+    assert.strictEqual(out, 'src/foo.js:1 issue');
+  });
+
+  it('does not mangle text in the middle that looks like a path', () => {
+    // Only linkifies the FIRST match — extra path-shaped tokens later
+    // in the string are left as plain text to keep formatting predictable.
+    const out = linkifyFinding(
+      'src/a.js:1 see also src/b.js:2',
+      'o', 'r', 'sha',
+    );
+    assert.ok(out.includes('[`src/a.js:1`]'));
+    assert.ok(out.includes('see also src/b.js:2'));
+    assert.ok(!out.includes('[`src/b.js:2`]'), 'second match left unlinkified');
   });
 });
 

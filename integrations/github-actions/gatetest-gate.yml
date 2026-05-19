@@ -67,17 +67,24 @@ jobs:
       - name: Verify GateTest installed
         run: node "$GATETEST_HOME/bin/gatetest.js" --version
 
+      # --parallel runs all modules concurrently — ~3x speedup on GitHub
+      # Actions' standard 4-vCPU runner. Each module is independent so
+      # Promise.all is safe.
+      # GITHUB_ACTIONS=true is set by every Actions runner, so the
+      # GithubAnnotationsReporter auto-attaches without a flag — findings
+      # render as inline annotations on the PR diff (red squiggles on the
+      # offending line) instead of being buried in the run log.
       - name: GateTest — Quick (diff-mode) on PRs
         if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node "$GATETEST_HOME/bin/gatetest.js" --suite quick --diff --sarif --junit --project "$GITHUB_WORKSPACE"
+        run: node "$GATETEST_HOME/bin/gatetest.js" --suite quick --diff --sarif --junit --parallel --project "$GITHUB_WORKSPACE"
 
       - name: GateTest — Full on main push
         if: github.event_name == 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node "$GATETEST_HOME/bin/gatetest.js" --suite full --sarif --junit --project "$GITHUB_WORKSPACE"
+        run: node "$GATETEST_HOME/bin/gatetest.js" --suite full --sarif --junit --parallel --project "$GITHUB_WORKSPACE"
 
       - name: Upload SARIF to GitHub Security
         if: always()

@@ -40,6 +40,11 @@ const HELP = `
   OPTIONS
     --suite <name>     Run a test suite: quick, standard, full (default: standard)
     --module <name>    Run a specific module by name
+    --skip-module <name>
+                       Skip a specific module within the chosen suite.
+                       Repeatable. Useful for CI gates that want most of
+                       the suite but want to defer slow modules (e.g.
+                       mutation testing) to a nightly run.
     --validate         Validate the CLAUDE.md file
     --report           Display the latest test report
     --list             List all available test modules
@@ -58,6 +63,13 @@ const HELP = `
     --watch            Watch for file changes and re-scan continuously
     --sarif            Output results in SARIF format (for GitHub Security)
     --junit            Output results in JUnit XML format (for CI)
+    --github-annotations
+                       Emit GitHub Actions workflow commands so findings
+                       appear as inline annotations on the PR diff (red
+                       squiggles on the changed line). Auto-on when the
+                       GITHUB_ACTIONS env var is set, so CI workflows
+                       get this for free. Pass explicitly to force it
+                       on outside Actions (e.g. local debugging).
     --ci-init <type>   Generate CI config: github, gitlab, circleci
     --project <path>   Set project root (default: cwd)
     --confidence-threshold <0..1>
@@ -251,6 +263,7 @@ async function main() {
     diffOnly: args.diff || false,
     sarif: args.sarif || false,
     junit: args.junit || false,
+    githubAnnotations: args.githubAnnotations || false,
     ...(typeof args.confidenceThreshold === 'number'
       ? { confidenceThreshold: args.confidenceThreshold }
       : {}),
@@ -411,7 +424,7 @@ async function main() {
   if (args.module) {
     summary = await gatetest.runModule(args.module);
   } else {
-    summary = await gatetest.runSuite(args.suite || 'standard');
+    summary = await gatetest.runSuite(args.suite || 'standard', { skipModules: args.skipModules });
   }
 
   // --auto-pr: when the gate fails AND the customer wants automated fixes,
@@ -622,6 +635,7 @@ function parseArgs(argv) {
     else if (arg === '--doctor') args.doctor = true;
     else if (arg === '--doctor-quick') { args.doctor = true; args.doctorQuick = true; }
     else if (arg === '--parallel') args.parallel = true;
+    else if (arg === '--github-annotations') args.githubAnnotations = true;
     else if (arg === '--stop-first') args['stop-first'] = true;
     else if (arg === '--fix') args.fix = true;
     else if (arg === '--auto-pr') args.autoPr = true;
@@ -638,6 +652,10 @@ function parseArgs(argv) {
     }
     else if (arg === '--suite' && argv[i + 1]) args.suite = argv[++i];
     else if (arg === '--module' && argv[i + 1]) args.module = argv[++i];
+    else if (arg === '--skip-module' && argv[i + 1]) {
+      args.skipModules = args.skipModules || [];
+      args.skipModules.push(argv[++i]);
+    }
     else if (arg === '--project' && argv[i + 1]) args.project = argv[++i];
     else if (arg === '--server' && argv[i + 1]) args.server = argv[++i];
     else if (arg === '--crawl' && argv[i + 1]) args.crawl = argv[++i];

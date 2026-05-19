@@ -17,7 +17,7 @@ export default function Navbar() {
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
       scrolled
         ? "bg-white/92 backdrop-blur-xl border-b border-border shadow-sm"
-        : "bg-transparent border-b border-white/8"
+        : "bg-[#0a0a12]/40 backdrop-blur-md border-b border-white/10"
     }`}>
       <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-3">
@@ -37,7 +37,7 @@ export default function Navbar() {
               className={`text-sm transition-colors ${
                 scrolled
                   ? "text-muted hover:text-foreground"
-                  : "text-white/50 hover:text-white"
+                  : "text-white/75 hover:text-white"
               }`}
             >
               {item}
@@ -49,7 +49,7 @@ export default function Navbar() {
           <a
             href="/dashboard"
             className={`text-sm transition-colors ${
-              scrolled ? "text-muted hover:text-foreground" : "text-white/50 hover:text-white"
+              scrolled ? "text-muted hover:text-foreground" : "text-white/75 hover:text-white"
             }`}
           >
             My Scans

@@ -85,6 +85,10 @@ function hashWindow(lines) {
 class DuplicateCode extends BaseModule {
   constructor() {
     super('duplicateCode', 'Duplicate Code Detector — finds copy-pasted blocks that should be extracted into utilities');
+    // Opt out of incremental: compares blocks ACROSS files, so scanning
+    // only the changed file would miss duplicates in unchanged ones.
+    // Cross-file invariant — always full set.
+    this._respectsIncremental = false;
   }
 
   async run(result, config) {

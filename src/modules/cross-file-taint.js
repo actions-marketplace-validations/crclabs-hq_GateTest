@@ -177,6 +177,10 @@ class CrossFileTaintModule extends BaseModule {
       'crossFileTaint',
       'Cross-file taint analysis — traces user input across module boundaries to dangerous sinks (SQL injection, eval, exec, file-path traversal, DOM injection)',
     );
+    // Opt out of incremental: this module is literally a cross-file
+    // taint propagator — scanning only the changed file would break
+    // the whole point.
+    this._respectsIncremental = false;
   }
 
   async run(result, config) {

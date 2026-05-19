@@ -19,6 +19,12 @@ const { MUTATIONS, shouldSkipLine } = require('../core/mutation-engine');
 class MutationModule extends BaseModule {
   constructor() {
     super('mutation', 'Mutation Testing — Tests the Tests');
+    // Opt out of incremental: mutation testing needs to mutate source
+    // and re-run the FULL test suite per mutation. Restricting to the
+    // changed file's source mutations is fine, but most projects need
+    // the full corpus to get a meaningful score, and CI already runs
+    // mutation nightly (not on every PR) so the speedup isn't needed.
+    this._respectsIncremental = false;
   }
 
   async run(result, config) {

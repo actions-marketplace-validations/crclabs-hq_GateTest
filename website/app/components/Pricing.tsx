@@ -266,6 +266,54 @@ export default function Pricing() {
           ))}
         </div>
 
+        {/* Enterprise — sales-led anchor tile. Different commercial shape
+            (custom pricing, dedicated infra, SLA), positioned ABOVE the
+            scan tiers' ceiling so $399 Nuclear stops feeling like the
+            maximum. No checkout flow — mailto contact for qualification. */}
+        <div className="max-w-3xl mx-auto mb-6">
+          <div className="rounded-2xl border-2 border-dashed border-foreground/20 bg-gradient-to-br from-foreground/[0.03] to-transparent p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-semibold text-foreground/70 uppercase tracking-wider">
+                    Enterprise
+                  </span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-foreground/5 text-foreground/70 border border-foreground/10">
+                    Custom pricing
+                  </span>
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-1">
+                  Self-hosted scanner &middot; private infra &middot; SLA
+                </h3>
+                <p className="text-sm text-muted">
+                  Everything in Nuclear, run inside your network or VPC. Dedicated account manager, signed SLA, custom modules, custom suppression policies, audit log export. For regulated industries (fintech, healthcare, defence) and orgs with strict data-residency rules.
+                </p>
+              </div>
+              <div className="w-full sm:w-auto sm:max-w-md flex-1">
+                <ul className="space-y-1.5 mb-4">
+                  {[
+                    "On-prem or private-VPC deployment",
+                    "Dedicated infra, no shared compute",
+                    "Signed SLA, support response targets",
+                    "Custom modules + suppression policies",
+                  ].map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-xs text-muted">
+                      <span className="text-success mt-0.5 shrink-0">&#10003;</span>
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <a
+                  href="mailto:enterprise@gatetest.ai?subject=Enterprise%20enquiry"
+                  className="btn-secondary block w-full text-center py-3 px-5 text-sm font-semibold"
+                >
+                  Talk to sales &rarr;
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Continuous subscription — separate card, different commercial shape */}
         <div className="max-w-3xl mx-auto mb-12">
           <div className="rounded-2xl border-2 border-dashed border-accent/30 bg-gradient-to-br from-accent/[0.04] to-transparent p-6 sm:p-8 opacity-90">

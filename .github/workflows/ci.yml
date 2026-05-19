@@ -66,6 +66,12 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history needed so `--diff` can compute the merge-base
+          # against main for incremental scans on PRs. Without this,
+          # checkout defaults to depth=1 and the merge-base lookup falls
+          # back to full scan, costing the speedup.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -80,7 +86,10 @@ jobs:
         # SARIF-upload job because its primary purpose is feeding the GitHub
         # Security tab — the strict blocking gate is the `self-scan` job
         # below, which runs with the default 0.7 threshold.
-        run: node bin/gatetest.js --suite quick --sarif --junit --confidence-threshold 0.95
+        # --diff scans only files changed vs merge-base with main (PR) or
+        # HEAD~1 (push). PR scan drops from ~30s to ~3-10s. Falls back to
+        # full scan when no merge-base resolvable (initial commit, etc).
+        run: node bin/gatetest.js --suite quick --sarif --junit --confidence-threshold 0.95 --parallel --diff
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -123,7 +132,10 @@ jobs:
         # JsonReporter is always attached — produces
         # .gatetest/reports/gatetest-report-latest.json which the
         # publish step parses for the live trust badge.
-        run: node bin/gatetest.js --suite quick
+        # --parallel runs the 40+ modules concurrently (~3x speedup on
+        # 8-core runners). Module checks are CPU-bound but each module
+        # is independent, so Promise.all is safe — no shared mutable state.
+        run: node bin/gatetest.js --suite quick --parallel
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -174,7 +186,7 @@ jobs:
           fi
 
       - name: Self-scan green
-        run: node bin/gatetest.js --suite quick
+        run: node bin/gatetest.js --suite quick --parallel
 
       - name: No committed secrets in tracked files
         run: |
@@ -222,7 +234,11 @@ jobs:
         # above. This is the SARIF-feeding job, not the dogfood gate. The
         # strict `self-scan` job keeps the default 0.7 and is the one that
         # decides whether main is green.
-        run: node bin/gatetest.js --suite quick --sarif --junit --confidence-threshold 0.95
+        # --skip-module mutation — mutation testing mutates source files and
+        # re-runs the full test suite per mutation (~28 min in CI). It's run
+        # nightly via .github/workflows/nightly-mutation.yml instead so the
+        # main CI gate stays under 5 min.
+        run: node bin/gatetest.js --suite full --sarif --junit --confidence-threshold 0.95 --skip-module mutation --parallel
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

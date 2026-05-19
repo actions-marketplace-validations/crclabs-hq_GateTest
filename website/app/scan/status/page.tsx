@@ -461,10 +461,10 @@ export default function ScanStatus() {
                 vs. what they need to triage themselves. */}
             {scanResult && extractUnparseableIssues(scanResult.modules).length > 0 && (
               <div className="p-5 rounded-xl border border-slate-200 bg-slate-50">
-                <h3 className="font-bold text-foreground mb-1">
+                <h2 className="font-bold text-foreground mb-1">
                   {extractUnparseableIssues(scanResult.modules).length} issue
                   {extractUnparseableIssues(scanResult.modules).length > 1 ? "s" : ""} need manual review
-                </h3>
+                </h2>
                 <p className="text-xs text-muted mb-3">
                   No file location could be parsed from the finding text — these
                   won&apos;t be in the auto-fix PR. Triage manually:
@@ -484,7 +484,7 @@ export default function ScanStatus() {
                 scan-only tiers; they see an upgrade card instead. */}
             {(scanResult?.totalIssues || 0) > 0 && (params.tier === "scan_fix" || params.tier === "nuclear") && (
               <div className="p-5 rounded-xl border border-border bg-white">
-                <h3 className="font-bold text-foreground mb-2">Or let GateTest fix it for you</h3>
+                <h2 className="font-bold text-foreground mb-2">Or let GateTest fix it for you</h2>
                 <p className="text-sm text-muted mb-4">
                   Skip the copy-paste — Claude reads each finding, generates the fix, re-validates against the scanner, writes a regression test, and opens a pull request on your repo. Included with your {params.tier === "nuclear" ? "Nuclear" : "Scan + Fix"} tier.
                 </p>
@@ -580,39 +580,58 @@ export default function ScanStatus() {
               </div>
             )}
 
-            {/* Upgrade card for Quick / Full customers (scan-only tiers). */}
+            {/* Upgrade carousel for Quick / Full customers (scan-only tiers).
+                Dynamic personalised copy — pulls the actual issue count from
+                this scan so the visitor sees "47 issues — Scan + Fix will
+                fix up to ~47 of them in a PR" not generic feature copy. */}
             {(scanResult?.totalIssues || 0) > 0 && (params.tier === "quick" || params.tier === "full") && (
-              <div className="p-6 rounded-xl border-2 border-accent/30 bg-accent/5">
-                <h3 className="font-bold text-foreground mb-2 text-lg">Want these fixed automatically?</h3>
-                <p className="text-sm text-muted mb-5">
-                  Your <span className="font-semibold">{params.tier === "quick" ? "Quick" : "Full"}</span> scan delivered the findings. The AI auto-fix — Claude reads each one, generates the fix, writes a regression test, and opens a pull request on your repo — is included with the Scan + Fix and Nuclear tiers.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {params.tier === "quick" && (
+              <div className="p-6 rounded-xl border-2 border-accent/30 bg-gradient-to-br from-accent/10 via-accent/5 to-transparent relative overflow-hidden">
+                {/* Subtle glow accent */}
+                <div aria-hidden="true" className="absolute -top-24 -right-24 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="relative">
+                  <h2 className="font-bold text-foreground mb-2 text-xl">
+                    {scanResult?.totalIssues === 1 ? "Want this fixed automatically?" : `Want these ${scanResult?.totalIssues} issues fixed automatically?`}
+                  </h2>
+                  <p className="text-sm text-muted mb-5">
+                    Your <span className="font-semibold">{params.tier === "quick" ? "Quick" : "Full"}</span> scan found them. Upgrade tiers and Claude reads each finding, writes the fix, generates a regression test, then opens a pull request on your repo.
+                  </p>
+                  <div className={`grid grid-cols-1 ${params.tier === "quick" ? "md:grid-cols-3" : "md:grid-cols-2"} gap-4`}>
+                    {params.tier === "quick" && (
+                      <Link
+                        href="/#pricing"
+                        className="group p-5 rounded-lg border border-border bg-white hover:border-accent/40 hover:shadow-md transition-all block"
+                      >
+                        <p className="text-xs uppercase tracking-wider text-muted/70 font-semibold mb-1">Step 1</p>
+                        <p className="font-bold text-foreground mb-1 text-base">Full Scan &mdash; $99</p>
+                        <p className="text-xs text-muted leading-relaxed">All 102 modules instead of 4. Same scan-only delivery, full coverage. You see every issue, then decide what to fix.</p>
+                      </Link>
+                    )}
                     <Link
                       href="/#pricing"
-                      className="p-4 rounded-lg border border-border bg-white hover:border-accent/40 transition-colors block"
+                      className="group relative p-5 rounded-lg border-2 border-accent bg-white hover:bg-accent/5 hover:shadow-lg transition-all block ring-2 ring-accent/20"
                     >
-                      <p className="font-semibold text-foreground mb-1">Full Scan — $99</p>
-                      <p className="text-xs text-muted">See findings in all 102 modules (not just 4). Same scan-only delivery, full coverage.</p>
+                      <div className="absolute -top-2.5 left-4 px-2 py-0.5 rounded-full bg-accent text-white text-[10px] font-bold uppercase tracking-wider">
+                        Most popular
+                      </div>
+                      <p className="text-xs uppercase tracking-wider text-accent font-semibold mb-1 mt-1">Recommended for you</p>
+                      <p className="font-bold text-foreground mb-1 text-base">Scan + Fix &mdash; $199</p>
+                      <p className="text-xs text-muted leading-relaxed">
+                        Everything in Full <span className="font-semibold text-foreground">plus</span> Claude opens a PR with up to {scanResult?.totalIssues} fixes, regression tests, and pair-review. The auto-fix loop.
+                      </p>
                     </Link>
-                  )}
-                  <Link
-                    href="/#pricing"
-                    className="p-4 rounded-lg border-2 border-accent bg-white hover:bg-accent/5 transition-colors block"
-                  >
-                    <p className="font-semibold text-foreground mb-1">Scan + Fix — $199</p>
-                    <p className="text-xs text-muted">All 102 modules + AI opens a pull request with the fixes + regression tests + pair-review.</p>
-                  </Link>
-                  <Link
-                    href="/#pricing"
-                    className={`p-4 rounded-lg border border-border bg-white hover:border-accent/40 transition-colors block ${params.tier === "full" ? "" : "sm:col-span-1"}`}
-                  >
-                    <p className="font-semibold text-foreground mb-1">Nuclear — $399</p>
-                    <p className="text-xs text-muted">Scan + Fix + Claude diagnosis per finding + attack-chain correlation + board-ready CISO report.</p>
-                  </Link>
+                    <Link
+                      href="/#pricing"
+                      className="group p-5 rounded-lg border border-border bg-white hover:border-accent/40 hover:shadow-md transition-all block"
+                    >
+                      <p className="text-xs uppercase tracking-wider text-muted/70 font-semibold mb-1">For CTOs</p>
+                      <p className="font-bold text-foreground mb-1 text-base">Nuclear &mdash; $399</p>
+                      <p className="text-xs text-muted leading-relaxed">Scan + Fix + per-finding Claude diagnosis + attack-chain correlation + board-ready CISO executive summary.</p>
+                    </Link>
+                  </div>
+                  <p className="mt-5 text-xs text-muted text-center">
+                    Per-scan payment via Stripe &middot; one-time, no subscription &middot; <span className="text-teal-700 font-medium">gets sharper with every scan</span>
+                  </p>
                 </div>
-                <p className="mt-4 text-xs text-muted">Per-scan payment via Stripe. One-time payment, no subscription.</p>
               </div>
             )}
 

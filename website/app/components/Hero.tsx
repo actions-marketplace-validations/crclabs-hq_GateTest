@@ -47,12 +47,15 @@ export default function Hero() {
     <section className="relative overflow-hidden pt-20">
       <div className="hero-dark px-6 pb-24 pt-16 relative">
         <div className="hero-grid" aria-hidden="true" />
-        <div className="hidden md:block absolute top-0 left-1/2 -translate-x-1/2 w-[760px] h-[360px] bg-gradient-to-b from-teal-500/10 to-transparent rounded-full blur-[120px] pointer-events-none" />
+        {/* Animated teal blob — slow drift + breathing scale so the hero
+            feels alive without screaming for attention. Hidden on mobile
+            where the blur is GPU-expensive and invisible at phone DPR. */}
+        <div className="hidden md:block hero-blob absolute top-0 left-1/2 w-[760px] h-[360px] bg-gradient-to-b from-teal-500/12 to-transparent rounded-full blur-[120px] pointer-events-none" />
 
         <div className="relative z-10 mx-auto max-w-5xl">
-          {/* Status / launch badge — honest "launching today" voice */}
+          {/* Status / launch badge — glassmorphic chip with live ping */}
           <div className="flex justify-center mb-10 fade-up">
-            <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-sm text-white/70 font-medium">
+            <div className="glass-card inline-flex items-center gap-2.5 px-4 py-2 rounded-full text-sm text-white/80 font-medium">
               <span className="relative flex h-2 w-2" aria-hidden="true">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
@@ -72,11 +75,17 @@ export default function Hero() {
           <p className="text-center text-xl sm:text-2xl text-white/65 max-w-3xl mx-auto mb-3 leading-snug fade-up font-medium">
             One-time payment per scan. No subscription.
           </p>
-          <p className="text-center text-base sm:text-lg text-white/45 max-w-2xl mx-auto mb-10 leading-relaxed fade-up">
+          <p className="text-center text-base sm:text-lg text-white/45 max-w-2xl mx-auto mb-3 leading-relaxed fade-up">
             Scan your repo or any public site. We find bugs, security issues,
             and CI rot. On Scan + Fix and Nuclear tiers we open a PR with the
             fixes we can ship. Per-scan payment via Stripe &mdash; you pay
             once and get the report.
+          </p>
+          {/* Recipe-distillation moat, framed as a signal-quality story
+              (not a price-cut promise — invites the wrong kind of email). */}
+          <p className="text-center text-sm sm:text-base text-teal-300/80 max-w-2xl mx-auto mb-10 fade-up font-medium">
+            Gets sharper with every scan &mdash; recipe distillation means
+            fewer false positives and faster, more accurate fixes over time.
           </p>
 
           {/* Primary CTA: the live URL scan, in-hero */}
@@ -102,14 +111,14 @@ export default function Hero() {
                   key={s.url}
                   type="button"
                   onClick={() => prefill(s.url)}
-                  className="px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/70 hover:text-white hover:border-white/25 hover:bg-white/[0.07] transition-colors font-mono"
+                  className="glass-card px-3 py-1.5 rounded-full text-white/75 hover:text-white font-mono"
                 >
                   {s.label}
                 </button>
               ))}
               <Link
                 href="/wp"
-                className="px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/70 hover:text-white hover:border-white/25 hover:bg-white/[0.07] transition-colors"
+                className="glass-card px-3 py-1.5 rounded-full text-white/75 hover:text-white"
               >
                 WordPress site? &rarr;
               </Link>
@@ -164,7 +173,7 @@ function StatusCell({
 }) {
   const valueColor = tone === "ok" ? "text-emerald-300" : "text-white/80";
   return (
-    <div className="rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-left">
+    <div className="glass-card status-pulse rounded-xl px-4 py-3 text-left">
       <div className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
         {label}
       </div>

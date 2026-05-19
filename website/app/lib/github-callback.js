@@ -70,6 +70,35 @@ function buildDescription(scanResult) {
 }
 
 /**
+ * Linkify "path/to/file.ext:42" patterns in a detail string so each
+ * finding is one click from the offending line in the GitHub UI.
+ *
+ * Matches the longest leading `relpath:line` token (no spaces, has a
+ * known source extension or path separator), turns it into
+ *   [`relpath:line`](https://github.com/owner/repo/blob/sha/relpath#L42)
+ * and leaves the rest of the detail string as-is.
+ *
+ * @param {string} detail
+ * @param {string} owner
+ * @param {string} repo
+ * @param {string} sha
+ * @returns {string} markdown
+ */
+function linkifyFinding(detail, owner, repo, sha) {
+  // Pattern: optional leading whitespace, then a path-like token
+  // (letters/digits/underscores/dots/slashes/hyphens) ending in .ext,
+  // followed by :line[:col]. Captures: path, line.
+  const m = String(detail).match(
+    /(^|[\s(])([A-Za-z0-9_./-]+\.[A-Za-z0-9]+):(\d+)(?::\d+)?\b/,
+  );
+  if (!m || !owner || !repo || !sha) return detail;
+  const [matchedStr, lead, filePath, lineNum] = m;
+  const url = `https://github.com/${owner}/${repo}/blob/${sha}/${filePath}#L${lineNum}`;
+  const link = `[\`${filePath}:${lineNum}\`](${url})`;
+  return detail.replace(matchedStr, `${lead}${link}`);
+}
+
+/**
  * Build a markdown PR comment body from a scan result.
  * @param {string} repository  "owner/name"
  * @param {string} sha
@@ -78,6 +107,9 @@ function buildDescription(scanResult) {
  * @returns {string}
  */
 function buildMarkdownComment(repository, sha, scanResult, targetUrl) {
+  const ownerRepoParts = String(repository || '').split('/');
+  const owner = ownerRepoParts[0] || '';
+  const repoName = ownerRepoParts[1] || '';
   const state = toCommitState(scanResult);
   const icon = state === 'success' ? '✅' : state === 'failure' ? '❌' : '⚠️';
   const headline = state === 'success' ? 'All checks passed' : state === 'failure' ? 'Issues found' : 'Scan error';
@@ -114,7 +146,10 @@ function buildMarkdownComment(repository, sha, scanResult, targetUrl) {
         lines.push(`**\`${mod.name}\`** — ${modIssues} issue${modIssues === 1 ? '' : 's'}`);
         const details = Array.isArray(mod.details) ? mod.details : [];
         for (const d of details.slice(0, 3)) {
-          lines.push(`  - ${String(d).slice(0, 120)}`);
+          // Linkify any leading "path:line" so the reader can click
+          // straight to the offending line in the GitHub diff view.
+          const linkified = linkifyFinding(String(d).slice(0, 240), owner, repoName, sha);
+          lines.push(`  - ${linkified}`);
         }
         if (details.length > 3) {
           lines.push(`  - *…and ${details.length - 3} more*`);
@@ -139,6 +174,28 @@ function buildMarkdownComment(repository, sha, scanResult, targetUrl) {
   if (targetUrl) {
     lines.push('');
     lines.push(`[View full report](${targetUrl})`);
+  }
+
+  // Auto-fix CTA — only on gate failure, only when scanResult doesn't
+  // report a fix PR was already opened. Tells the customer how to flip
+  // auto-repair on without leaving the PR. Composite-action customers
+  // who already set ANTHROPIC_API_KEY have nothing to do — their auto-fix
+  // job runs server-side and posts its own annotation; the website-side
+  // callback can't see that state, so we keep the CTA short and honest.
+  if (toCommitState(scanResult) === 'failure' && !scanResult?.autoFixPrUrl) {
+    lines.push('');
+    lines.push('<details><summary>Want these fixed automatically?</summary>');
+    lines.push('');
+    lines.push('Add `ANTHROPIC_API_KEY` as a repository or organisation secret. GateTest will diagnose every finding with Claude, write the fix, generate a regression test, and open a follow-up PR — all before you next refresh.');
+    lines.push('');
+    lines.push('1. Repo Settings → Secrets and variables → Actions → New repository secret');
+    lines.push('2. Name: `ANTHROPIC_API_KEY` (get one at https://console.anthropic.com)');
+    lines.push('3. Push again. The auto-fix PR opens within the same CI run.');
+    lines.push('');
+    lines.push('</details>');
+  } else if (scanResult?.autoFixPrUrl) {
+    lines.push('');
+    lines.push(`🤖 **Auto-fix PR opened:** ${scanResult.autoFixPrUrl}`);
   }
 
   lines.push('');
@@ -279,5 +336,6 @@ module.exports = {
   toCommitState,
   buildDescription,
   buildMarkdownComment,
+  linkifyFinding,
   sendGithubCallback,
 };

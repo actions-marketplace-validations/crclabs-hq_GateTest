@@ -269,6 +269,32 @@ class GateTestRunner extends EventEmitter {
       this.options.changedFiles = this._getChangedFiles();
     }
 
+    // Build an absolute-path Set of changed files once per run, then
+    // stamp it onto each module so BaseModule._collectFiles can filter.
+    // Bigger picture: this is the one wire that turns the whole engine
+    // incremental — modules don't need any per-module change to gain
+    // the speedup, just to keep using _collectFiles.
+    if (
+      this.options.diffOnly &&
+      Array.isArray(this.options.changedFiles) &&
+      this.options.changedFiles.length > 0 &&
+      this.config &&
+      this.config.projectRoot
+    ) {
+      const path = require('path');
+      const root = this.config.projectRoot;
+      const changedAbs = new Set(
+        this.options.changedFiles.map((f) => path.resolve(root, f))
+      );
+      for (const mod of this.modules.values()) {
+        mod._incrementalContext = {
+          changedFilesAbs: changedAbs,
+          changedFilesRel: this.options.changedFiles.slice(),
+          projectRoot: root,
+        };
+      }
+    }
+
     const modulesToRun = moduleNames || Array.from(this.modules.keys());
 
     this.emit('suite:start', { modules: modulesToRun, diffOnly: this.options.diffOnly });

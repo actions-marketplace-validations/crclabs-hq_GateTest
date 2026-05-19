@@ -75,7 +75,12 @@ jobs:
         run: bash scripts/install-workspaces.sh
 
       - name: Run GateTest quick scan
-        run: node bin/gatetest.js --suite quick --sarif --junit
+        # --confidence-threshold 0.95 downgrades low-confidence error findings
+        # to "soft" (visible in report, don't block the gate). Used on this
+        # SARIF-upload job because its primary purpose is feeding the GitHub
+        # Security tab — the strict blocking gate is the `self-scan` job
+        # below, which runs with the default 0.7 threshold.
+        run: node bin/gatetest.js --suite quick --sarif --junit --confidence-threshold 0.95
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -213,7 +218,11 @@ jobs:
         run: bash scripts/install-workspaces.sh
 
       - name: Run GateTest full scan
-        run: node bin/gatetest.js --suite full --sarif --junit
+        # --confidence-threshold 0.95 — same rationale as the quick-scan job
+        # above. This is the SARIF-feeding job, not the dogfood gate. The
+        # strict `self-scan` job keeps the default 0.7 and is the one that
+        # decides whether main is green.
+        run: node bin/gatetest.js --suite full --sarif --junit --confidence-threshold 0.95
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

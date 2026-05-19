@@ -24,7 +24,7 @@ services:
     env_file:
       - .env.local
     environment:
-      DATABASE_URL: postgresql://gatetest:gatetest@postgres:5432/gatetest?sslmode=disable
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gatetest}:${POSTGRES_PASSWORD:-gatetest}@postgres:5432/${POSTGRES_DB:-gatetest}?sslmode=disable
       NEXT_PUBLIC_BASE_URL: http://localhost:3000
       NODE_ENV: production
     depends_on:
@@ -48,7 +48,7 @@ services:
     env_file:
       - .env.local
     environment:
-      DATABASE_URL: postgresql://gatetest:gatetest@postgres:5432/gatetest?sslmode=disable
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gatetest}:${POSTGRES_PASSWORD:-gatetest}@postgres:5432/${POSTGRES_DB:-gatetest}?sslmode=disable
       GATETEST_BASE_URL: http://app:3000
       NODE_ENV: production
     depends_on:

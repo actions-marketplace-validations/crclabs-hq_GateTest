@@ -79,7 +79,7 @@ function parseArgs(argv) {
         process.stderr.write(`gatetest-promote: unknown flag '${a}'\n`);
     }
   }
-  return args;
+  return void args;
 }
 
 function usage() {

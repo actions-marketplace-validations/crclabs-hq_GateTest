@@ -17,8 +17,15 @@ class SeoModule extends BaseModule {
     const seoConfig = config.getModuleConfig('seo');
     const htmlFiles = this._collectFiles(projectRoot, ['.html']);
 
+    // Static dev fixtures (e.g. website/public/logos.html — logo grid for
+    // screenshots, not a customer-facing route) shouldn't be checked for
+    // customer-facing SEO metadata.
+    const INTERNAL_PATH_RE = /(?:^|\/)(?:website\/public\/)/;
+
     for (const file of htmlFiles) {
       const relPath = path.relative(projectRoot, file);
+      const normalised = relPath.replace(/\\/g, '/');
+      if (INTERNAL_PATH_RE.test('/' + normalised)) continue;
       const content = fs.readFileSync(file, 'utf-8');
 
       this._checkTitle(relPath, content, seoConfig, result);

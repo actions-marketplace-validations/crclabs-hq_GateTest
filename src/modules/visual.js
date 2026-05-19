@@ -31,8 +31,13 @@ class VisualModule extends BaseModule {
       this._checkZIndex(relPath, content, result);
     }
 
+    // Static dev fixtures under public/ are not customer-facing routes.
+    const INTERNAL_PATH_RE = /(?:^|\/)(?:website\/public\/)/;
+
     for (const file of htmlFiles) {
       const relPath = path.relative(projectRoot, file);
+      const normalised = relPath.replace(/\\/g, '/');
+      if (INTERNAL_PATH_RE.test('/' + normalised)) continue;
       const content = fs.readFileSync(file, 'utf-8');
 
       this._checkImageDimensions(relPath, content, result);

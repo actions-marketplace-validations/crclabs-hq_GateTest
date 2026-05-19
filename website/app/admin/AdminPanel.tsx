@@ -583,6 +583,7 @@ export default function AdminPanel({ adminLogin }: AdminPanelProps) {
                   value={repoUrl}
                   onChange={(e) => setRepoUrl(e.target.value)}
                   placeholder="https://github.com/owner/repo"
+                  aria-label="Repository URL"
                   className="px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 text-sm w-full"
                 />
                 <select

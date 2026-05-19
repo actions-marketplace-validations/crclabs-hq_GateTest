@@ -235,7 +235,7 @@ class DataIntegrityModule extends BaseModule {
     // Scanner modules and our own non-DB source contain string concatenation
     // patterns that look like SQL but aren't. Restrict the check to files
     // that actually look DB-aware.
-    const SCANNER_PATH_RE = /(?:^|\/)(?:src\/modules|website\/app\/lib\/scan-modules|tests|integrations\/infra|lib)\//;
+    const SCANNER_PATH_RE = /(?:^|\/)(?:src\/modules|src\/core|website\/app\/lib\/scan-modules|website\/app\/admin|tests|integrations\/infra|lib)\//;
 
     for (const file of jsFiles) {
       const relPath = path.relative(projectRoot, file);

@@ -2,6 +2,23 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { tryAstFix, applyAstTransforms, TRANSFORMS, isJsOrTs } = require('../website/app/lib/ast-fixer.js');
 
+// ast-fixer lazy-loads @babel/parser / traverse / generator. When those
+// aren't installed (e.g. fresh checkout without `npm install` under
+// website/), the transform path can't run. Skip the AST behaviour suites
+// in that case — the helpers (isJsOrTs, fast-path null returns) still
+// exercise without Babel and stay enabled.
+const HAS_BABEL = (() => {
+  try {
+    require.resolve('@babel/parser');
+    require.resolve('@babel/traverse');
+    require.resolve('@babel/generator');
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const skipNoBabel = HAS_BABEL ? false : { skip: '@babel/* not installed' };
+
 // ---------------------------------------------------------------------------
 // isJsOrTs helper
 // ---------------------------------------------------------------------------
@@ -53,7 +70,7 @@ describe('tryAstFix', () => {
     assert.equal(tryAstFix(content, 'f.js', ['rejectUnauthorized: false', 'UNKNOWN_XYZ']), null);
   });
 
-  it('returns fixed content when all issues are handled', () => {
+  it('returns fixed content when all issues are handled', skipNoBabel, () => {
     const content = 'const o = { rejectUnauthorized: false };';
     const result = tryAstFix(content, 'f.js', ['rejectUnauthorized: false — TLS disabled']);
     assert.ok(result !== null);
@@ -65,7 +82,7 @@ describe('tryAstFix', () => {
 // rejectUnauthorized
 // ---------------------------------------------------------------------------
 
-describe('AST: rejectUnauthorized', () => {
+describe('AST: rejectUnauthorized', skipNoBabel, () => {
   it('flips nested property in multi-line object', () => {
     const content = `const agent = new https.Agent({
   keepAlive: true,
@@ -102,7 +119,7 @@ describe('AST: rejectUnauthorized', () => {
 // TLS env bypass
 // ---------------------------------------------------------------------------
 
-describe('AST: NODE_TLS_REJECT_UNAUTHORIZED', () => {
+describe('AST: NODE_TLS_REJECT_UNAUTHORIZED', skipNoBabel, () => {
   it('removes the assignment statement', () => {
     const content = `process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";\nconst x = 1;\n`;
     const result = tryAstFix(content, 'f.js', ['NODE_TLS_REJECT_UNAUTHORIZED = "0"']);
@@ -123,7 +140,7 @@ describe('AST: NODE_TLS_REJECT_UNAUTHORIZED', () => {
 // strictSSL
 // ---------------------------------------------------------------------------
 
-describe('AST: strictSSL', () => {
+describe('AST: strictSSL', skipNoBabel, () => {
   it('flips strictSSL: false to true', () => {
     const content = `request({
   url,
@@ -140,7 +157,7 @@ describe('AST: strictSSL', () => {
 // insecure: true
 // ---------------------------------------------------------------------------
 
-describe('AST: insecure flag', () => {
+describe('AST: insecure flag', skipNoBabel, () => {
   it('flips insecure: true to false', () => {
     const content = `got(url, { insecure: true });\n`;
     const result = tryAstFix(content, 'f.js', ['insecure: true (js-insecure-flag)']);
@@ -153,7 +170,7 @@ describe('AST: insecure flag', () => {
 // httpOnly
 // ---------------------------------------------------------------------------
 
-describe('AST: httpOnly', () => {
+describe('AST: httpOnly', skipNoBabel, () => {
   it('flips httpOnly: false in nested cookie options', () => {
     const content = `app.use(session({
   secret: 'x',
@@ -172,7 +189,7 @@ describe('AST: httpOnly', () => {
 // secure
 // ---------------------------------------------------------------------------
 
-describe('AST: secure cookie', () => {
+describe('AST: secure cookie', skipNoBabel, () => {
   it('flips secure: false in object literal', () => {
     const content = `res.cookie('auth', token, {\n  secure: false,\n  httpOnly: true,\n});\n`;
     const result = tryAstFix(content, 'f.js', ['secure: false — js-secure-false']);
@@ -185,7 +202,7 @@ describe('AST: secure cookie', () => {
 // parseInt radix
 // ---------------------------------------------------------------------------
 
-describe('AST: parseInt radix', () => {
+describe('AST: parseInt radix', skipNoBabel, () => {
   it('adds radix 10 to bare parseInt call', () => {
     const content = `const n = parseInt(str);\n`;
     const result = tryAstFix(content, 'f.js', ['parseInt without radix']);
@@ -213,7 +230,7 @@ describe('AST: parseInt radix', () => {
 // var → const
 // ---------------------------------------------------------------------------
 
-describe('AST: var to const', () => {
+describe('AST: var to const', skipNoBabel, () => {
   it('converts var declaration to const', () => {
     const content = `var x = 1;\nvar y = 2;\n`;
     const result = tryAstFix(content, 'f.js', ['var declaration — prefer const']);
@@ -235,7 +252,7 @@ describe('AST: var to const', () => {
 // Empty catch block
 // ---------------------------------------------------------------------------
 
-describe('AST: empty catch block', () => {
+describe('AST: empty catch block', skipNoBabel, () => {
   it('adds throw statement to empty catch with named param', () => {
     const content = `try {\n  doSomething();\n} catch (err) {\n}\n`;
     const result = tryAstFix(content, 'f.js', ['empty catch block — error swallowed']);
@@ -248,7 +265,7 @@ describe('AST: empty catch block', () => {
 // Multiple transforms on one file
 // ---------------------------------------------------------------------------
 
-describe('AST: multiple transforms', () => {
+describe('AST: multiple transforms', skipNoBabel, () => {
   it('applies httpOnly and rejectUnauthorized in single AST pass', () => {
     const content = `const agent = { rejectUnauthorized: false };\nconst cookie = { httpOnly: false };\n`;
     const result = tryAstFix(content, 'f.js', [
@@ -265,7 +282,7 @@ describe('AST: multiple transforms', () => {
 // TypeScript-specific parsing
 // ---------------------------------------------------------------------------
 
-describe('AST: TypeScript', () => {
+describe('AST: TypeScript', skipNoBabel, () => {
   it('parses TypeScript files with type annotations', () => {
     const content = `const opts: AgentOptions = { rejectUnauthorized: false };\n`;
     const result = tryAstFix(content, 'server.ts', ['rejectUnauthorized: false']);

@@ -43,6 +43,17 @@ function loadFlywheel() {
     const ruleFixer = require('../website/app/lib/rule-based-fixer');
     const distill   = require('../website/app/lib/auto-distill');
     const telemetry = require('../website/app/lib/fix-telemetry');
+    // ast-fixer lazy-loads @babel/parser inside getBabel(). The module
+    // require above doesn't surface that — verify here so callers can
+    // trust `available: true` means the AST path will actually run.
+    try {
+      require.resolve('@babel/parser');
+      require.resolve('@babel/traverse');
+      require.resolve('@babel/generator');
+    } catch (_e) {
+      core.logErr('flywheel layers loaded but @babel/* not resolvable — falling back to Claude-only', _e);
+      return { available: false };
+    }
     return { astFixer, ruleFixer, distill, telemetry, available: true };
   } catch (err) {
     core.logErr('flywheel layers not available — falling back to Claude-only', err);

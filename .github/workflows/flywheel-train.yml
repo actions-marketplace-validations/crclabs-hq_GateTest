@@ -16,8 +16,13 @@ name: Flywheel Training
 
 on:
   schedule:
-    # Daily at 02:30 UTC — quiet hours for most runners.
-    - cron: '30 2 * * *'
+    # Hourly — Craig's "24/7 training" directive. The seed corpus is small
+    # (10 instances) so the cost is trivial; the MUTATION corpus is freshly
+    # generated each run from a randomised subset of src/ files, so every
+    # hour we measure the layers against a NEW slice of real production
+    # patterns. Over a week that's ~10K mutation replays — actual training,
+    # not memorisation.
+    - cron: '0 * * * *'
   # Allow on-demand training (e.g. after adding new corpus instances).
   workflow_dispatch:
   # Re-train when the corpus or the fixer libraries change so we see the
@@ -30,8 +35,10 @@ on:
       - 'website/app/lib/rule-based-fixer.js'
       - 'website/app/lib/auto-distill.js'
       - 'website/app/lib/recipe-store-remote.js'
+      - 'src/core/mutation-engine.js'
       - 'scripts/train-flywheel.js'
       - 'scripts/flywheel-stats.js'
+      - 'scripts/mine-mutations.js'
 
 permissions:
   contents: read
@@ -52,11 +59,29 @@ jobs:
       - name: Install workspaces (root + website + vscode-extension)
         run: bash scripts/install-workspaces.sh
 
-      - name: Run trainer over seed corpus
+      - name: Mine a fresh mutation corpus (unlimited supply)
+        run: |
+          mkdir -p .flywheel corpus
+          # Randomised subset every run — different mutations each hour, so
+          # over a week we measure against thousands of variations.
+          node scripts/mine-mutations.js \
+            --root src/ \
+            --out corpus/mined-mutations.json \
+            --files 40 \
+            --per-file 3
+
+      - name: Run trainer over seed + mined corpus
         run: |
           mkdir -p .flywheel
+          # Seed corpus — pinned baseline, regression guard.
           node scripts/train-flywheel.js --corpus corpus/seed/instances.json --json \
-            | tee .flywheel/training-run.json
+            > .flywheel/training-run-seed.json
+          # Mined corpus — fresh mutations each run.
+          node scripts/train-flywheel.js --corpus corpus/mined-mutations.json --json \
+            > .flywheel/training-run-mined.json
+          # Concatenate into a single primary report (seed is what regression
+          # checks key off).
+          cp .flywheel/training-run-seed.json .flywheel/training-run.json
         env:
           # Keep telemetry self-contained inside the workspace so we can
           # upload it as an artifact.
@@ -83,7 +108,10 @@ jobs:
           name: flywheel-training-${{ github.run_number }}
           path: |
             .flywheel/training-run.json
+            .flywheel/training-run-seed.json
+            .flywheel/training-run-mined.json
             .flywheel/stats-snapshot.json
+            corpus/mined-mutations.json
             .flywheel-home/.gatetest/telemetry/fix-attempts.jsonl
           retention-days: 90
           if-no-files-found: warn

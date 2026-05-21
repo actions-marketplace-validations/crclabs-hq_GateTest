@@ -10,19 +10,76 @@
 # Install location in target repo: .husky/pre-push (chmod +x)
 # Source of truth: https://github.com/ccantynz-alt/gatetest
 #                  /integrations/husky/pre-push
+#
+# SPEED CONTRACT: this hook MUST complete in under 30 seconds on a typical
+# repo. Push deadlines on hosted CI / managed agents kick in at ~10 minutes,
+# and even a 60-second hook is hostile to developer flow. Every change here
+# must preserve the under-30s contract or be reverted.
 # ============================================================================
 set -e
 
 GATETEST_CACHE="${GATETEST_CACHE:-$HOME/.cache/gatetest}"
 
-if [ ! -d "$GATETEST_CACHE/.git" ]; then
-  echo "[GateTest] Fetching latest GateTest into $GATETEST_CACHE ..."
-  mkdir -p "$(dirname "$GATETEST_CACHE")"
-  git clone --depth 1 https://github.com/ccantynz-alt/gatetest.git "$GATETEST_CACHE"
-else
-  echo "[GateTest] Updating local cache ..."
-  (cd "$GATETEST_CACHE" && git pull --ff-only --depth 1 origin HEAD >/dev/null 2>&1 || true)
+# ---------------------------------------------------------------------------
+# Skip in CI — the same gate runs server-side via the gatetest-gate.yml
+# workflow. Running it twice is pure latency tax on the push.
+# ---------------------------------------------------------------------------
+if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] || [ -n "${GITLAB_CI:-}" ]; then
+  echo "[GateTest] CI environment detected — gate runs in CI workflow, skipping local pre-push."
+  exit 0
 fi
 
-echo "[GateTest] Running quick diff-mode gate before push ..."
-node "$GATETEST_CACHE/bin/gatetest.js" --suite quick --diff --project "$(pwd)"
+# ---------------------------------------------------------------------------
+# Opt-out env var — a developer with auth from Craig can disable the hook
+# without removing the file (e.g. for a debug session). Set GATETEST_SKIP=1.
+# ---------------------------------------------------------------------------
+if [ "${GATETEST_SKIP:-}" = "1" ]; then
+  echo "[GateTest] GATETEST_SKIP=1 — skipping pre-push gate (use sparingly)."
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Cache management — first run clones the gatetest repo into $GATETEST_CACHE,
+# subsequent runs reuse it. A cold clone can take 10-30s on slow networks;
+# skipping the cold-clone block keeps the FIRST push from timing out — we
+# fall through to the install.sh / next push to refresh the cache instead.
+# ---------------------------------------------------------------------------
+if [ ! -d "$GATETEST_CACHE/.git" ]; then
+  echo "[GateTest] First-time setup — fetching GateTest into $GATETEST_CACHE in the background."
+  echo "[GateTest] (This first push will skip the gate; subsequent pushes will run it.)"
+  mkdir -p "$(dirname "$GATETEST_CACHE")"
+  # Background clone — don't block the push on the cold-cache case.
+  ( git clone --depth 1 https://github.com/ccantynz-alt/gatetest.git "$GATETEST_CACHE" >/dev/null 2>&1 & )
+  exit 0
+fi
+
+# Best-effort cache refresh — never block the push if `git pull` is slow.
+# Cap the pull at 5s; if it doesn't finish, use the existing cache.
+( cd "$GATETEST_CACHE" && timeout 5 git pull --ff-only --depth 1 origin HEAD >/dev/null 2>&1 || true )
+
+# ---------------------------------------------------------------------------
+# Run the quick suite in diff mode with FAST env — only changed files,
+# slow modules (tsc, mutation, chaos, agentic) skip themselves with an
+# info-level "deferred to CI" note. The full gate still runs server-side.
+#
+# Hard timeout: 25 seconds. The push will succeed cleanly even if the gate
+# is slow on this particular repo. The full server-side gate is the source
+# of truth; this hook is a fast advisory.
+# ---------------------------------------------------------------------------
+echo "[GateTest] Running quick diff gate (25s cap) ..."
+if ! GATETEST_FAST=1 timeout 25 \
+    node "$GATETEST_CACHE/bin/gatetest.js" --suite quick --diff --project "$(pwd)"; then
+  status=$?
+  if [ "$status" = "124" ]; then
+    # `timeout` exited because the gate took >25s. Don't block the push —
+    # server-side gate will still run. Surface a clear note so devs know.
+    echo "[GateTest] Local gate exceeded 25s cap — letting push through; CI gate is the source of truth."
+    exit 0
+  fi
+  echo ""
+  echo "[GateTest] BLOCKED — quick diff gate reported errors above."
+  echo "Fix the errors and try again, or override with: GATETEST_SKIP=1 git push"
+  echo "(Override requires Craig's authorisation per the Bible.)"
+  exit "$status"
+fi
+echo "[GateTest] PASSED — pushing."

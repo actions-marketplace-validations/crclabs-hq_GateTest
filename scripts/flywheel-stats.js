@@ -106,7 +106,6 @@ function aggregate(entries, opts = {}) {
 }
 
 function printHuman(stats, sourcePath) {
-  // eslint-disable-next-line no-console
   console.log('\n──────────────────────────────────────────');
   console.log(' GateTest Flywheel — telemetry stats');
   console.log('──────────────────────────────────────────');

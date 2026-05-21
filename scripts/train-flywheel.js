@@ -231,7 +231,6 @@ function summarise(results) {
 }
 
 function printHumanSummary(summary, layers) {
-  // eslint-disable-next-line no-console
   console.log('\n──────────────────────────────────────────');
   console.log(' Flywheel training run');
   console.log('──────────────────────────────────────────');

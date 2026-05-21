@@ -1,0 +1,96 @@
+{
+  "comment": "Flywheel seed corpus — hand-curated failure→fix instances for training the deterministic layers. Each instance simulates a 'broken' file and the known-good 'fixed' version. The harness replays each through the AST + rule layers; if a layer produces the fix, that's a flywheel hit (free). If all miss, it would fall through to Claude (paid). The Claude-call ratio over time is the moat metric — see scripts/flywheel-stats.js.",
+  "version": 1,
+  "instances": [
+    {
+      "id": "tls-reject-unauthorized-001",
+      "language": "javascript",
+      "file": "src/http-client.js",
+      "issues": ["tls-security:js-reject-unauthorized:src/http-client.js:5"],
+      "broken": "const https = require('https');\nconst agent = new https.Agent({\n  keepAlive: true,\n  rejectUnauthorized: false,\n});\nmodule.exports = agent;\n",
+      "fixed": "const https = require('https');\nconst agent = new https.Agent({\n  keepAlive: true,\n  rejectUnauthorized: true,\n});\nmodule.exports = agent;\n",
+      "note": "Classic MITM-vulnerable pattern — flag flipped from staging."
+    },
+    {
+      "id": "cookie-httponly-false-001",
+      "language": "javascript",
+      "file": "src/session.js",
+      "issues": ["cookie-sec:js-httponly-false:src/session.js:4"],
+      "broken": "module.exports = {\n  cookie: {\n    secure: true,\n    httpOnly: false,\n  },\n};\n",
+      "fixed": "module.exports = {\n  cookie: {\n    secure: true,\n    httpOnly: true,\n  },\n};\n",
+      "note": "XSS → session takeover unless httpOnly is true."
+    },
+    {
+      "id": "log-pii-stringify-body-001",
+      "language": "javascript",
+      "file": "src/handlers/login.js",
+      "issues": ["log-pii:stringify-dump:src/handlers/login.js:3"],
+      "broken": "function login(req, res) {\n  console.log('login attempt: ' + JSON.stringify(req.body));\n  res.status(200).send('ok');\n}\nmodule.exports = login;\n",
+      "fixed": "function login(req, res) {\n  console.log('login attempt for user:', req.body && req.body.username);\n  res.status(200).send('ok');\n}\nmodule.exports = login;\n",
+      "note": "Logging req.body leaks passwords / tokens — GDPR / PCI-DSS violation."
+    },
+    {
+      "id": "money-float-parsefloat-001",
+      "language": "javascript",
+      "file": "src/billing.js",
+      "issues": ["money-float:js-parse-float:src/billing.js:2"],
+      "broken": "function chargeCents(rawAmount) {\n  const amount = parseFloat(rawAmount);\n  return Math.round(amount * 100);\n}\nmodule.exports = chargeCents;\n",
+      "fixed": "const { Decimal } = require('decimal.js');\nfunction chargeCents(rawAmount) {\n  const amount = new Decimal(rawAmount);\n  return amount.times(100).round().toNumber();\n}\nmodule.exports = chargeCents;\n",
+      "note": "parseFloat on money — drift accumulates. Switch to decimal library."
+    },
+    {
+      "id": "feature-flag-always-true-001",
+      "language": "javascript",
+      "file": "src/feature.js",
+      "issues": ["feature-flag:always-true-if:src/feature.js:2"],
+      "broken": "function showNewUi() {\n  if (true) {\n    return renderNewUi();\n  }\n  return renderOldUi();\n}\nmodule.exports = showNewUi;\n",
+      "fixed": "function showNewUi() {\n  return renderNewUi();\n}\nmodule.exports = showNewUi;\n",
+      "note": "Stale feature flag — collapse the dead branch."
+    },
+    {
+      "id": "error-swallow-empty-catch-001",
+      "language": "javascript",
+      "file": "src/parser.js",
+      "issues": ["error-swallow:empty-catch:src/parser.js:4"],
+      "broken": "function safeJson(s) {\n  try {\n    return JSON.parse(s);\n  } catch {}\n  return null;\n}\nmodule.exports = safeJson;\n",
+      "fixed": "function safeJson(s) {\n  try {\n    return JSON.parse(s);\n  } catch (err) {\n    console.error('safeJson: parse failed', err);\n  }\n  return null;\n}\nmodule.exports = safeJson;\n",
+      "note": "Empty catch hides bugs. At minimum log the error."
+    },
+    {
+      "id": "async-foreach-001",
+      "language": "javascript",
+      "file": "src/process.js",
+      "issues": ["async-iteration:foreach-async:src/process.js:2"],
+      "broken": "async function processAll(items) {\n  items.forEach(async (item) => {\n    await persist(item);\n  });\n}\nmodule.exports = processAll;\n",
+      "fixed": "async function processAll(items) {\n  await Promise.all(items.map((item) => persist(item)));\n}\nmodule.exports = processAll;\n",
+      "note": "forEach doesn't await — fire-and-forget bug. Use Promise.all + map."
+    },
+    {
+      "id": "cron-impossible-feb31-001",
+      "language": "yaml",
+      "file": ".github/workflows/nightly.yml",
+      "issues": ["cron:impossible-date:.github/workflows/nightly.yml:4"],
+      "broken": "name: nightly\non:\n  schedule:\n    - cron: '0 0 31 2 *'\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n",
+      "fixed": "name: nightly\non:\n  schedule:\n    - cron: '0 0 1 * *'\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n",
+      "note": "Feb 31 never exists — job will silently never fire."
+    },
+    {
+      "id": "strict-ssl-false-001",
+      "language": "javascript",
+      "file": "src/legacy-http.js",
+      "issues": ["tls-security:js-strict-ssl:src/legacy-http.js:3"],
+      "broken": "const got = require('got');\nconst client = got.extend({\n  strictSSL: false,\n});\nmodule.exports = client;\n",
+      "fixed": "const got = require('got');\nconst client = got.extend({\n  strictSSL: true,\n});\nmodule.exports = client;\n",
+      "note": "Same MITM vector as rejectUnauthorized but on the request/got family."
+    },
+    {
+      "id": "node-tls-reject-env-001",
+      "language": "javascript",
+      "file": "src/boot.js",
+      "issues": ["tls-security:js-env-bypass:src/boot.js:1"],
+      "broken": "process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';\nrequire('./app');\n",
+      "fixed": "require('./app');\n",
+      "note": "Global nuclear TLS disable — kill the line entirely."
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+name: Flywheel Training
+
+# The flywheel is the moat. Every night this workflow:
+#   1. Replays the seed corpus through the deterministic layers
+#      (AST + Rule + Recipe) and records which layer handled each instance.
+#   2. Aggregates telemetry into the Claude-call ratio.
+#   3. Uploads the stats as a workflow artifact so the admin dashboard /
+#      future analytics can plot the curve over time.
+#
+# As the ratio drops over weeks / months, GateTest becomes structurally
+# cheaper per fix than any competitor. The training runs 24/7 — we add
+# corpus instances, the harness scores them, the ratio improves.
+#
+# Free to run: pure deterministic-layer replay, no Anthropic API calls,
+# no third-party services, GitHub Actions minutes only.
+
+on:
+  schedule:
+    # Daily at 02:30 UTC — quiet hours for most runners.
+    - cron: '30 2 * * *'
+  # Allow on-demand training (e.g. after adding new corpus instances).
+  workflow_dispatch:
+  # Re-train when the corpus or the fixer libraries change so we see the
+  # ratio impact of every rule / recipe / corpus addition immediately.
+  push:
+    branches: [main]
+    paths:
+      - 'corpus/**'
+      - 'website/app/lib/ast-fixer.js'
+      - 'website/app/lib/rule-based-fixer.js'
+      - 'website/app/lib/auto-distill.js'
+      - 'website/app/lib/recipe-store-remote.js'
+      - 'scripts/train-flywheel.js'
+      - 'scripts/flywheel-stats.js'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: Replay corpus + emit stats
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install workspaces (root + website + vscode-extension)
+        run: bash scripts/install-workspaces.sh
+
+      - name: Run trainer over seed corpus
+        run: |
+          mkdir -p .flywheel
+          node scripts/train-flywheel.js --corpus corpus/seed/instances.json --json \
+            | tee .flywheel/training-run.json
+        env:
+          # Keep telemetry self-contained inside the workspace so we can
+          # upload it as an artifact.
+          HOME: ${{ github.workspace }}/.flywheel-home
+
+      - name: Aggregate telemetry → moat-metric snapshot
+        if: always()
+        run: |
+          mkdir -p .flywheel
+          node scripts/flywheel-stats.js \
+            --path "$HOME/.gatetest/telemetry/fix-attempts.jsonl" \
+            --json \
+            > .flywheel/stats-snapshot.json || echo "{}" > .flywheel/stats-snapshot.json
+          # Also emit a human-readable summary for the run log.
+          node scripts/flywheel-stats.js \
+            --path "$HOME/.gatetest/telemetry/fix-attempts.jsonl" || true
+        env:
+          HOME: ${{ github.workspace }}/.flywheel-home
+
+      - name: Upload training artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flywheel-training-${{ github.run_number }}
+          path: |
+            .flywheel/training-run.json
+            .flywheel/stats-snapshot.json
+            .flywheel-home/.gatetest/telemetry/fix-attempts.jsonl
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Job summary — Claude-call ratio
+        if: always()
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            try {
+              const j = JSON.parse(fs.readFileSync(".flywheel/training-run.json", "utf8"));
+              const s = j.summary || {};
+              const md = `## Flywheel training run\n\n` +
+                `| Metric | Value |\n` +
+                `|---|---|\n` +
+                `| Instances | ${s.total ?? "n/a"} |\n` +
+                `| Accurate | ${s.accurate ?? "n/a"} (${(s.accuracyPct ?? 0).toFixed(1)}%) |\n` +
+                `| AST hits | ${(s.byLayer && s.byLayer.ast) || 0} |\n` +
+                `| Rule hits | ${(s.byLayer && s.byLayer.rule) || 0} |\n` +
+                `| Recipe hits | ${(s.byLayer && s.byLayer.recipe) || 0} |\n` +
+                `| Claude fallthrough | ${(s.byLayer && s.byLayer.claude) || 0} |\n` +
+                `| Unhandled | ${(s.byLayer && s.byLayer.unhandled) || 0} |\n` +
+                `| **Claude-call ratio (lower = better)** | **${(s.claudeRatioPct ?? 0).toFixed(1)}%** |\n`;
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);
+            } catch (e) {
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+                `\n_training-run.json not readable: ${e.message}_\n`);
+            }
+          '

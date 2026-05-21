@@ -128,6 +128,12 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   /\.snap$/,
   // Binary-ish formats that git sometimes treats as text
   /\.(?:map|sourcemap)$/,
+  // Training corpora / fixture data — content is data, not code. Same
+  // category as lockfiles: generated or hand-curated payloads the
+  // reviewer scans for shape ("is this the right format") not line-by-
+  // line. Excluding `corpus/**` keeps a 5000-entry SWE-bench import
+  // from dwarfing the actual code change in the same PR.
+  /(?:^|\/)corpus\//,
   // Tests: grow proportionally to features. Each test case is small +
   // independent; reviewers scan for "is the right thing tested" not
   // "is each line correct." Excluded from per-file diff measurement

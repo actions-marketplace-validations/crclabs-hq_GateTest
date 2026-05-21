@@ -131,7 +131,7 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   // Training corpora / fixture data — content is data, not code. Same
   // category as lockfiles: generated or hand-curated payloads the
   // reviewer scans for shape ("is this the right format") not line-by-
-  // line. Excluding `corpus/**` keeps a 5000-entry SWE-bench import
+  // line. Excluding the corpus tree keeps a 5000-entry SWE-bench import
   // from dwarfing the actual code change in the same PR.
   /(?:^|\/)corpus\//,
   // Tests: grow proportionally to features. Each test case is small +

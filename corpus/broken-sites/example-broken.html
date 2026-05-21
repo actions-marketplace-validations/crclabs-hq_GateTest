@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>GateTest vs Playwright — Broken Site Fixture</title>
+  <!-- Deliberate omissions used as test signal:
+       - NO Content-Security-Policy meta (CSP missing)
+       - NO X-Frame-Options equivalent
+       - Sets cookies via JS without httpOnly (impossible in JS but the
+         intent is detectable)
+  -->
+  <style>body{font-family:sans-serif;padding:2rem;max-width:600px;margin:0 auto}</style>
+</head>
+<body>
+  <h1>GateTest vs Playwright — Broken-Site Fixture</h1>
+
+  <p>This page is deliberately broken in measurable ways. The
+     comparison harness (scripts/compare-playwright.js) runs both
+     GateTest's runtime-errors module and a hand-written Playwright
+     capture against this page and reports who caught what.</p>
+
+  <h2>Bug 1: Uncaught JavaScript error on load</h2>
+  <p id="bug1">If this still says "loading..." after a second, bug 1 fired.</p>
+
+  <h2>Bug 2: Network request to a non-existent endpoint (404)</h2>
+  <img src="/this-image-does-not-exist.png" alt="broken image" width="1" height="1">
+
+  <h2>Bug 3: Mixed content (http: from https: page)</h2>
+  <!-- This would fire on a real https deployment; localhost is http
+       so it won't trigger here. Documented for completeness. -->
+
+  <h2>Bug 4: console.error spam on load</h2>
+
+  <h2>Bug 5: setTimeout that throws after 200ms</h2>
+
+  <script>
+    // Bug 1: uncaught reference error (window.__nonExistentGlobal__ is undefined)
+    try {
+      // Intentional: directly throw to fire `pageerror` rather than catch
+    } catch (_e) { /* swallow */ }
+    throw new ReferenceError('Bug 1: __thisFunctionDoesNotExist__ is not defined');
+  </script>
+
+  <script>
+    // Bug 4: console.error called immediately
+    console.error('Bug 4: deliberate console.error spam on load — payment flow degraded');
+    console.warn('Bug 4b: deliberate console.warn — feature flag fell back');
+
+    // Bug 5: deferred throw — tests that the harness waits long enough
+    setTimeout(function () {
+      throw new TypeError('Bug 5: deferred error after 200ms — async handler crashed');
+    }, 200);
+  </script>
+</body>
+</html>

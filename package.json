@@ -1,6 +1,6 @@
 {
   "name": "gatetest",
-  "version": "1.0.0",
+  "version": "1.42.0",
   "description": "GateTest — 91-module QA gate. Security, supply chain, accessibility, performance, AI safety, mutation testing. Iterative Claude fix loop, pay per scan. Replaces SonarQube + Snyk + ESLint + 10 others.",
   "main": "src/index.js",
   "bin": {

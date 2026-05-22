@@ -24,6 +24,12 @@ permissions:
   pull-requests: write
   security-events: write
   checks: write
+  # Required by github/codeql-action/upload-sarif — it calls
+  # GET /repos/.../actions/runs/{id} for telemetry. Without this,
+  # the SARIF upload step fails with a 403 "Resource not accessible
+  # by integration" error, turning the whole job red even when the
+  # gate itself passed.
+  actions: read
 
 concurrency:
   group: gatetest-${{ github.ref }}
@@ -43,7 +49,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Node 22 matches our baseline (.holdenmercer / dev). Node 20
+          # is EOL on the GH Actions deprecation list and emits noisy
+          # warnings on every run.
+          node-version: '22'
 
       - name: Clone GateTest (single source of truth)
         env:

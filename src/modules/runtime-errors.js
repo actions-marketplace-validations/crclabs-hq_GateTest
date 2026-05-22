@@ -73,14 +73,34 @@ class RuntimeErrorsModule extends BaseModule {
     try {
       playwright = require('playwright');
     } catch {
-      result.addCheck('runtime-errors:playwright-missing', true, {
-        severity: 'info',
-        message:
-          'Playwright not available in this environment — runtime checks skipped. ' +
-          'Install playwright + chromium to enable live error capture.',
-        suggestion: 'npm install playwright && npx playwright install chromium',
-      });
-      return;
+      // Fallback: Playwright is installed in website/node_modules in
+      // this monorepo (workspace-scoped). Customers running the CLI
+      // from a project root that has Playwright installed via the
+      // website workspace need this fallback or runtime-errors will
+      // falsely report playwright-missing while the binary is actually
+      // available a directory level deeper.
+      const path = require('node:path');
+      const candidates = [
+        path.join(__dirname, '..', '..', 'website'),
+        path.join(process.cwd(), 'website'),
+      ];
+      for (const fromDir of candidates) {
+        try {
+          const resolved = require.resolve('playwright', { paths: [fromDir] });
+          playwright = require(resolved);
+          break;
+        } catch { /* try next candidate */ }
+      }
+      if (!playwright) {
+        result.addCheck('runtime-errors:playwright-missing', true, {
+          severity: 'info',
+          message:
+            'Playwright not available in this environment — runtime checks skipped. ' +
+            'Install playwright + chromium to enable live error capture.',
+          suggestion: 'npm install playwright && npx playwright install chromium',
+        });
+        return;
+      }
     }
 
     let browser;

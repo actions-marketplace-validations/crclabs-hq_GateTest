@@ -44,7 +44,8 @@ test('buildDiagnosisPrompt — includes finding detail, module, severity', () =>
 
 test('buildDiagnosisPrompt — includes platform when known, hint when not', () => {
   const known = buildDiagnosisPrompt({ finding: okFinding, hostname: 'x', scanContext: { platform: 'Vercel' } });
-  assert.match(known, /KNOWN PLATFORM: Vercel/);
+  assert.match(known, /KNOWN PLATFORM:/);
+  assert.match(known, /Vercel/);
 
   const unknown = buildDiagnosisPrompt({ finding: okFinding, hostname: 'x' });
   assert.match(unknown, /not detected/);

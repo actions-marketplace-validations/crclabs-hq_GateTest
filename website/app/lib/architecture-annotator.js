@@ -28,6 +28,8 @@
  * files, configurable.
  */
 
+const { ANTI_INJECTION_PREAMBLE, wrapUntrusted, scanOutputForLeaks } = require('./prompt-injection-guard');
+
 const DEFAULT_SAMPLE_COUNT = 8;
 const DEFAULT_MAX_FILE_BYTES = 10_000;
 
@@ -154,23 +156,25 @@ function pickSampleFiles(fileContents, count = DEFAULT_SAMPLE_COUNT, maxFileByte
  * for tests so the prompt shape can be asserted.
  */
 function buildArchitecturePrompt({ summary, sampleFiles, repoUrl }) {
-  const summaryBlock = `CODEBASE SUMMARY:
-- Total files: ${summary.totalFiles}
-- Source files: ${summary.sourceFiles}
-- Total source bytes: ${summary.totalBytes}
-- Top directories: ${summary.topDirectories.map((d) => `${d.dir} (${d.count} files)`).join(', ') || '(none)'}
-- File types: ${Object.entries(summary.extensionCounts).map(([k, v]) => `${k}=${v}`).join(', ') || '(none)'}
-- Largest files (path, bytes):
+  const summaryBody = `Total files: ${summary.totalFiles}
+Source files: ${summary.sourceFiles}
+Total source bytes: ${summary.totalBytes}
+Top directories: ${summary.topDirectories.map((d) => `${d.dir} (${d.count} files)`).join(', ') || '(none)'}
+File types: ${Object.entries(summary.extensionCounts).map(([k, v]) => `${k}=${v}`).join(', ') || '(none)'}
+Largest files (path, bytes):
 ${summary.largestFiles.slice(0, 10).map((f) => `  - ${f.path} (${f.bytes} bytes)`).join('\n') || '  (none)'}`;
+
+  const summaryBlock = `CODEBASE SUMMARY:\n- Total files: ${summary.totalFiles}\n- Source files: ${summary.sourceFiles}\n${wrapUntrusted('summary', summaryBody)}`;
 
   const sampleBlock = sampleFiles.map((f) => {
     const truncationNote = f.truncated ? `\n[FILE TRUNCATED — showing first ${f.content.length} of ${f.originalBytes} bytes]` : '';
-    return `### ${f.path}${truncationNote}\n\`\`\`\n${f.content}\n\`\`\``;
+    return `### ${wrapUntrusted('path', f.path)}${truncationNote}\n${wrapUntrusted('file_content', f.content)}`;
   }).join('\n\n');
 
-  const repoLine = repoUrl ? `\nREPO: ${repoUrl}` : '';
+  const repoLine = repoUrl ? `\nREPO: ${wrapUntrusted('repo_url', repoUrl)}` : '';
 
-  return `You are the architecture-annotator agent for GateTest. You are NOT auto-fixing anything. You are reading the codebase shape and writing a "design observations" report for the customer's senior engineer.
+  return `${ANTI_INJECTION_PREAMBLE}
+You are the architecture-annotator agent for GateTest. You are NOT auto-fixing anything. You are reading the codebase shape and writing a "design observations" report for the customer's senior engineer.
 
 Look for:
   - Layering violations (UI imports DB, route imports route, business logic in handlers)
@@ -314,6 +318,19 @@ async function annotateArchitecture(opts) {
       reason: `Claude API error: ${message}`,
     };
   }
+
+  const leakScan = scanOutputForLeaks(raw);
+  if (!leakScan.safe) {
+    const ids = leakScan.leaks.map((l) => l.id).join(', ');
+    return {
+      ok: false,
+      body: null,
+      summary,
+      sampleFiles: sample.map((s) => ({ path: s.path, bytes: s.originalBytes })),
+      reason: `output suppressed — leak detected: ${ids}`,
+    };
+  }
+  raw = leakScan.redacted;
 
   const parsed = parseArchitectureOutput(raw);
   if (!parsed.ok) {

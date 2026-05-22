@@ -35,6 +35,8 @@
  *   }
  */
 
+const { ANTI_INJECTION_PREAMBLE, wrapUntrusted, scanOutputForLeaks } = require('./prompt-injection-guard');
+
 /**
  * Build the prompt. Exposed for tests.
  */
@@ -45,9 +47,10 @@ function buildCorrelationPrompt({ findings, hostname }) {
     return `${idx + 1}. ${sev}${mod}${f.detail}`;
   }).join('\n');
 
-  const hostLine = hostname ? `\nHOST: ${hostname}` : '';
+  const hostLine = hostname ? `\nHOST: ${wrapUntrusted('host', hostname)}` : '';
 
-  return `You are the cross-finding correlation engine for GateTest's $399 Nuclear tier. Per-finding diagnoses already exist (those are produced separately). YOUR job is different — find COMBINATIONS of findings that together form a real attack chain or an unintended interaction.
+  return `${ANTI_INJECTION_PREAMBLE}
+You are the cross-finding correlation engine for GateTest's $399 Nuclear tier. Per-finding diagnoses already exist (those are produced separately). YOUR job is different — find COMBINATIONS of findings that together form a real attack chain or an unintended interaction.
 
 Examples of valid chains:
 - CSP unsafe-inline + CORS wildcard + cookie httpOnly:false → XSS to session takeover
@@ -63,7 +66,7 @@ Rules:
 ${hostLine}
 
 FINDINGS:
-${findingsBlock}
+${wrapUntrusted('findings', findingsBlock)}
 
 Output format — STRICTLY this exact shape, one chain per block, blocks separated by a blank line:
 
@@ -194,6 +197,18 @@ async function correlateFindings(opts) {
       reason: `Claude API error: ${message}`,
     };
   }
+
+  const leakScan = scanOutputForLeaks(raw);
+  if (!leakScan.safe) {
+    const ids = leakScan.leaks.map((l) => l.id).join(', ');
+    return {
+      ok: false,
+      chains: [],
+      summary: `cross-finding correlation: output suppressed (${ids})`,
+      reason: `output suppressed — leak detected: ${ids}`,
+    };
+  }
+  raw = leakScan.redacted;
 
   const parsed = parseCorrelationOutput(raw, sliced.length);
   if (!parsed.ok) {

@@ -32,31 +32,34 @@
  *   }
  */
 
+const { ANTI_INJECTION_PREAMBLE, wrapUntrusted, scanOutputForLeaks } = require('./prompt-injection-guard');
+
 /**
  * Build the prompt for Claude. Exposed for tests so the prompt
  * shape can be asserted.
  */
 function buildDiagnosisPrompt({ finding, hostname, scanContext }) {
   const platformLine = scanContext?.platform
-    ? `KNOWN PLATFORM: ${scanContext.platform}`
+    ? `KNOWN PLATFORM: ${wrapUntrusted('platform', scanContext.platform)}`
     : 'KNOWN PLATFORM: not detected — provide platform-agnostic guidance';
 
   const stackLine = scanContext?.stack && scanContext.stack.length > 0
-    ? `KNOWN STACK SIGNALS: ${scanContext.stack.join(', ')}`
+    ? `KNOWN STACK SIGNALS: ${wrapUntrusted('stack', scanContext.stack.join(', '))}`
     : '';
 
-  return `You are the Nuclear-tier diagnosis agent for GateTest. The customer paid $399 for a deep, honest assessment. Do NOT emit category-matched shell-command templates — those are exactly the dishonest pattern this tier replaces.
+  return `${ANTI_INJECTION_PREAMBLE}
+You are the Nuclear-tier diagnosis agent for GateTest. The customer paid $399 for a deep, honest assessment. Do NOT emit category-matched shell-command templates — those are exactly the dishonest pattern this tier replaces.
 
 Your job: read the SPECIFIC finding, the customer's host, and any platform signals. Write a reasoned diagnosis. The customer's senior engineer should read this and feel like they got a specialist's answer, not a fortune cookie.
 
-HOST: ${hostname}
+HOST: ${wrapUntrusted('host', hostname || '')}
 ${platformLine}
 ${stackLine}
 
 FINDING:
-- module: ${finding.module || '(unknown)'}
-- severity: ${finding.severity || '(unknown)'}
-- detail: ${finding.detail}
+- module: ${wrapUntrusted('module', finding.module || '(unknown)')}
+- severity: ${wrapUntrusted('severity', finding.severity || '(unknown)')}
+- detail: ${wrapUntrusted('detail', finding.detail || '')}
 
 Output format — STRICTLY this exact shape, no markdown fences around the whole response:
 
@@ -180,6 +183,13 @@ async function diagnoseFinding(opts) {
     const message = err && err.message ? err.message : String(err);
     return { finding, ok: false, diagnosis: null, reason: `Claude API error: ${message}` };
   }
+
+  const leakScan = scanOutputForLeaks(raw);
+  if (!leakScan.safe) {
+    const ids = leakScan.leaks.map((l) => l.id).join(', ');
+    return { finding, ok: false, diagnosis: null, reason: `output suppressed — leak detected: ${ids}` };
+  }
+  raw = leakScan.redacted;
 
   const parsed = parseDiagnosisOutput(raw);
   if (!parsed.ok) {

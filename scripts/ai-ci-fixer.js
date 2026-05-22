@@ -326,7 +326,9 @@ async function tryAttempt({ cfg, files, logExcerpt, attempt, deps }) {
     return { ok: false, patches: [], error: err };
   }
 
-  const claudePatches = core.parseClaudeResponse(responseText);
+  // Pass the file allowlist so parseClaudeResponse rejects any smuggled
+  // file path Claude tries to write that wasn't in the original ask.
+  const claudePatches = core.parseClaudeResponse(responseText, claudeNeeded);
   if (claudePatches.length === 0) {
     core.log(`attempt ${attempt}: unparseable / GIVE_UP response`);
     recordTelemetry(deps.flywheel, { layer: 'claude', success: false, file: '<batch>', durationMs: Date.now() - t0, reason: 'unparseable', model: cfg.model });

@@ -73,7 +73,8 @@ test('buildCorrelationPrompt — output schema documented', () => {
 
 test('buildCorrelationPrompt — includes hostname when present', () => {
   const p = buildCorrelationPrompt({ findings: findingsSet, hostname: 'example.com' });
-  assert.match(p, /HOST: example\.com/);
+  assert.match(p, /HOST:/);
+  assert.match(p, /example\.com/);
 });
 
 // ---------- parseCorrelationOutput ----------

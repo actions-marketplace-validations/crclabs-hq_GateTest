@@ -22,6 +22,8 @@
  * the technical report blocks.
  */
 
+const { ANTI_INJECTION_PREAMBLE, wrapUntrusted, scanOutputForLeaks } = require('./prompt-injection-guard');
+
 /**
  * Build the prompt. Exposed for tests.
  */
@@ -40,9 +42,10 @@ function buildSummaryPrompt({ scanStats, topFindings, chains, hostname }) {
     ? `${scanStats.modulesPassed ?? '?'}/${scanStats.modulesTotal ?? '?'} modules passed, ${scanStats.errors ?? '?'} errors, ${scanStats.warnings ?? '?'} warnings, ${scanStats.checksPerformed ?? '?'} checks performed in ${scanStats.durationMs ?? '?'}ms`
     : '(no scan stats provided)';
 
-  const hostLine = hostname ? `\nHOST: ${hostname}` : '';
+  const hostLine = hostname ? `\nHOST: ${wrapUntrusted('host', hostname)}` : '';
 
-  return `You are the executive-summary composer for GateTest's $399 Nuclear tier. The customer's CTO will read this report. They are technical but they don't have time for jargon. Keep every sentence concrete and specific.
+  return `${ANTI_INJECTION_PREAMBLE}
+You are the executive-summary composer for GateTest's $399 Nuclear tier. The customer's CTO will read this report. They are technical but they don't have time for jargon. Keep every sentence concrete and specific.
 
 Source material:
 
@@ -50,10 +53,10 @@ SCAN STATS: ${statsLine}
 ${hostLine}
 
 TOP FINDINGS (most severe first; up to 10):
-${findingsBlock || '(no findings supplied)'}
+${findingsBlock ? wrapUntrusted('findings', findingsBlock) : '(no findings supplied)'}
 
 ATTACK CHAINS (cross-finding correlations; up to 5):
-${chainsBlock || '(no chains supplied)'}
+${chainsBlock ? wrapUntrusted('chains', chainsBlock) : '(no chains supplied)'}
 
 Your output structure — STRICTLY this exact shape, markdown OK inside the values, no fences around the whole response:
 
@@ -181,6 +184,17 @@ async function composeExecutiveSummary(opts) {
       reason: `Claude API error: ${message}`,
     };
   }
+
+  const leakScan = scanOutputForLeaks(raw);
+  if (!leakScan.safe) {
+    const ids = leakScan.leaks.map((l) => l.id).join(', ');
+    return {
+      ok: false,
+      sections: null,
+      reason: `output suppressed — leak detected: ${ids}`,
+    };
+  }
+  raw = leakScan.redacted;
 
   const parsed = parseSummaryOutput(raw);
   if (!parsed.ok) {

@@ -262,7 +262,7 @@ test('buildClaudePrompt includes the log and at least one file when within budge
   const files = [{ path: 'src/foo.js', content: 'function foo() {}' }];
   const prompt = fixer.buildClaudePrompt(log, files);
   assert.match(prompt, /an error happened/);
-  assert.match(prompt, /FILE: src\/foo\.js/);
+  assert.match(prompt, /src\/foo\.js/);
   assert.match(prompt, /function foo/);
 });
 

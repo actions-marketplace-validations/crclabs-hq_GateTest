@@ -38,6 +38,8 @@
  * destructive.
  */
 
+const { ANTI_INJECTION_PREAMBLE, wrapUntrusted, scanOutputForLeaks } = require('./prompt-injection-guard');
+
 const REVIEW_AXES = ['correctness', 'completeness', 'readability', 'testCoverage'];
 
 const SCORE_MIN = 1;
@@ -49,10 +51,11 @@ const SCORE_MAX = 5;
  */
 function buildReviewPrompt({ filePath, originalContent, fixedContent, issues, testContent }) {
   const testSection = testContent
-    ? `REGRESSION TEST (also added to the PR):\n\`\`\`\n${testContent}\n\`\`\``
+    ? `REGRESSION TEST (also added to the PR):\n${wrapUntrusted('test_content', testContent)}`
     : 'REGRESSION TEST: none was generated for this fix.';
 
-  return `You are the pair-review agent for GateTest. A first Claude agent already produced this fix in response to scanner findings. Your job is to read the diff and the regression test (if any) and write a critique.
+  return `${ANTI_INJECTION_PREAMBLE}
+You are the pair-review agent for GateTest. A first Claude agent already produced this fix in response to scanner findings. Your job is to read the diff and the regression test (if any) and write a critique.
 
 DO NOT propose a different fix. DO NOT rewrite the code. Your output is a critique only — the customer reads it on their PR before merging.
 
@@ -63,20 +66,16 @@ Score each axis from 1 (critical concern) to 5 (clean):
   - readability:    is the fix clear, idiomatic, well-named?
   - testCoverage:   does the regression test demonstrate the bug AND pass against the fix?
 
-FILE: ${filePath}
+FILE: ${wrapUntrusted('file_path', filePath)}
 
 ISSUES THE FIX WAS MEANT TO ADDRESS:
-${issues.map((i, idx) => `${idx + 1}. ${i}`).join('\n')}
+${wrapUntrusted('issues', issues.map((i, idx) => `${idx + 1}. ${i}`).join('\n'))}
 
 ORIGINAL CODE:
-\`\`\`
-${originalContent}
-\`\`\`
+${wrapUntrusted('original_code', originalContent)}
 
 FIXED CODE:
-\`\`\`
-${fixedContent}
-\`\`\`
+${wrapUntrusted('fixed_code', fixedContent)}
 
 ${testSection}
 
@@ -212,6 +211,13 @@ async function reviewSingleFix(opts) {
     const message = err && err.message ? err.message : String(err);
     return { file: fix.file, ok: false, scores: null, critique: null, reason: `Claude API error: ${message}` };
   }
+
+  const leakScan = scanOutputForLeaks(raw);
+  if (!leakScan.safe) {
+    const ids = leakScan.leaks.map((l) => l.id).join(', ');
+    return { file: fix.file, ok: false, scores: null, critique: null, reason: `output suppressed — leak detected: ${ids}` };
+  }
+  raw = leakScan.redacted;
 
   const parsed = parseReviewOutput(raw);
   if (!parsed.ok) {
